@@ -7,7 +7,12 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
-    "noEmit": true,
+
+    /* Project References */
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
 
     /* Linting */
     "strict": true,

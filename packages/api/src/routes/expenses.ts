@@ -70,36 +70,37 @@ app.post('/', async (c) => {
   return c.json({ success: true, created: true });
 });
 
-// GET /expenses - 支出を取得（月別または全件）
+// GET /expenses - 支出を取得（月別のみ）
 app.get('/', async (c) => {
-  const month = c.req.query('month'); // YYYY-MM 形式
+  // month パラメータが指定されていない場合は現在の月を使用
+  let month = c.req.query('month');
+  if (!month) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const monthNum = String(now.getMonth() + 1).padStart(2, '0');
+    month = `${year}-${monthNum}`;
+  }
+
   const db = drizzle(c.env.DB);
   const userId = 'default-user';
 
-  let query = db.select().from(expenses);
+  // 月の範囲を計算
+  const startDate = `${month}-01`;
+  const endDate = `${month}-31`; // 簡易的な実装
 
-  if (month) {
-    // 月指定がある場合は範囲検索
-    const startDate = `${month}-01`;
-    const endDate = `${month}-31`; // 簡易的な実装
-
-    const results = await query
-      .where(
-        and(
-          eq(expenses.userId, userId),
-          gte(expenses.date, startDate),
-          lte(expenses.date, endDate)
-        )
+  const results = await db
+    .select()
+    .from(expenses)
+    .where(
+      and(
+        eq(expenses.userId, userId),
+        gte(expenses.date, startDate),
+        lte(expenses.date, endDate)
       )
-      .all();
+    )
+    .all();
 
-    return c.json({ expenses: results });
-  }
-
-  // 全件取得
-  const results = await query.where(eq(expenses.userId, userId)).all();
-
-  return c.json({ expenses: results });
+  return c.json({ expenses: results, month });
 });
 
 export default app;

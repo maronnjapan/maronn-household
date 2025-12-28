@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import vike from 'vike/plugin';
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 import { fileURLToPath } from 'url';
 
 export default defineConfig({
@@ -11,10 +11,5 @@ export default defineConfig({
       '#hooks': fileURLToPath(new URL('./hooks', import.meta.url)),
       '#lib': fileURLToPath(new URL('./lib', import.meta.url)),
     },
-  },
-  test: {
-    globals: true,
-    environment: 'happy-dom',
-    setupFiles: './tests/setup.ts',
   },
 });

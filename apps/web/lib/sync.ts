@@ -149,3 +149,8 @@ export function startBackgroundSync(): void {
     }
   }, 30000);
 }
+
+// ブラウザ環境でモジュールロード時に自動起動
+if (typeof window !== 'undefined') {
+  startBackgroundSync();
+}

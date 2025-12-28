@@ -4,9 +4,4 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), vike()],
-  test: {
-    globals: true,
-    environment: 'happy-dom',
-    setupFiles: './tests/setup.ts',
-  },
 });

@@ -18,6 +18,14 @@ export default [
           jsx: true,
         },
       },
+      globals: {
+        // Node.js globals for config files
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        module: 'readonly',
+        require: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,

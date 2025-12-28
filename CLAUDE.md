@@ -1,0 +1,439 @@
+# 家計簿アプリ - CLAUDE.md
+
+## プロジェクト概要
+
+月々の予算に対して支出を記録し、残り使える金額をリアルタイムで確認できる家計簿アプリ。通信環境が悪くても爆速で表示・操作できることを最優先とする。
+
+## 設計思想
+
+### ローカルファースト・アーキテクチャ
+
+すべてのデータ操作はローカル（IndexedDB）を起点とし、サーバー同期はバックグラウンドで行う。
+
+```
+[ユーザー操作]
+    ↓ 即座に
+[IndexedDB] → UI更新（< 50ms）
+    ↓ 非同期
+[バックグラウンド同期] → サーバーDB
+    ↓ 非同期
+[他デバイスへ伝播]
+```
+
+ネットワークを待つ瞬間をゼロにする。
+
+### 爆速表示の原則
+
+1. 初回表示はローカルDBから取得（ネットワーク不要）
+2. 入力操作は即座にローカル反映 → 残額は瞬時に更新
+3. サーバー同期の成否はUIをブロックしない
+4. オフラインでも全機能が動作する
+
+## 技術スタック
+
+### フロントエンド
+
+| 技術 | 選定理由 |
+|------|----------|
+| React | エコシステムの充実、TDDとの相性 |
+| Vike (vite-plugin-ssr) | ストリーミングSSR対応、Honoとの統合が容易 |
+| Dexie.js | IndexedDBのラッパー、useLiveQueryでリアクティブ更新 |
+| TanStack Query | サーバー同期のキャッシュ管理、Optimistic Updates |
+
+### バックエンド
+
+| 技術 | 選定理由 |
+|------|----------|
+| Hono | 軽量、エッジランタイム対応、TypeScript first |
+| Cloudflare Workers | エッジ実行でレイテンシ最小化 |
+| Cloudflare D1 | エッジに近いSQLite、Workersとの統合が容易 |
+| Drizzle ORM | 型安全、軽量、D1対応 |
+
+### 同期・リアルタイム
+
+| 技術 | 選定理由 |
+|------|----------|
+| Cloudflare Durable Objects | デバイス間リアルタイム同期、競合解決 |
+| WebSocket | 他デバイスへの変更プッシュ |
+
+### 認証（将来実装）
+
+認証方式は未定。将来的に不特定多数のユーザーを想定するため、以下を候補として検討:
+
+- Better Auth（セルフホスト、Hono統合）
+- Cloudflare Access（Zero Trust）
+- Auth.js（OAuth連携が必要な場合）
+
+### テスト
+
+| 技術 | 用途 |
+|------|------|
+| Vitest | ユニットテスト、ドメインロジック |
+| Testing Library | UIコンポーネントテスト |
+| Playwright | E2Eテスト |
+| MSW | APIモック |
+
+## ディレクトリ構成
+
+```
+/
+├── apps/
+│   └── web/                    # Vike + React アプリ
+│       ├── pages/              # ファイルベースルーティング
+│       │   ├── index/
+│       │   │   └── +Page.tsx   # 入力・残額表示ページ（爆速）
+│       │   ├── history/
+│       │   │   └── +Page.tsx   # 支出履歴
+│       │   └── settings/
+│       │       └── +Page.tsx   # 予算設定
+│       ├── components/         # UIコンポーネント
+│       ├── hooks/              # カスタムフック
+│       ├── lib/
+│       │   ├── db.ts           # Dexie スキーマ定義
+│       │   ├── sync.ts         # 同期ロジック
+│       │   └── budget.ts       # 予算計算ドメインロジック
+│       └── tests/
+│           ├── unit/           # ドメインロジックのテスト
+│           ├── component/      # コンポーネントテスト
+│           └── e2e/            # Playwright E2E
+│
+├── packages/
+│   ├── domain/                 # ドメインロジック（純粋関数）
+│   │   ├── src/
+│   │   │   ├── budget.ts       # 予算・残額計算
+│   │   │   ├── expense.ts      # 支出エンティティ
+│   │   │   └── sync.ts         # 競合解決ロジック
+│   │   └── tests/
+│   │       └── *.test.ts
+│   │
+│   └── api/                    # Hono API
+│       ├── src/
+│       │   ├── index.ts        # エントリポイント
+│       │   ├── routes/
+│       │   │   ├── expenses.ts
+│       │   │   └── budget.ts
+│       │   └── db/
+│       │       └── schema.ts   # Drizzle スキーマ
+│       └── tests/
+│
+├── e2e/                        # プロジェクト全体のE2Eテスト
+│
+└── wrangler.toml               # Cloudflare Workers 設定
+```
+
+## データモデル
+
+### ローカル（IndexedDB / Dexie）
+
+```typescript
+interface Expense {
+  id: string;           // ULID（ソート可能なユニークID）
+  amount: number;
+  category?: string;
+  memo?: string;
+  date: string;         // ISO 8601
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'pending' | 'synced' | 'conflict';
+  deviceId: string;     // 競合解決用
+}
+
+interface Budget {
+  id: string;
+  month: string;        // 'YYYY-MM'
+  amount: number;
+  updatedAt: string;
+}
+
+interface SyncMeta {
+  id: 'main';
+  lastSyncedAt: string;
+  deviceId: string;
+}
+```
+
+### サーバー（D1 / Drizzle）
+
+```typescript
+// packages/api/src/db/schema.ts
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const expenses = sqliteTable('expenses', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id),
+  amount: integer('amount').notNull(),
+  category: text('category'),
+  memo: text('memo'),
+  date: text('date').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  deviceId: text('device_id').notNull(),
+});
+
+export const budgets = sqliteTable('budgets', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id),
+  month: text('month').notNull(),
+  amount: integer('amount').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+```
+
+## 同期戦略
+
+### マージ方式（両方の入力を残す）
+
+同じ月の支出を複数デバイスで編集した場合、すべての入力を保持する。
+
+```typescript
+// packages/domain/src/sync.ts
+interface SyncResult {
+  toUpload: Expense[];      // ローカル → サーバー
+  toDownload: Expense[];    // サーバー → ローカル
+  conflicts: ConflictPair[];
+}
+
+interface ConflictPair {
+  local: Expense;
+  remote: Expense;
+  resolution: 'keep-both' | 'keep-local' | 'keep-remote';
+}
+
+function resolveConflicts(local: Expense[], remote: Expense[]): SyncResult {
+  // 同一IDで updatedAt が異なる場合:
+  // - 支出（Expense）: 両方残す（IDを振り直して2件に）
+  // - 予算（Budget）: updatedAt が新しい方を採用
+}
+```
+
+### 同期フロー
+
+```
+1. アプリ起動時
+   └── ローカルから即表示 → バックグラウンドで差分同期
+
+2. 支出入力時
+   └── ローカル保存（syncStatus: 'pending'）→ 即座にUI更新
+   └── バックグラウンドでサーバー送信
+   └── 成功したら syncStatus: 'synced'
+
+3. オンライン復帰時（navigator.onLine）
+   └── pending な全件を一括送信
+   └── サーバーから差分取得
+
+4. 他デバイスからの更新（WebSocket / Durable Objects）
+   └── 差分をローカルにマージ → useLiveQuery で自動UI更新
+```
+
+## TDD 開発フロー
+
+twada 流 TDD を全レイヤーで適用する。
+
+### Red → Green → Refactor サイクル
+
+```
+1. Red:    失敗するテストを書く
+2. Green:  テストを通す最小限のコードを書く
+3. Refactor: リファクタリング（テストは通ったまま）
+```
+
+### テストの書き方
+
+#### ドメインロジック（packages/domain）
+
+純粋関数としてテストしやすく設計。外部依存なし。
+
+```typescript
+// packages/domain/tests/budget.test.ts
+import { describe, it, expect } from 'vitest';
+import { calculateRemaining } from '../src/budget';
+
+describe('calculateRemaining', () => {
+  it('予算から支出合計を引いた残額を返す', () => {
+    const budget = 100000;
+    const expenses = [
+      { amount: 3000 },
+      { amount: 5000 },
+    ];
+    
+    expect(calculateRemaining(budget, expenses)).toBe(92000);
+  });
+
+  it('支出がない場合は予算全額を返す', () => {
+    expect(calculateRemaining(100000, [])).toBe(100000);
+  });
+
+  it('支出が予算を超えた場合は負の値を返す', () => {
+    const budget = 10000;
+    const expenses = [{ amount: 15000 }];
+    
+    expect(calculateRemaining(budget, expenses)).toBe(-5000);
+  });
+});
+```
+
+#### UIコンポーネント（apps/web）
+
+Testing Library でユーザー視点のテスト。
+
+```typescript
+// apps/web/tests/component/ExpenseInput.test.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ExpenseInput } from '../../components/ExpenseInput';
+
+describe('ExpenseInput', () => {
+  it('金額を入力して追加すると残額が減る', async () => {
+    const user = userEvent.setup();
+    render(<ExpenseInput initialBudget={100000} />);
+    
+    expect(screen.getByText('残り: ¥100,000')).toBeInTheDocument();
+    
+    await user.type(screen.getByPlaceholderText('金額'), '3000');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+    
+    expect(screen.getByText('残り: ¥97,000')).toBeInTheDocument();
+  });
+});
+```
+
+#### E2E（e2e/）
+
+Playwright でユーザーシナリオをテスト。
+
+```typescript
+// e2e/budget-flow.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('支出を入力すると残額がリアルタイムで更新される', async ({ page }) => {
+  await page.goto('/');
+  
+  // 初期状態
+  await expect(page.getByText('残り: ¥100,000')).toBeVisible();
+  
+  // 支出入力
+  await page.getByPlaceholder('金額').fill('5000');
+  await page.getByRole('button', { name: '追加' }).click();
+  
+  // 即座に更新（ネットワーク待ちなし）
+  await expect(page.getByText('残り: ¥95,000')).toBeVisible();
+});
+
+test('オフラインでも支出入力ができる', async ({ page, context }) => {
+  await page.goto('/');
+  
+  // オフラインにする
+  await context.setOffline(true);
+  
+  await page.getByPlaceholder('金額').fill('3000');
+  await page.getByRole('button', { name: '追加' }).click();
+  
+  // ローカルで処理されるので動作する
+  await expect(page.getByText('残り: ¥97,000')).toBeVisible();
+});
+```
+
+### テストピラミッド
+
+```
+        /\
+       /  \  E2E（少数・重要フロー）
+      /----\
+     /      \  コンポーネント（UIの振る舞い）
+    /--------\
+   /          \  ユニット（ドメインロジック・多数）
+  --------------
+```
+
+ドメインロジックのユニットテストを厚く、E2Eは重要なユーザーフローに絞る。
+
+## コーディング規約
+
+### 全般
+
+- TypeScript strict モード必須
+- 関数は可能な限り純粋関数として実装
+- 副作用は hooks または専用モジュールに分離
+- any 禁止、unknown + 型ガードを使用
+
+### 命名規則
+
+```typescript
+// ファイル名: kebab-case
+expense-input.tsx
+use-remaining-budget.ts
+
+// 関数・変数: camelCase
+function calculateRemaining() {}
+const totalSpent = 0;
+
+// 型・インターフェース: PascalCase
+interface Expense {}
+type SyncStatus = 'pending' | 'synced';
+
+// 定数: UPPER_SNAKE_CASE
+const MAX_RETRY_COUNT = 3;
+```
+
+### コンポーネント設計
+
+```typescript
+// Props は明示的に定義
+interface ExpenseInputProps {
+  onSubmit: (amount: number) => void;
+  initialBudget?: number;
+}
+
+// デフォルトエクスポートは使わない
+export function ExpenseInput({ onSubmit, initialBudget = 0 }: ExpenseInputProps) {
+  // ...
+}
+```
+
+## パフォーマンス目標
+
+| 指標 | 目標値 |
+|------|--------|
+| 初回表示（FCP） | < 500ms |
+| 残額更新（入力後） | < 50ms |
+| オフライン時の動作 | 100%機能 |
+| Lighthouse Performance | > 90 |
+
+## 開発コマンド
+
+```bash
+# 開発サーバー起動
+pnpm dev
+
+# テスト実行
+pnpm test              # ユニット + コンポーネント
+pnpm test:e2e          # E2E
+
+# テスト（ウォッチモード）
+pnpm test:watch
+
+# 型チェック
+pnpm typecheck
+
+# リント
+pnpm lint
+
+# ビルド
+pnpm build
+
+# Cloudflare Workers へデプロイ
+pnpm deploy
+```
+
+## 今後の拡張予定
+
+1. **認証機能**: ユーザー登録・ログイン（Better Auth 候補）
+2. **カテゴリ管理**: 支出のカテゴリ分類・集計
+3. **グラフ表示**: 月別・カテゴリ別の支出可視化
+4. **予算アラート**: 残額が少なくなったら通知
+5. **CSV エクスポート**: データのバックアップ・分析用

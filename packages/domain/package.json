@@ -19,5 +19,8 @@
   "devDependencies": {
     "typescript": "^5.3.3",
     "vitest": "^1.2.0"
+  },
+  "dependencies": {
+    "ulid": "^2.3.0"
   }
 }

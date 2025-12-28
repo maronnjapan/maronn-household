@@ -134,8 +134,8 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
       vitest:
-        specifier: ^1.2.0
-        version: 1.6.1(@types/node@20.19.27)
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@20.19.27)(happy-dom@13.10.1)
 
 packages:
 

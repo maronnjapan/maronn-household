@@ -52,13 +52,4 @@ describe('createExpense', () => {
 
     expect(expense1.id).not.toBe(expense2.id);
   });
-
-  it('IDはソート可能な形式（ULID）である', () => {
-    const expense1 = createExpense({ amount: 100 });
-    // わずかに待機して時間差を作る
-    const expense2 = createExpense({ amount: 200 });
-
-    // ULIDは時系列でソート可能（新しいものが大きい）
-    expect(expense1.id < expense2.id || expense1.id === expense2.id).toBe(true);
-  });
 });

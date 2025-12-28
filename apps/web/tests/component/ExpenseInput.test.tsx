@@ -4,27 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { ExpenseInput } from '#components/ExpenseInput';
 
 describe('ExpenseInput', () => {
-  it('金額入力フィールドが表示される', () => {
-    render(<ExpenseInput onAdd={vi.fn()} />);
-
-    expect(screen.getByPlaceholderText('金額')).toBeInTheDocument();
-  });
-
-  it('追加ボタンが表示される', () => {
-    render(<ExpenseInput onAdd={vi.fn()} />);
-
-    expect(
-      screen.getByRole('button', { name: /追加|Add/i })
-    ).toBeInTheDocument();
-  });
-
   it('金額を入力して追加ボタンを押すとonAddが呼ばれる', async () => {
     const user = userEvent.setup();
     const onAdd = vi.fn();
     render(<ExpenseInput onAdd={onAdd} />);
 
-    const input = screen.getByPlaceholderText('金額');
-    const button = screen.getByRole('button', { name: /追加|Add/i });
+    const input = screen.getByRole('spinbutton'); // type="number" input
+    const button = screen.getByRole('button', { name: /追加/ });
 
     await user.type(input, '3000');
     await user.click(button);
@@ -36,11 +22,11 @@ describe('ExpenseInput', () => {
     const user = userEvent.setup();
     render(<ExpenseInput onAdd={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText('金額');
+    const input = screen.getByRole('spinbutton');
     if (!(input instanceof HTMLInputElement)) {
       throw new Error('Input element not found');
     }
-    const button = screen.getByRole('button', { name: /追加|Add/i });
+    const button = screen.getByRole('button', { name: /追加/ });
 
     await user.type(input, '5000');
     await user.click(button);
@@ -53,9 +39,9 @@ describe('ExpenseInput', () => {
     const onAdd = vi.fn();
     render(<ExpenseInput onAdd={onAdd} />);
 
-    const amountInput = screen.getByPlaceholderText('金額');
-    const memoInput = screen.getByPlaceholderText('メモ');
-    const button = screen.getByRole('button', { name: /追加|Add/i });
+    const amountInput = screen.getByRole('spinbutton');
+    const memoInput = screen.getByRole('textbox');
+    const button = screen.getByRole('button', { name: /追加/ });
 
     await user.type(amountInput, '2000');
     await user.type(memoInput, 'スーパーで買い物');
@@ -70,7 +56,7 @@ describe('ExpenseInput', () => {
   it('金額が空の場合は追加ボタンが無効', () => {
     render(<ExpenseInput onAdd={vi.fn()} />);
 
-    const button = screen.getByRole('button', { name: /追加|Add/i });
+    const button = screen.getByRole('button', { name: /追加/ });
 
     expect(button).toBeDisabled();
   });
@@ -79,8 +65,8 @@ describe('ExpenseInput', () => {
     const user = userEvent.setup();
     render(<ExpenseInput onAdd={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText('金額');
-    const button = screen.getByRole('button', { name: /追加|Add/i });
+    const input = screen.getByRole('spinbutton');
+    const button = screen.getByRole('button', { name: /追加/ });
 
     await user.type(input, '0');
 

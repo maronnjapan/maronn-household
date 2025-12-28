@@ -31,10 +31,13 @@ export class HouseholdDB extends Dexie {
   constructor() {
     super('maronn-household');
 
+    // IndexedDB schema definition
+    // Format: 'primaryKey, index1, index2, ...'
+    // Indexes enable fast queries on specific fields
     this.version(1).stores({
-      expenses: 'id, date, syncStatus, createdAt',
-      budgets: 'id, month, updatedAt',
-      syncMeta: 'id',
+      expenses: 'id, date, syncStatus, createdAt', // Primary: id, Indexes: date (for month queries), syncStatus (for pending sync), createdAt (for sorting)
+      budgets: 'id, month, updatedAt', // Primary: id (month), Indexes: month (for lookups), updatedAt (for conflict resolution)
+      syncMeta: 'id', // Primary: id (singleton for sync state)
     });
   }
 }

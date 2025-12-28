@@ -12,6 +12,7 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
+    "@maronn/domain": "workspace:*",
     "@tanstack/react-query": "^5.17.19",
     "dexie": "^3.2.4",
     "dexie-react-hooks": "^1.1.7",

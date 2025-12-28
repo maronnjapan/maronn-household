@@ -18,6 +18,16 @@ export default [
           jsx: true,
         },
       },
+      globals: {
+        // Node.js globals
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        // Browser globals
+        localStorage: 'readonly',
+        HTMLInputElement: 'readonly',
+        URL: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,

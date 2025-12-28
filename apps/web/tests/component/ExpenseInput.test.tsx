@@ -36,7 +36,10 @@ describe('ExpenseInput', () => {
     const user = userEvent.setup();
     render(<ExpenseInput onAdd={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText('金額') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('金額');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error('Input element not found');
+    }
     const button = screen.getByRole('button', { name: /追加|Add/i });
 
     await user.type(input, '5000');

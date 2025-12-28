@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createExpense, type ExpenseEntity } from '../src/expense';
+import { createExpense } from '../src/expense';
 
 describe('createExpense', () => {
   it('金額のみ指定して支出を作成できる', () => {

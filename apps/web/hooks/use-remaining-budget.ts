@@ -1,11 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { calculateRemaining } from '@maronn/domain';
-import {
-  db,
-  getBudget,
-  getExpensesByMonth,
-  getCurrentMonth,
-} from '#lib/db';
+import { getBudget, getExpensesByMonth, getCurrentMonth } from '#lib/db';
 
 export interface RemainingBudgetResult {
   budget: number;

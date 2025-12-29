@@ -21,6 +21,6 @@
     "vitest": "^1.2.0"
   },
   "dependencies": {
-    "ulid": "^2.3.0"
+    "ulidx": "^2.4.1"
   }
 }

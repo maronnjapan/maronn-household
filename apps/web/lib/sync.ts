@@ -1,5 +1,6 @@
 import type { ExpenseEntity } from '@maronn/domain';
-import { db, updateSyncStatus } from './db';
+import { mergeExpenses } from '@maronn/domain';
+import { db, updateSyncStatus, getCurrentMonth } from './db';
 
 // API エンドポイント
 // 開発時は Vite dev server のプロキシを想定、本番は環境変数から取得
@@ -127,25 +128,155 @@ export async function syncPendingExpenses(): Promise<{
 }
 
 /**
+ * サーバーから指定月の支出を取得
+ */
+async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
+  try {
+    const response = await fetchWithRetry(
+      `${API_BASE_URL}/expenses?month=${month}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const data = await response.json();
+    return data.expenses || [];
+  } catch (error) {
+    console.error('Failed to download expenses:', month, error);
+    return [];
+  }
+}
+
+/**
+ * サーバーから支出をダウンロードしてローカルにマージ
+ */
+export async function syncDownloadExpenses(
+  month?: string
+): Promise<{
+  downloaded: number;
+  added: number;
+  updated: number;
+  conflicts: number;
+}> {
+  // オフラインの場合はスキップ
+  if (!navigator.onLine) {
+    console.info('Offline: skipping download');
+    return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
+  }
+
+  try {
+    const targetMonth = month || getCurrentMonth();
+
+    // サーバーから支出を取得
+    const remoteExpenses = await downloadExpenses(targetMonth);
+
+    if (remoteExpenses.length === 0) {
+      console.info('No remote expenses to sync');
+      return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
+    }
+
+    console.info(`Downloaded ${remoteExpenses.length} expenses from server`);
+
+    // ローカルの支出を取得
+    const startDate = `${targetMonth}-01`;
+    const year = parseInt(targetMonth.split('-')[0] as string);
+    const monthNum = parseInt(targetMonth.split('-')[1] as string);
+    const nextMonth =
+      monthNum === 12
+        ? `${year + 1}-01`
+        : `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+    const endDate = `${nextMonth}-01`;
+
+    const localExpenses = await db.expenses
+      .where('date')
+      .between(startDate, endDate, true, false)
+      .toArray();
+
+    // マージ処理
+    const mergeResult = mergeExpenses(localExpenses, remoteExpenses);
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    let conflictsCount = 0;
+
+    // 新しい支出を追加
+    for (const expense of mergeResult.toAdd) {
+      await db.expenses.put(expense);
+      addedCount++;
+    }
+
+    // 既存の支出を更新
+    for (const expense of mergeResult.toUpdate) {
+      await db.expenses.put(expense);
+      updatedCount++;
+    }
+
+    // 競合した支出を追加（両方残す）
+    for (const conflict of mergeResult.conflicts) {
+      // リモートの支出を新しいIDで追加
+      await db.expenses.put(conflict.remote);
+      conflictsCount++;
+    }
+
+    console.info(
+      `Sync download complete: ${addedCount} added, ${updatedCount} updated, ${conflictsCount} conflicts`
+    );
+
+    return {
+      downloaded: remoteExpenses.length,
+      added: addedCount,
+      updated: updatedCount,
+      conflicts: conflictsCount,
+    };
+  } catch (error) {
+    console.error('Sync download error:', error);
+    return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
+  }
+}
+
+/**
+ * 双方向同期を実行（アップロード + ダウンロード）
+ */
+export async function syncBidirectional(): Promise<void> {
+  if (!navigator.onLine) {
+    console.info('Offline: skipping bidirectional sync');
+    return;
+  }
+
+  console.info('Starting bidirectional sync...');
+
+  // 1. pending な支出をアップロード
+  await syncPendingExpenses();
+
+  // 2. サーバーから最新データをダウンロード
+  await syncDownloadExpenses();
+
+  console.info('Bidirectional sync complete');
+}
+
+/**
  * バックグラウンド同期を開始
  * - アプリ起動時に1回実行
  * - オンライン復帰時に実行
  * - 定期的に実行（オプション）
  */
 export function startBackgroundSync(): void {
-  // 初回同期
-  syncPendingExpenses().catch(console.error);
+  // 初回同期（双方向）
+  syncBidirectional().catch(console.error);
 
-  // オンライン復帰時の同期
+  // オンライン復帰時の同期（双方向）
   window.addEventListener('online', () => {
     console.info('Network reconnected: starting sync...');
-    syncPendingExpenses().catch(console.error);
+    syncBidirectional().catch(console.error);
   });
 
-  // 定期同期（30秒ごと）- オンライン時のみ
+  // 定期同期（30秒ごと）- オンライン時のみ（双方向）
   setInterval(() => {
     if (navigator.onLine) {
-      syncPendingExpenses().catch(console.error);
+      syncBidirectional().catch(console.error);
     }
   }, 30000);
 }

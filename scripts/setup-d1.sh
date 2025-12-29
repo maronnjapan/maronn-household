@@ -72,30 +72,39 @@ else
 
     log_success "Database created with ID: ${DB_ID}"
 
-    # wrangler.tomlを更新
-    log_info "Updating wrangler.toml with database_id..."
+    # wrangler.jsoncを更新
+    log_info "Updating wrangler.jsonc with database_id..."
 
-    if [ "${ENVIRONMENT}" = "production" ]; then
-        # 本番環境用の設定を追加（環境変数セクションに追加）
-        if ! grep -q "^\[env\.production\.d1_databases\]" wrangler.toml; then
-            cat >> wrangler.toml << EOF
-
-# Production D1 Database
-[[env.production.d1_databases]]
-binding = "DB"
-database_name = "${DB_NAME}"
-database_id = "${DB_ID}"
-EOF
-            log_success "Added production database configuration to wrangler.toml"
+    if command -v jq &> /dev/null; then
+        # jqが利用可能な場合、JSONを更新
+        if [ "${ENVIRONMENT}" = "production" ]; then
+            # 本番環境用の設定を追加
+            log_warning "Production environment configuration needs manual setup in wrangler.jsonc"
+            log_info "Please add the following to your wrangler.jsonc:"
+            echo ""
+            echo "  \"env\": {"
+            echo "    \"production\": {"
+            echo "      \"d1_databases\": [{"
+            echo "        \"binding\": \"DB\","
+            echo "        \"database_name\": \"${DB_NAME}\","
+            echo "        \"database_id\": \"${DB_ID}\""
+            echo "      }]"
+            echo "    }"
+            echo "  }"
+            echo ""
         else
-            # 既存の設定を更新
-            sed -i "/^\[env\.production\.d1_databases\]/,/^database_id/ s/database_id = .*/database_id = \"${DB_ID}\"/" wrangler.toml
-            log_success "Updated production database_id in wrangler.toml"
+            # 開発環境のdatabase_idを更新
+            TMP_FILE=$(mktemp)
+            jq --arg db_id "${DB_ID}" \
+               '.d1_databases[0].database_id = $db_id' \
+               wrangler.jsonc > "${TMP_FILE}" && mv "${TMP_FILE}" wrangler.jsonc
+            log_success "Updated database_id in wrangler.jsonc"
         fi
     else
-        # 開発環境のdatabase_idを更新
-        sed -i "/^\[\[d1_databases\]\]/,/^database_id/ s/database_id = .*/database_id = \"${DB_ID}\"/" wrangler.toml
-        log_success "Updated database_id in wrangler.toml"
+        # jqが利用不可の場合、手動更新を促す
+        log_warning "jq is not installed. Please manually update wrangler.jsonc"
+        log_info "Set database_id to: ${DB_ID}"
+        log_info "Database name: ${DB_NAME}"
     fi
 fi
 

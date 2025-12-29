@@ -13,6 +13,11 @@ database_id = "placeholder" # Replace with actual database ID after creation
 name = "SYNC"
 class_name = "SyncDurableObject"
 
+# Durable Objects migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["SyncDurableObject"]
+
 # Environment variables
 [vars]
 ENVIRONMENT = "development"

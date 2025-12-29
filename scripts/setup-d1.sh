@@ -51,16 +51,16 @@ log_info "Database name: ${DB_NAME}"
 
 # D1データベースが既に存在するかチェック
 log_info "Checking if database already exists..."
-if wrangler d1 list | grep -q "${DB_NAME}"; then
+if pnpm dlx wrangler d1 list | grep -q "${DB_NAME}"; then
     log_warning "Database '${DB_NAME}' already exists. Skipping creation."
 
     # 既存のdatabase_idを取得
-    DB_ID=$(wrangler d1 list | grep "${DB_NAME}" | awk '{print $2}')
+    DB_ID=$(pnpm dlx wrangler d1 list | grep "${DB_NAME}" | awk '{print $2}')
     log_info "Using existing database ID: ${DB_ID}"
 else
     # D1データベースを作成
     log_info "Creating new D1 database '${DB_NAME}'..."
-    CREATE_OUTPUT=$(wrangler d1 create "${DB_NAME}")
+    CREATE_OUTPUT=$(pnpm dlx wrangler d1 create "${DB_NAME}")
 
     # database_idを抽出
     DB_ID=$(echo "${CREATE_OUTPUT}" | grep "database_id" | sed -E 's/.*"([^"]+)".*/\1/')
@@ -107,7 +107,7 @@ if [ "${ENVIRONMENT}" = "production" ]; then
     for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log_info "Applying migration: $(basename "$migration")"
-            wrangler d1 execute "${DB_NAME}" --remote --file="$migration"
+            pnpm dlx wrangler d1 execute "${DB_NAME}" --remote --file="$migration"
         fi
     done
 else
@@ -115,8 +115,8 @@ else
     for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log_info "Applying migration: $(basename "$migration")"
-            wrangler d1 execute "${DB_NAME}" --local --file="$migration" 2>/dev/null || \
-            wrangler d1 execute "${DB_NAME}" --file="$migration"
+            pnpm dlx wrangler d1 execute "${DB_NAME}" --local --file="$migration" 2>/dev/null || \
+            pnpm dlx wrangler d1 execute "${DB_NAME}" --file="$migration"
         fi
     done
 fi
@@ -126,10 +126,10 @@ log_success "Migrations completed successfully"
 # テーブル確認
 log_info "Verifying tables..."
 if [ "${ENVIRONMENT}" = "production" ]; then
-    wrangler d1 execute "${DB_NAME}" --remote --command="SELECT name FROM sqlite_master WHERE type='table';"
+    pnpm dlx wrangler d1 execute "${DB_NAME}" --remote --command="SELECT name FROM sqlite_master WHERE type='table';"
 else
-    wrangler d1 execute "${DB_NAME}" --local --command="SELECT name FROM sqlite_master WHERE type='table';" 2>/dev/null || \
-    wrangler d1 execute "${DB_NAME}" --command="SELECT name FROM sqlite_master WHERE type='table';"
+    pnpm dlx wrangler d1 execute "${DB_NAME}" --local --command="SELECT name FROM sqlite_master WHERE type='table';" 2>/dev/null || \
+    pnpm dlx wrangler d1 execute "${DB_NAME}" --command="SELECT name FROM sqlite_master WHERE type='table';"
 fi
 
 log_success "D1 database setup complete!"

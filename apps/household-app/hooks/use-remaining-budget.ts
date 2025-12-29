@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { calculateRemaining } from '@maronn/domain';
 import { getBudget, getExpensesByMonth, getCurrentMonth } from '../lib/db';
+import { DEFAULT_BUDGET_AMOUNT } from '../lib/const';
 
 export interface RemainingBudgetResult {
   budget: number;
@@ -24,7 +25,7 @@ export function useRemainingBudget(
   // IndexedDB が更新されると自動で再実行される
   const data = useLiveQuery(async () => {
     const [budget, expenses] = await Promise.all([
-      getBudget(month, 100000), // デフォルト予算: 10万円
+      getBudget(month, DEFAULT_BUDGET_AMOUNT),
       getExpensesByMonth(month),
     ]);
 

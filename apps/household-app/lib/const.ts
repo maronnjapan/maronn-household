@@ -1,0 +1,1 @@
+export const DEFAULT_BUDGET_AMOUNT = 120000; 

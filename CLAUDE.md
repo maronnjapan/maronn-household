@@ -73,54 +73,6 @@
 | Playwright | E2Eテスト |
 | MSW | APIモック |
 
-## ディレクトリ構成
-
-```
-/
-├── apps/
-│   └── web/                    # Vike + React アプリ
-│       ├── pages/              # ファイルベースルーティング
-│       │   ├── index/
-│       │   │   └── +Page.tsx   # 入力・残額表示ページ（爆速）
-│       │   ├── history/
-│       │   │   └── +Page.tsx   # 支出履歴
-│       │   └── settings/
-│       │       └── +Page.tsx   # 予算設定
-│       ├── components/         # UIコンポーネント
-│       ├── hooks/              # カスタムフック
-│       ├── lib/
-│       │   ├── db.ts           # Dexie スキーマ定義
-│       │   ├── sync.ts         # 同期ロジック
-│       │   └── budget.ts       # 予算計算ドメインロジック
-│       └── tests/
-│           ├── unit/           # ドメインロジックのテスト
-│           ├── component/      # コンポーネントテスト
-│           └── e2e/            # Playwright E2E
-│
-├── packages/
-│   ├── domain/                 # ドメインロジック（純粋関数）
-│   │   ├── src/
-│   │   │   ├── budget.ts       # 予算・残額計算
-│   │   │   ├── expense.ts      # 支出エンティティ
-│   │   │   └── sync.ts         # 競合解決ロジック
-│   │   └── tests/
-│   │       └── *.test.ts
-│   │
-│   └── api/                    # Hono API
-│       ├── src/
-│       │   ├── index.ts        # エントリポイント
-│       │   ├── routes/
-│       │   │   ├── expenses.ts
-│       │   │   └── budget.ts
-│       │   └── db/
-│       │       └── schema.ts   # Drizzle スキーマ
-│       └── tests/
-│
-├── e2e/                        # プロジェクト全体のE2Eテスト
-│
-└── wrangler.toml               # Cloudflare Workers 設定
-```
-
 ## データモデル
 
 ### ローカル（IndexedDB / Dexie）
@@ -282,7 +234,6 @@ describe('calculateRemaining', () => {
 Testing Library でユーザー視点のテスト。
 
 ```typescript
-// apps/web/tests/component/ExpenseInput.test.tsx
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExpenseInput } from '../../components/ExpenseInput';

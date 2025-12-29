@@ -1,10 +1,8 @@
 import { dbMiddleware } from "./db-middleware";
-import { createTodoHandler } from "./create-todo-handler";
 import { trpcHandler } from "./trpc-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import expenses from "./routes/expenses";
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -29,14 +27,9 @@ function startApp() {
     // Make database available in Context as `context.db`
     dbMiddleware,
 
-    createTodoHandler,
-
     // tRPC route. See https://trpc.io/docs/server/adapters
     trpcHandler("/api/trpc"),
   ]);
-
-  // 家計簿APIルート
-  app.route('/api/expenses', expenses);
 
   // グローバルエラーハンドラー
   app.onError((err, c) => {

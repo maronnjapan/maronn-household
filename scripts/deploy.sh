@@ -183,14 +183,14 @@ cd "${APP_DIR}"
 
 if [ "${ENVIRONMENT}" = "production" ]; then
     log_info "Deploying to production..."
-    pnpm dlx wrangler deploy --env production || {
+    wrangler deploy --env production || {
         log_error "Production deployment failed"
         exit 1
     }
     log_success "Deployed to production successfully"
 else
     log_info "Deploying to development..."
-    pnpm dlx wrangler deploy || {
+    wrangler deploy || {
         log_error "Development deployment failed"
         exit 1
     }

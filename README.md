@@ -82,9 +82,60 @@ pnpm build
 
 ### デプロイ
 
+**初回デプロイ:**
+
 ```bash
-# Cloudflare Workers にデプロイ
+# 開発環境（D1セットアップ + デプロイ）
+pnpm deploy:dev
+
+# 本番環境（D1セットアップ + デプロイ）
+pnpm deploy:prod
+```
+
+**継続的デプロイ（D1設定済みの場合）:**
+
+```bash
+# クイックデプロイ（ビルドとDB設定をスキップ）
+pnpm deploy:quick
+
+# フルデプロイ
 pnpm deploy
+```
+
+**D1データベースのみセットアップ:**
+
+```bash
+# 開発環境
+pnpm setup:d1
+
+# 本番環境
+pnpm setup:d1:prod
+```
+
+詳細は [scripts/README.md](./scripts/README.md) を参照してください。
+
+### データベース管理
+
+**マイグレーション生成（スキーマ変更後）:**
+
+```bash
+pnpm db:generate
+```
+
+**マイグレーション実行:**
+
+```bash
+# ローカル（開発）
+pnpm db:migrate
+
+# リモート（本番）
+pnpm db:migrate:prod
+```
+
+**Drizzle Studio（データベースGUI）:**
+
+```bash
+pnpm db:studio
 ```
 
 ## 開発フロー

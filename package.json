@@ -13,7 +13,16 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "deploy": "pnpm --filter api deploy"
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:prod": "bash scripts/deploy.sh --env production",
+    "deploy:dev": "bash scripts/deploy.sh --env dev",
+    "deploy:quick": "bash scripts/deploy.sh --skip-build --skip-db",
+    "setup:d1": "bash scripts/setup-d1.sh dev",
+    "setup:d1:prod": "bash scripts/setup-d1.sh production",
+    "db:generate": "pnpm --filter api db:generate",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:migrate:prod": "pnpm --filter api db:migrate:prod",
+    "db:studio": "pnpm --filter api db:studio"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.0",

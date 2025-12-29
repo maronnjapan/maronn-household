@@ -1,41 +1,84 @@
-import "./Layout.css";
+import { useState } from "react";
+import "../styles/global.css";
 
 import logoUrl from "../assets/logo.svg";
 import { Link } from "../components/Link";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        maxWidth: 900,
-        margin: "auto",
-      }}
-    >
-      <Sidebar>
+    <>
+      <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
+      <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
+      <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
         <Logo />
         <Link href="/">Welcome</Link>
+        <Link href="/household">Household</Link>
         <Link href="/todo">Todo</Link>
         <Link href="/star-wars">Data Fetching</Link>
       </Sidebar>
       <Content>{children}</Content>
-    </div>
+    </>
   );
 }
 
-function Sidebar({ children }: { children: React.ReactNode }) {
+function HamburgerButton({
+  isOpen,
+  onClick,
+}: {
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`hamburger-button ${isOpen ? "open" : ""}`}
+      onClick={onClick}
+      aria-label="Toggle menu"
+    >
+      <div className="hamburger-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </button>
+  );
+}
+
+function SidebarOverlay({
+  isOpen,
+  onClick,
+}: {
+  isOpen: boolean;
+  onClick: () => void;
+}) {
   return (
     <div
-      id="sidebar"
-      style={{
-        padding: 20,
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-        lineHeight: "1.8em",
-        borderRight: "2px solid #eee",
-      }}
-    >
+      className={`sidebar-overlay ${isOpen ? "open" : ""}`}
+      onClick={onClick}
+    />
+  );
+}
+
+function Sidebar({
+  children,
+  isOpen,
+  onLinkClick,
+}: {
+  children: React.ReactNode;
+  isOpen: boolean;
+  onLinkClick: () => void;
+}) {
+  return (
+    <div id="sidebar" className={isOpen ? "open" : ""} onClick={onLinkClick}>
       {children}
     </div>
   );
@@ -44,28 +87,14 @@ function Sidebar({ children }: { children: React.ReactNode }) {
 function Content({ children }: { children: React.ReactNode }) {
   return (
     <div id="page-container">
-      <div
-        id="page-content"
-        style={{
-          padding: 20,
-          paddingBottom: 50,
-          minHeight: "100vh",
-        }}
-      >
-        {children}
-      </div>
+      <div id="page-content">{children}</div>
     </div>
   );
 }
 
 function Logo() {
   return (
-    <div
-      style={{
-        marginTop: 20,
-        marginBottom: 10,
-      }}
-    >
+    <div className="logo">
       <a href="/">
         <img src={logoUrl} height={64} width={64} alt="logo" />
       </a>

@@ -27,6 +27,10 @@ export function Page() {
         <h1>家計簿</h1>
         <p className="month">{month}</p>
       </header>
+      <section className="input-section">
+        <h2>支出を記録</h2>
+        <ExpenseInput onAdd={handleAdd} />
+      </section>
 
       <section className="remaining-section">
         <RemainingDisplay
@@ -35,11 +39,6 @@ export function Page() {
           remaining={remaining}
           isLoading={isLoading}
         />
-      </section>
-
-      <section className="input-section">
-        <h2>支出を記録</h2>
-        <ExpenseInput onAdd={handleAdd} />
       </section>
 
       <footer>

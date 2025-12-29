@@ -1,31 +1,21 @@
 import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
 import { db, updateSyncStatus, getCurrentMonth } from './db';
-
-// API エンドポイント
-// 開発時は Vite dev server のプロキシを想定、本番は環境変数から取得
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+import { trpc } from '../trpc/client';
 
 // リトライ設定
 const MAX_RETRY_COUNT = 3;
 const INITIAL_RETRY_DELAY = 2000; // 2秒
 
 /**
- * 指数バックオフでリトライする fetch ラッパー
+ * 指数バックオフでリトライする汎用ラッパー
  */
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
   retryCount = 0
-): Promise<Response> {
+): Promise<T> {
   try {
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return response;
+    return await fn();
   } catch (error) {
     if (retryCount >= MAX_RETRY_COUNT) {
       throw error;
@@ -39,37 +29,29 @@ async function fetchWithRetry(
     );
 
     await new Promise((resolve) => setTimeout(resolve, delay));
-    return fetchWithRetry(url, options, retryCount + 1);
+    return retryWithBackoff(fn, retryCount + 1);
   }
 }
 
 /**
- * 単一の支出をサーバーに送信
+ * 単一の支出をサーバーに送信（tRPC経由）
  */
 async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
   try {
-    const response = await fetchWithRetry(
-      `${API_BASE_URL}/expenses`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: expense.id,
-          amount: expense.amount,
-          category: expense.category,
-          memo: expense.memo,
-          date: expense.date,
-          createdAt: expense.createdAt,
-          updatedAt: expense.updatedAt,
-          deviceId: expense.deviceId,
-        }),
-      }
+    const result = await retryWithBackoff(() =>
+      trpc.createExpense.mutate({
+        id: expense.id,
+        amount: expense.amount,
+        category: expense.category,
+        memo: expense.memo,
+        date: expense.date,
+        createdAt: expense.createdAt,
+        updatedAt: expense.updatedAt,
+        deviceId: expense.deviceId,
+      })
     );
 
-    const data = await response.json();
-    return data.success === true;
+    return result.success === true;
   } catch (error) {
     console.error('Failed to upload expense:', expense.id, error);
     return false;
@@ -128,22 +110,15 @@ export async function syncPendingExpenses(): Promise<{
 }
 
 /**
- * サーバーから指定月の支出を取得
+ * サーバーから指定月の支出を取得（tRPC経由）
  */
 async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
   try {
-    const response = await fetchWithRetry(
-      `${API_BASE_URL}/expenses?month=${month}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
+    const result = await retryWithBackoff(() =>
+      trpc.getExpenses.query({ month })
     );
 
-    const data = await response.json();
-    return data.expenses || [];
+    return result.expenses || [];
   } catch (error) {
     console.error('Failed to download expenses:', month, error);
     return [];

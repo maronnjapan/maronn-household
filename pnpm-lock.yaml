@@ -53,6 +53,12 @@ importers:
       '@photonjs/hono':
         specifier: ^0.1.11
         version: 0.1.12(hono@4.11.3)(vite@7.3.0)
+      '@trpc/client':
+        specifier: ^11.8.1
+        version: 11.8.1(@trpc/server@11.8.1)(typescript@5.9.3)
+      '@trpc/server':
+        specifier: ^11.8.1
+        version: 11.8.1(typescript@5.9.3)
       dexie:
         specifier: ^3.2.4
         version: 3.2.7
@@ -89,6 +95,9 @@ importers:
       vike-react:
         specifier: ^0.6.14
         version: 0.6.18(react-dom@19.2.3)(react@19.2.3)(vike@0.4.250)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.19.25
@@ -113,6 +122,73 @@ importers:
         version: 7.3.0(@types/node@20.19.27)
       wrangler:
         specifier: ^4.54.0
+        version: 4.56.0
+
+  apps/my-app:
+    dependencies:
+      '@photonjs/cloudflare':
+        specifier: ^0.1.13
+        version: 0.1.13(hono@4.11.3)(vite@7.3.0)(wrangler@4.56.0)
+      '@photonjs/hono':
+        specifier: ^0.1.12
+        version: 0.1.12(hono@4.11.3)(vite@7.3.0)
+      '@trpc/client':
+        specifier: ^11.8.1
+        version: 11.8.1(@trpc/server@11.8.1)(typescript@5.9.3)
+      '@trpc/server':
+        specifier: ^11.8.1
+        version: 11.8.1(typescript@5.9.3)
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
+      drizzle-kit:
+        specifier: ^0.31.8
+        version: 0.31.8
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1
+      hono:
+        specifier: ^4.11.3
+        version: 4.11.3
+      react:
+        specifier: ^19.2.3
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.2.3
+        version: 19.2.3(react@19.2.3)
+      vike:
+        specifier: ^0.4.250
+        version: 0.4.250(vite@7.3.0)
+      vike-photon:
+        specifier: ^0.1.24
+        version: 0.1.24(@photonjs/cloudflare@0.1.13)(@photonjs/core@0.1.20)(@photonjs/runtime@0.1.16)(hono@4.11.3)(vike@0.4.250)(vite@7.3.0)
+      vike-react:
+        specifier: ^0.6.18
+        version: 0.6.18(react-dom@19.2.3)(react@19.2.3)(vike@0.4.250)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.27
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.7
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.7)
+      '@universal-middleware/core':
+        specifier: ^0.4.14
+        version: 0.4.14(hono@4.11.3)(srvx@0.9.8)
+      '@vitejs/plugin-react':
+        specifier: ^5.1.2
+        version: 5.1.2(vite@7.3.0)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.3.0
+        version: 7.3.0(@types/node@20.19.27)
+      wrangler:
+        specifier: ^4.56.0
         version: 4.56.0
 
   packages/domain:
@@ -2310,6 +2386,24 @@ packages:
 
   /@speed-highlight/core@1.2.12:
     resolution: {integrity: sha512-uilwrK0Ygyri5dToHYdZSjcvpS2ZwX0w5aSt3GCEN9hrjxWCoeV4Z2DTXuxjwbntaLQIEEAlCeNQss5SoHvAEA==}
+
+  /@trpc/client@11.8.1(@trpc/server@11.8.1)(typescript@5.9.3):
+    resolution: {integrity: sha512-L/SJFGanr9xGABmuDoeXR4xAdHJmsXsiF9OuH+apecJ+8sUITzVT1EPeqp0ebqA6lBhEl5pPfg3rngVhi/h60Q==}
+    peerDependencies:
+      '@trpc/server': 11.8.1
+      typescript: '>=5.7.2'
+    dependencies:
+      '@trpc/server': 11.8.1(typescript@5.9.3)
+      typescript: 5.9.3
+    dev: false
+
+  /@trpc/server@11.8.1(typescript@5.9.3):
+    resolution: {integrity: sha512-P4rzZRpEL7zDFgjxK65IdyH0e41FMFfTkQkuq0BA5tKcr7E6v9/v38DEklCpoDN6sPiB1Sigy/PUEzHENhswDA==}
+    peerDependencies:
+      typescript: '>=5.7.2'
+    dependencies:
+      typescript: 5.9.3
+    dev: false
 
   /@tybys/wasm-util@0.10.1:
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -5620,7 +5714,6 @@ packages:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
-    dev: true
 
   /ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
@@ -6122,6 +6215,10 @@ packages:
 
   /zod@3.22.3:
     resolution: {integrity: sha512-EjIevzuJRiRPbVH4mGc8nApb/lVLKVpmUhAaR5R5doKGfAnGJ6Gr3CViAVjP+4FWSxCsybeWQdcgCtbX+7oZug==}
+
+  /zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+    dev: false
 
   /zod@4.2.1:
     resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}

@@ -1,5 +1,6 @@
 import { dbMiddleware } from "./db-middleware";
 import { createTodoHandler } from "./create-todo-handler";
+import { trpcHandler } from "./trpc-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -29,6 +30,9 @@ function startApp() {
     dbMiddleware,
 
     createTodoHandler,
+
+    // tRPC route. See https://trpc.io/docs/server/adapters
+    trpcHandler("/api/trpc"),
   ]);
 
   // 家計簿APIルート

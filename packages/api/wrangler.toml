@@ -8,11 +8,6 @@ binding = "DB"
 database_name = "maronn-household"
 database_id = "placeholder" # Replace with actual database ID after creation
 
-# Durable Objects (for real-time sync)
-[[durable_objects.bindings]]
-name = "SYNC"
-class_name = "SyncDurableObject"
-
 # Durable Objects migrations
 [[migrations]]
 tag = "v1"

@@ -8,6 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "db:apply:local": "wrangler d1 migrations apply maronn-household --local",
+    "db:seed:local": "wrangler d1 execute maronn-household --local --file=./seeds/seed.sql",
     "test": "vitest",
     "test:watch": "vitest --watch"
   },

@@ -1,7 +1,7 @@
 import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
 import { db, updateSyncStatus, getCurrentMonth } from './db';
-import { trpc } from '../trpc/client';
+import { vanillaTrpc } from '../trpc/client';
 
 // リトライ設定
 const MAX_RETRY_COUNT = 3;
@@ -39,7 +39,7 @@ async function retryWithBackoff<T>(
 async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
   try {
     const result = await retryWithBackoff(() =>
-      trpc.createExpense.mutate({
+      vanillaTrpc.createExpense.mutate({
         id: expense.id,
         amount: expense.amount,
         category: expense.category,
@@ -115,7 +115,7 @@ export async function syncPendingExpenses(): Promise<{
 async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
   try {
     const result = await retryWithBackoff(() =>
-      trpc.getExpenses.query({ month })
+      vanillaTrpc.getExpenses.query({ month })
     );
 
     return result.expenses || [];

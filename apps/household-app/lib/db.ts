@@ -130,3 +130,34 @@ export async function updateSyncStatus(
 ): Promise<void> {
   await db.expenses.update(id, { syncStatus: status });
 }
+
+/**
+ * サーバーからの支出データをIndexedDBにマージ
+ * 既存データよりも新しいデータのみ更新する
+ */
+export async function mergeExpensesFromServer(
+  serverExpenses: ExpenseEntity[]
+): Promise<void> {
+  if (serverExpenses.length === 0) return;
+
+  await db.transaction('rw', db.expenses, async () => {
+    for (const serverExpense of serverExpenses) {
+      const localExpense = await db.expenses.get(serverExpense.id);
+
+      if (!localExpense) {
+        // ローカルに存在しない場合は追加（同期済みとしてマーク）
+        await db.expenses.add({
+          ...serverExpense,
+          syncStatus: 'synced',
+        });
+      } else if (new Date(serverExpense.updatedAt) > new Date(localExpense.updatedAt)) {
+        // サーバーのデータが新しい場合は更新
+        await db.expenses.put({
+          ...serverExpense,
+          syncStatus: 'synced',
+        });
+      }
+      // ローカルが新しい場合はそのまま（pendingのまま）
+    }
+  });
+}

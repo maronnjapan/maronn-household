@@ -7,9 +7,13 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "test:watch": "vitest --watch"
+    "test:watch": "vitest --watch",
+    "db:migrate": "wrangler d1 migrations apply maronn-household --local",
+    "db:migrate:prod": "wrangler d1 migrations apply maronn-household-production --remote",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "drizzle-orm": "^0.29.3",

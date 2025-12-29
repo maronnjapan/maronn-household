@@ -452,6 +452,123 @@ pnpm build
 pnpm deploy
 ```
 
+## 実装済み機能
+
+### 月次予算設定機能
+
+月ごとの予算を設定・更新できる機能。支出記録機能と異なり、予算設定はサーバー同期を優先する。
+
+#### 設計方針
+
+- **支出記録**: ローカルファースト（IndexedDB → サーバー同期）→ 爆速動作
+- **予算設定**: サーバーファースト（サーバー → IndexedDB同期）→ データ整合性優先
+
+予算は頻繁に変更されないため、サーバー同期の待ち時間は許容範囲内と判断。
+
+#### API エンドポイント
+
+```typescript
+// apps/household-app/trpc/server.ts
+
+// 予算取得
+getBudget: publicProcedure
+  .input(z.object({ month: z.string() }))
+  .query(async (opts) => {
+    // D1 から指定月の予算を取得
+    // 存在しない場合は null を返す
+  });
+
+// 予算更新
+updateBudget: publicProcedure
+  .input(z.object({
+    month: z.string(),
+    amount: z.number()
+  }))
+  .mutation(async (opts) => {
+    // D1 に予算を保存（既存なら UPDATE、なければ INSERT）
+    // 更新日時（updatedAt）を記録
+  });
+```
+
+#### フロントエンド実装
+
+**フック（apps/household-app/hooks/use-set-budget.ts）**
+
+```typescript
+export function useSetBudget() {
+  const mutation = trpc.updateBudget.useMutation();
+
+  const updateBudget = async (month: string, amount: number) => {
+    // 1. サーバーに保存
+    await mutation.mutateAsync({ month, amount });
+
+    // 2. 成功したら IndexedDB にも保存
+    await setBudget(month, amount);
+  };
+
+  return { updateBudget, isUpdating: mutation.isPending };
+}
+
+export function useGetBudget(month: string) {
+  const query = trpc.getBudget.useQuery({ month });
+  return { budget: query.data?.budget, isLoading: query.isLoading };
+}
+```
+
+**コンポーネント（apps/household-app/components/BudgetInput.tsx）**
+
+- 予算未設定時: 「設定」ボタンを表示
+- 予算設定済み: 金額を表示 + 「変更」ボタン
+- 編集モード: 金額入力フィールド + 「保存」「キャンセル」ボタン
+
+#### 動作フロー
+
+```
+1. ページ読み込み
+   └── IndexedDB から予算を取得（即座に表示）
+   └── デフォルト予算（120,000円）を表示
+
+2. 予算設定ボタンをクリック
+   └── 入力フォームを表示
+   └── 金額を入力して「保存」
+
+3. 保存処理
+   └── tRPC で サーバーに送信
+   └── 成功したら IndexedDB にも保存
+   └── useLiveQuery が検知して残額表示が自動更新
+
+4. 残額表示への反映
+   └── IndexedDB の budgets テーブル更新
+   └── useRemainingBudget の useLiveQuery が自動再計算
+   └── RemainingDisplay コンポーネントが即座に更新
+```
+
+#### ファイル構成
+
+```
+apps/household-app/
+├── components/
+│   ├── BudgetInput.tsx          # 予算設定UI
+│   ├── RemainingDisplay.tsx     # 残額表示（予算を使用）
+│   └── ExpenseInput.tsx         # 支出入力
+├── hooks/
+│   ├── use-set-budget.ts        # 予算設定フック
+│   └── use-remaining-budget.ts  # 残額計算フック
+├── pages/
+│   └── household/
+│       └── +Page.tsx            # 家計簿ページ（予算設定UIを統合）
+├── trpc/
+│   └── server.ts                # tRPCエンドポイント（getBudget, updateBudget）
+└── lib/
+    └── db.ts                    # IndexedDB操作（setBudget, getBudget）
+```
+
+#### 注意事項
+
+- 現在は認証未実装のため、すべてのユーザーが `userId: 'default-user'` を使用
+- 予算は月単位（YYYY-MM形式）で管理
+- 同じ月の予算を複数デバイスで同時編集した場合、`updatedAt` が新しい方を採用（Last Write Wins）
+
 ## 今後の拡張予定
 
 1. **認証機能**: ユーザー登録・ログイン（Better Auth 候補）

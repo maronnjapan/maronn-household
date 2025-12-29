@@ -1,7 +1,9 @@
 import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
+import { BudgetInput } from '../../components/BudgetInput';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
+import { useSetBudget } from '../../hooks/use-set-budget';
 import type { CreateExpenseParams } from '@maronn/domain';
 
 /**
@@ -16,9 +18,17 @@ export function Page() {
   // 支出追加フック
   const { addExpense } = useAddExpense();
 
+  // 予算設定フック
+  const { updateBudget, isUpdating } = useSetBudget();
+
   const handleAdd = async (params: CreateExpenseParams) => {
     await addExpense(params);
     // useLiveQuery が自動検知して RemainingDisplay が即座に更新される
+  };
+
+  const handleUpdateBudget = async (amount: number) => {
+    await updateBudget(month, amount);
+    // 予算更新後、IndexedDBが更新されて残額表示も自動更新される
   };
 
   return (
@@ -27,6 +37,16 @@ export function Page() {
         <h1>家計簿</h1>
         <p className="month">{month}</p>
       </header>
+
+      <section className="budget-section">
+        <h2>予算設定</h2>
+        <BudgetInput
+          currentBudget={budget}
+          month={month}
+          onUpdate={handleUpdateBudget}
+          isUpdating={isUpdating}
+        />
+      </section>
 
       <section className="remaining-section">
         <RemainingDisplay

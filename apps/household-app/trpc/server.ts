@@ -2,7 +2,7 @@ import type { dbD1 } from "../database/drizzle/db";
 import { initTRPC } from "@trpc/server";
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
-import { expenses } from '../database/drizzle/schema/household';
+import { expenses, budgets } from '../database/drizzle/schema/household';
 import { z } from 'zod';
 
 /**
@@ -32,6 +32,15 @@ const expenseInputSchema = z.object({
 
 const getExpensesInputSchema = z.object({
   month: z.string().optional(),
+});
+
+const budgetInputSchema = z.object({
+  month: z.string(),
+});
+
+const updateBudgetInputSchema = z.object({
+  month: z.string(),
+  amount: z.number(),
 });
 
 export const appRouter = router({
@@ -139,6 +148,90 @@ export const appRouter = router({
         .all();
 
       return { expenses: results, month };
+    }),
+
+  // 予算を取得
+  getBudget: publicProcedure
+    .input(budgetInputSchema)
+    .query(async (opts) => {
+      const { month } = opts.input;
+
+      // DBを取得
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const userId = 'default-user';
+
+      // 指定月の予算を取得
+      const result = await database
+        .select()
+        .from(budgets)
+        .where(
+          and(
+            eq(budgets.userId, userId),
+            eq(budgets.month, month)
+          )
+        )
+        .get();
+
+      return { budget: result };
+    }),
+
+  // 予算を更新
+  updateBudget: publicProcedure
+    .input(updateBudgetInputSchema)
+    .mutation(async (opts) => {
+      const { month, amount } = opts.input;
+
+      // DBを取得
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const userId = 'default-user';
+      const updatedAt = new Date().toISOString();
+
+      // 既存の予算をチェック
+      const existing = await database
+        .select()
+        .from(budgets)
+        .where(
+          and(
+            eq(budgets.userId, userId),
+            eq(budgets.month, month)
+          )
+        )
+        .get();
+
+      if (existing) {
+        // 更新
+        await database
+          .update(budgets)
+          .set({
+            amount,
+            updatedAt,
+          })
+          .where(eq(budgets.id, existing.id))
+          .run();
+
+        return { success: true, updated: true };
+      }
+
+      // 新規挿入
+      const id = `${userId}-${month}`;
+      await database
+        .insert(budgets)
+        .values({
+          id,
+          userId,
+          month,
+          amount,
+          updatedAt,
+        })
+        .run();
+
+      return { success: true, created: true };
     }),
 });
 

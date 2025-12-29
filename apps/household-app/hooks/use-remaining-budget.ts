@@ -11,6 +11,7 @@ export interface RemainingBudgetResult {
   month: string;
   isLoading: boolean;
   isBudgetLoading: boolean;
+  budgetError: Error | null;
 }
 
 /**
@@ -25,7 +26,14 @@ export function useRemainingBudget(
   month: string = getCurrentMonth()
 ): RemainingBudgetResult {
   // 予算をサーバーから取得（ネットワーク環境に依存）
-  const budgetQuery = trpc.getBudget.useQuery({ month });
+  // エラーが発生してもデフォルト予算を使用するため、throwOnError: false
+  const budgetQuery = trpc.getBudget.useQuery(
+    { month },
+    {
+      retry: 1,
+      staleTime: 5 * 60 * 1000,
+    }
+  );
 
   // 支出をIndexedDBからリアルタイム取得（ローカルファースト）
   const expensesData = useLiveQuery(async () => {
@@ -38,7 +46,7 @@ export function useRemainingBudget(
     };
   }, [month]);
 
-  // 予算額を決定（サーバーから取得できない場合はデフォルト値）
+  // 予算額を決定（サーバーから取得できない場合やエラー時はデフォルト値）
   const budgetAmount = budgetQuery.data?.budget?.amount ?? DEFAULT_BUDGET_AMOUNT;
 
   // 支出データのローディング中
@@ -50,6 +58,7 @@ export function useRemainingBudget(
       month,
       isLoading: true,
       isBudgetLoading: budgetQuery.isLoading,
+      budgetError: budgetQuery.error as Error | null,
     };
   }
 
@@ -62,5 +71,6 @@ export function useRemainingBudget(
     month,
     isLoading: false,
     isBudgetLoading: budgetQuery.isLoading,
+    budgetError: budgetQuery.error as Error | null,
   };
 }

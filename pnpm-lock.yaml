@@ -53,9 +53,15 @@ importers:
       '@photonjs/hono':
         specifier: ^0.1.11
         version: 0.1.12(hono@4.11.3)(vite@7.3.0)
+      '@tanstack/react-query':
+        specifier: ^5.90.14
+        version: 5.90.14(react@19.2.3)
       '@trpc/client':
         specifier: ^11.8.1
         version: 11.8.1(@trpc/server@11.8.1)(typescript@5.9.3)
+      '@trpc/react-query':
+        specifier: 11.8.1
+        version: 11.8.1(@tanstack/react-query@5.90.14)(@trpc/client@11.8.1)(@trpc/server@11.8.1)(react-dom@19.2.3)(react@19.2.3)(typescript@5.9.3)
       '@trpc/server':
         specifier: ^11.8.1
         version: 11.8.1(typescript@5.9.3)
@@ -2387,6 +2393,19 @@ packages:
   /@speed-highlight/core@1.2.12:
     resolution: {integrity: sha512-uilwrK0Ygyri5dToHYdZSjcvpS2ZwX0w5aSt3GCEN9hrjxWCoeV4Z2DTXuxjwbntaLQIEEAlCeNQss5SoHvAEA==}
 
+  /@tanstack/query-core@5.90.14:
+    resolution: {integrity: sha512-/6di2yNI+YxpVrH9Ig74Q+puKnkCE+D0LGyagJEGndJHJc6ahkcc/UqirHKy8zCYE/N9KLggxcQvzYCsUBWgdw==}
+    dev: false
+
+  /@tanstack/react-query@5.90.14(react@19.2.3):
+    resolution: {integrity: sha512-JAMuULej09hrZ14W9+mxoRZ44rR2BuZfCd6oKTQVNfynQxCN3muH3jh3W46gqZNw5ZqY0ZVaS43Imb3dMr6tgw==}
+    peerDependencies:
+      react: ^18 || ^19
+    dependencies:
+      '@tanstack/query-core': 5.90.14
+      react: 19.2.3
+    dev: false
+
   /@trpc/client@11.8.1(@trpc/server@11.8.1)(typescript@5.9.3):
     resolution: {integrity: sha512-L/SJFGanr9xGABmuDoeXR4xAdHJmsXsiF9OuH+apecJ+8sUITzVT1EPeqp0ebqA6lBhEl5pPfg3rngVhi/h60Q==}
     peerDependencies:
@@ -2394,6 +2413,24 @@ packages:
       typescript: '>=5.7.2'
     dependencies:
       '@trpc/server': 11.8.1(typescript@5.9.3)
+      typescript: 5.9.3
+    dev: false
+
+  /@trpc/react-query@11.8.1(@tanstack/react-query@5.90.14)(@trpc/client@11.8.1)(@trpc/server@11.8.1)(react-dom@19.2.3)(react@19.2.3)(typescript@5.9.3):
+    resolution: {integrity: sha512-0Vu55ld/oINb4U6nIPPi7eZMhxUop6K+4QUK90RVsfSD5r+957sM80M4c8bjh/JBZUxMFv9JOhxxlWcrgHxHow==}
+    peerDependencies:
+      '@tanstack/react-query': ^5.80.3
+      '@trpc/client': 11.8.1
+      '@trpc/server': 11.8.1
+      react: '>=18.2.0'
+      react-dom: '>=18.2.0'
+      typescript: '>=5.7.2'
+    dependencies:
+      '@tanstack/react-query': 5.90.14(react@19.2.3)
+      '@trpc/client': 11.8.1(@trpc/server@11.8.1)(typescript@5.9.3)
+      '@trpc/server': 11.8.1(typescript@5.9.3)
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
       typescript: 5.9.3
     dev: false
 

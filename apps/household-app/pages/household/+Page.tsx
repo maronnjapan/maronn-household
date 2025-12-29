@@ -1,9 +1,8 @@
 import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
-import { BudgetInput } from '../../components/BudgetInput';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
-import { useSetBudget } from '../../hooks/use-set-budget';
+import { Link } from '../../components/Link';
 import type { CreateExpenseParams } from '@maronn/domain';
 
 /**
@@ -15,22 +14,14 @@ export function Page() {
   // リアクティブに残額を取得
   // 支出: IndexedDBからリアルタイム取得（< 50ms）
   // 予算: サーバーから取得（ネットワーク環境に依存）
-  const { budget, spent, remaining, month, isLoading, isBudgetLoading } = useRemainingBudget();
+  const { budget, spent, remaining, month, isLoading, budgetError } = useRemainingBudget();
 
   // 支出追加フック
   const { addExpense } = useAddExpense();
 
-  // 予算設定フック
-  const { updateBudget, isUpdating } = useSetBudget();
-
   const handleAdd = async (params: CreateExpenseParams) => {
     await addExpense(params);
     // useLiveQuery が自動検知して RemainingDisplay が即座に更新される
-  };
-
-  const handleUpdateBudget = async (amount: number) => {
-    await updateBudget(month, amount);
-    // 予算更新後、サーバーに保存され、tRPCのキャッシュが自動更新される
   };
 
   return (
@@ -39,20 +30,32 @@ export function Page() {
         <h1>家計簿</h1>
         <p className="month">{month}</p>
       </header>
+
       <section className="input-section">
         <h2>支出を記録</h2>
         <ExpenseInput onAdd={handleAdd} />
       </section>
 
-      <section className="budget-section">
-        <h2>予算設定</h2>
-        <BudgetInput
-          currentBudget={budget}
-          month={month}
-          onUpdate={handleUpdateBudget}
-          isUpdating={isUpdating}
-          isLoading={isBudgetLoading}
-        />
+      <section className="budget-info-section">
+        <h2>今月の予算</h2>
+        {budgetError ? (
+          <div className="budget-error">
+            <p className="error-message">予算の読み込みに失敗しました</p>
+            <p className="fallback-notice">
+              デフォルト予算（¥{budget.toLocaleString()}）を使用しています
+            </p>
+            <Link href="/household/budget" className="budget-link">
+              予算設定ページへ
+            </Link>
+          </div>
+        ) : (
+          <div className="budget-display">
+            <p className="budget-amount">¥{budget.toLocaleString()}</p>
+            <Link href="/household/budget" className="budget-link">
+              予算を変更
+            </Link>
+          </div>
+        )}
       </section>
 
       <section className="remaining-section">

@@ -1,8 +1,22 @@
 import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../styles/global.css";
 
 import logoUrl from "../assets/logo.svg";
 import { Link } from "../components/Link";
+import { trpc, getTRPCClient } from "../trpc/client";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5分
+    },
+  },
+});
+
+const trpcClient = getTRPCClient();
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -16,18 +30,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <>
-      <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
-      <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
-      <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
-        <Logo />
-        <Link href="/">Welcome</Link>
-        <Link href="/household">Household</Link>
-        <Link href="/todo">Todo</Link>
-        <Link href="/star-wars">Data Fetching</Link>
-      </Sidebar>
-      <Content>{children}</Content>
-    </>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
+        <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
+        <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
+          <Logo />
+          <Link href="/">Welcome</Link>
+          <Link href="/household">Household</Link>
+          <Link href="/household/budget">Budget</Link>
+          <Link href="/todo">Todo</Link>
+          <Link href="/star-wars">Data Fetching</Link>
+        </Sidebar>
+        <Content>{children}</Content>
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }
 

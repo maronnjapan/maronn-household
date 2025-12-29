@@ -102,7 +102,7 @@ export function mergeExpenses(
       // ローカルはそのまま、リモートに新しいIDを振る
       const remoteWithNewId: ExpenseEntity = {
         ...remote,
-        id: ulid(),
+        id: ulid(Date.now()),
         syncStatus: 'synced',
       };
 

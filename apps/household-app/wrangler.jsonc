@@ -3,11 +3,19 @@
   "name": "household-app",
   "compatibility_date": "2025-09-06",
   "main": "virtual:photon:cloudflare:server-entry",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "HOUSEHOLD_DB",
-      "database_id": "household-db",
+      "database_name": "household-db",
+      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34",
       "migrations_dir": "database/migrations"
     }
   ]

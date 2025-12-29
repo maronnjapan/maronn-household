@@ -45,13 +45,13 @@ function getDeviceId(providedDeviceId?: string): string {
     if (stored) {
       return stored;
     }
-    const newDeviceId = ulid();
+    const newDeviceId = ulid(Date.now());
     localStorage.setItem('deviceId', newDeviceId);
     return newDeviceId;
   }
 
   // サーバー環境やテスト環境ではランダム生成
-  return ulid();
+  return ulid(Date.now());
 }
 
 /**
@@ -70,7 +70,7 @@ export function createExpense(params: CreateExpenseParams): ExpenseEntity {
   const now = new Date().toISOString();
 
   return {
-    id: ulid(),
+    id: ulid(Date.now()),
     amount: params.amount,
     category: params.category,
     memo: params.memo,

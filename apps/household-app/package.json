@@ -8,8 +8,8 @@
     "build": "vike build",
     "preview": "vike build && vike preview",
     "drizzle:generate": "drizzle-kit generate",
-    "drizzle:migrate": "wrangler d1 migrations apply HOUSEHOLD_DB --local",
-    "drizzle:migrate:remote": "wrangler d1 migrations apply HOUSEHOLD_DB --remote",
+    "drizzle:migrate": "wrangler d1 migrations apply household-db --local",
+    "drizzle:migrate:remote": "wrangler d1 migrations apply household-db --remote",
     "drizzle:studio": "drizzle-kit studio",
     "deploy": "vike build && wrangler deploy",
     "generate-types": "wrangler types"

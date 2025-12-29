@@ -1,4 +1,4 @@
-import { ulid } from 'ulid';
+import { ulid } from 'ulidx';
 import type { ExpenseEntity } from './expense';
 
 /**

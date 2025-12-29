@@ -2,7 +2,6 @@ import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
-import { Link } from '../../components/Link';
 import type { CreateExpenseParams } from '@maronn/domain';
 
 /**
@@ -14,7 +13,7 @@ export function Page() {
   // リアクティブに残額を取得
   // 支出: IndexedDBからリアルタイム取得（< 50ms）
   // 予算: サーバーから取得（ネットワーク環境に依存）
-  const { budget, spent, remaining, month, isLoading, budgetError } = useRemainingBudget();
+  const { budget, spent, remaining, month, isLoading } = useRemainingBudget();
 
   // 支出追加フック
   const { addExpense } = useAddExpense();
@@ -34,28 +33,6 @@ export function Page() {
       <section className="input-section">
         <h2>支出を記録</h2>
         <ExpenseInput onAdd={handleAdd} />
-      </section>
-
-      <section className="budget-info-section">
-        <h2>今月の予算</h2>
-        {budgetError ? (
-          <div className="budget-error">
-            <p className="error-message">予算の読み込みに失敗しました</p>
-            <p className="fallback-notice">
-              デフォルト予算（¥{budget.toLocaleString()}）を使用しています
-            </p>
-            <Link href="/household/budget" className="budget-link">
-              予算設定ページへ
-            </Link>
-          </div>
-        ) : (
-          <div className="budget-display">
-            <p className="budget-amount">¥{budget.toLocaleString()}</p>
-            <Link href="/household/budget" className="budget-link">
-              予算を変更
-            </Link>
-          </div>
-        )}
       </section>
 
       <section className="remaining-section">

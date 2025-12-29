@@ -12,7 +12,13 @@ export interface UseSetBudgetResult {
  * サーバーのみに保存（IndexedDBとの二重管理は行わない）
  */
 export function useSetBudget(): UseSetBudgetResult {
-  const mutation = trpc.updateBudget.useMutation();
+  const utils = trpc.useUtils();
+  const mutation = trpc.updateBudget.useMutation({
+    onSuccess: (_data, variables) => {
+      // 予算キャッシュを無効化して最新データを再取得
+      utils.getBudget.invalidate({ month: variables.month });
+    },
+  });
 
   const handleUpdateBudget = useCallback(
     async (month: string, amount: number): Promise<void> => {

@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { trpc } from '../trpc/client';
-import { setBudget } from '../lib/db';
 import { getCurrentMonth } from '../lib/db';
 
 export interface UseSetBudgetResult {
@@ -10,18 +9,14 @@ export interface UseSetBudgetResult {
 
 /**
  * 予算を設定するフック
- * サーバーに保存し、成功したらIndexedDBにも保存する
+ * サーバーのみに保存（IndexedDBとの二重管理は行わない）
  */
 export function useSetBudget(): UseSetBudgetResult {
   const mutation = trpc.updateBudget.useMutation();
 
   const handleUpdateBudget = useCallback(
     async (month: string, amount: number): Promise<void> => {
-      // 1. サーバーに保存
       await mutation.mutateAsync({ month, amount });
-
-      // 2. サーバー保存が成功したらIndexedDBにも保存
-      await setBudget(month, amount);
     },
     [mutation]
   );

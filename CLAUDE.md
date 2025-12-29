@@ -456,14 +456,15 @@ pnpm deploy
 
 ### 月次予算設定機能
 
-月ごとの予算を設定・更新できる機能。支出記録機能と異なり、予算設定はサーバー同期を優先する。
+月ごとの予算を設定・更新できる機能。支出記録機能と異なり、予算はサーバーのみで管理する。
 
 #### 設計方針
 
 - **支出記録**: ローカルファースト（IndexedDB → サーバー同期）→ 爆速動作
-- **予算設定**: サーバーファースト（サーバー → IndexedDB同期）→ データ整合性優先
+- **予算設定**: サーバーのみで管理 → データ整合性優先、IndexedDBとの二重管理を避ける
 
 予算は頻繁に変更されないため、サーバー同期の待ち時間は許容範囲内と判断。
+ネットワーク環境が悪く予算が読み込めない場合は、デフォルト予算（120,000円）を使用し、支出記録の表示はブロックしない。
 
 #### API エンドポイント
 
@@ -499,11 +500,8 @@ export function useSetBudget() {
   const mutation = trpc.updateBudget.useMutation();
 
   const updateBudget = async (month: string, amount: number) => {
-    // 1. サーバーに保存
+    // サーバーのみに保存（IndexedDBには保存しない）
     await mutation.mutateAsync({ month, amount });
-
-    // 2. 成功したら IndexedDB にも保存
-    await setBudget(month, amount);
   };
 
   return { updateBudget, isUpdating: mutation.isPending };
@@ -515,8 +513,36 @@ export function useGetBudget(month: string) {
 }
 ```
 
+**フック（apps/household-app/hooks/use-remaining-budget.ts）**
+
+```typescript
+export function useRemainingBudget(month: string) {
+  // 予算をサーバーから取得（ネットワーク環境に依存）
+  const budgetQuery = trpc.getBudget.useQuery({ month });
+
+  // 支出をIndexedDBからリアルタイム取得（ローカルファースト）
+  const expensesData = useLiveQuery(async () => {
+    const expenses = await getExpensesByMonth(month);
+    const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
+    return { expenses, spent };
+  }, [month]);
+
+  // 予算額を決定（サーバーから取得できない場合はデフォルト値）
+  const budgetAmount = budgetQuery.data?.budget?.amount ?? DEFAULT_BUDGET_AMOUNT;
+
+  return {
+    budget: budgetAmount,
+    spent: expensesData?.spent ?? 0,
+    remaining: calculateRemaining(budgetAmount, expensesData?.expenses ?? []),
+    isLoading: !expensesData,
+    isBudgetLoading: budgetQuery.isLoading,
+  };
+}
+```
+
 **コンポーネント（apps/household-app/components/BudgetInput.tsx）**
 
+- 予算読込中: スケルトン表示「読込中...」
 - 予算未設定時: 「設定」ボタンを表示
 - 予算設定済み: 金額を表示 + 「変更」ボタン
 - 編集モード: 金額入力フィールド + 「保存」「キャンセル」ボタン
@@ -525,22 +551,27 @@ export function useGetBudget(month: string) {
 
 ```
 1. ページ読み込み
-   └── IndexedDB から予算を取得（即座に表示）
-   └── デフォルト予算（120,000円）を表示
+   └── サーバーから予算を取得（並列処理、支出表示はブロックしない）
+   └── 予算読込中はデフォルト予算（120,000円）を使用
+   └── ネットワークエラー時もデフォルト予算で動作可能
 
-2. 予算設定ボタンをクリック
+2. 予算読込完了
+   └── tRPCキャッシュに保存
+   └── 残額が自動で再計算される
+
+3. 予算設定ボタンをクリック
    └── 入力フォームを表示
    └── 金額を入力して「保存」
 
-3. 保存処理
+4. 保存処理
    └── tRPC で サーバーに送信
-   └── 成功したら IndexedDB にも保存
-   └── useLiveQuery が検知して残額表示が自動更新
+   └── 成功したら tRPCキャッシュが自動更新
+   └── 残額表示が自動更新される
 
-4. 残額表示への反映
-   └── IndexedDB の budgets テーブル更新
-   └── useRemainingBudget の useLiveQuery が自動再計算
-   └── RemainingDisplay コンポーネントが即座に更新
+5. 支出記録（並列動作）
+   └── IndexedDB に即座に保存（< 50ms）
+   └── useLiveQuery が検知して残額表示が即座に更新
+   └── 予算の読込状態に関わらず、支出記録は常に動作
 ```
 
 #### ファイル構成
@@ -548,26 +579,27 @@ export function useGetBudget(month: string) {
 ```
 apps/household-app/
 ├── components/
-│   ├── BudgetInput.tsx          # 予算設定UI
+│   ├── BudgetInput.tsx          # 予算設定UI（ローディング状態対応）
 │   ├── RemainingDisplay.tsx     # 残額表示（予算を使用）
 │   └── ExpenseInput.tsx         # 支出入力
 ├── hooks/
-│   ├── use-set-budget.ts        # 予算設定フック
-│   └── use-remaining-budget.ts  # 残額計算フック
+│   ├── use-set-budget.ts        # 予算設定フック（tRPC経由）
+│   └── use-remaining-budget.ts  # 残額計算フック（予算はtRPC、支出はIndexedDB）
 ├── pages/
 │   └── household/
 │       └── +Page.tsx            # 家計簿ページ（予算設定UIを統合）
-├── trpc/
-│   └── server.ts                # tRPCエンドポイント（getBudget, updateBudget）
-└── lib/
-    └── db.ts                    # IndexedDB操作（setBudget, getBudget）
+└── trpc/
+    └── server.ts                # tRPCエンドポイント（getBudget, updateBudget）
 ```
 
 #### 注意事項
 
-- 現在は認証未実装のため、すべてのユーザーが `userId: 'default-user'` を使用
-- 予算は月単位（YYYY-MM形式）で管理
-- 同じ月の予算を複数デバイスで同時編集した場合、`updatedAt` が新しい方を採用（Last Write Wins）
+- **予算はサーバーのみで管理**: IndexedDBには保存せず、tRPCキャッシュで管理
+- **支出記録はブロックしない**: 予算読込中でも支出記録は即座に動作
+- **オフライン対応**: ネットワークエラー時はデフォルト予算（120,000円）を使用
+- **認証未実装**: 現在はすべてのユーザーが `userId: 'default-user'` を使用
+- **月単位管理**: 予算は月単位（YYYY-MM形式）で管理
+- **競合解決**: 同じ月の予算を複数デバイスで同時編集した場合、`updatedAt` が新しい方を採用（Last Write Wins）
 
 ## 今後の拡張予定
 

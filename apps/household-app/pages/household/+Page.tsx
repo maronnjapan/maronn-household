@@ -12,8 +12,10 @@ import type { CreateExpenseParams } from '@maronn/domain';
  * 入力後の残額更新は瞬時 (< 50ms)
  */
 export function Page() {
-  // リアクティブに残額を取得（useLiveQuery）
-  const { budget, spent, remaining, month, isLoading } = useRemainingBudget();
+  // リアクティブに残額を取得
+  // 支出: IndexedDBからリアルタイム取得（< 50ms）
+  // 予算: サーバーから取得（ネットワーク環境に依存）
+  const { budget, spent, remaining, month, isLoading, isBudgetLoading } = useRemainingBudget();
 
   // 支出追加フック
   const { addExpense } = useAddExpense();
@@ -28,7 +30,7 @@ export function Page() {
 
   const handleUpdateBudget = async (amount: number) => {
     await updateBudget(month, amount);
-    // 予算更新後、IndexedDBが更新されて残額表示も自動更新される
+    // 予算更新後、サーバーに保存され、tRPCのキャッシュが自動更新される
   };
 
   return (
@@ -45,6 +47,7 @@ export function Page() {
           month={month}
           onUpdate={handleUpdateBudget}
           isUpdating={isUpdating}
+          isLoading={isBudgetLoading}
         />
       </section>
 

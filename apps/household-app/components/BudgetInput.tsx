@@ -5,13 +5,14 @@ interface BudgetInputProps {
   month: string;
   onUpdate: (amount: number) => void | Promise<void>;
   isUpdating?: boolean;
+  isLoading?: boolean;
 }
 
 /**
  * 予算設定コンポーネント
  * 月の予算を設定する
  */
-export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false }: BudgetInputProps) {
+export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false, isLoading = false }: BudgetInputProps) {
   const [amount, setAmount] = useState(currentBudget?.toString() || '');
   const [isEditing, setIsEditing] = useState(false);
 
@@ -41,11 +42,15 @@ export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false
       <div className="budget-display">
         <div className="budget-info">
           <label>月の予算</label>
-          <p className="budget-amount">
-            {currentBudget ? `¥${currentBudget.toLocaleString()}` : '未設定'}
-          </p>
+          {isLoading ? (
+            <p className="budget-amount skeleton">読込中...</p>
+          ) : (
+            <p className="budget-amount">
+              {currentBudget ? `¥${currentBudget.toLocaleString()}` : '未設定'}
+            </p>
+          )}
         </div>
-        <button type="button" onClick={handleEdit} className="edit-button">
+        <button type="button" onClick={handleEdit} className="edit-button" disabled={isLoading}>
           {currentBudget ? '変更' : '設定'}
         </button>
       </div>

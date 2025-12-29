@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-API_DIR="${PROJECT_ROOT}/packages/api"
+APP_DIR="${PROJECT_ROOT}/apps/household-app"
 
 # 色定義
 RED='\033[0;31m'
@@ -179,7 +179,7 @@ fi
 # ステップ3: Workers デプロイ
 log_step "Step 3: Deploying Cloudflare Workers"
 
-cd "${API_DIR}"
+cd "${APP_DIR}"
 
 if [ "${ENVIRONMENT}" = "production" ]; then
     log_info "Deploying to production..."

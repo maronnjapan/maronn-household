@@ -11,9 +11,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:watch": "vitest --watch",
+    "db:generate": "drizzle-kit generate:sqlite",
     "db:migrate": "wrangler d1 migrations apply maronn-household --local",
     "db:migrate:prod": "wrangler d1 migrations apply maronn-household-production --remote",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push:sqlite",
+    "db:check": "drizzle-kit check:sqlite"
   },
   "dependencies": {
     "drizzle-orm": "^0.29.3",

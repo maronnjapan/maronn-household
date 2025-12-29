@@ -114,6 +114,30 @@ pnpm setup:d1:prod
 
 詳細は [scripts/README.md](./scripts/README.md) を参照してください。
 
+### データベース管理
+
+**マイグレーション生成（スキーマ変更後）:**
+
+```bash
+pnpm db:generate
+```
+
+**マイグレーション実行:**
+
+```bash
+# ローカル（開発）
+pnpm db:migrate
+
+# リモート（本番）
+pnpm db:migrate:prod
+```
+
+**Drizzle Studio（データベースGUI）:**
+
+```bash
+pnpm db:studio
+```
+
 ## 開発フロー
 
 このプロジェクトは **TDD (Test-Driven Development)** で開発します。

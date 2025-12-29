@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { createExpense, type CreateExpenseParams } from '@maronn/domain';
 import { addExpense } from '#lib/db';
+import { syncPendingExpenses } from '#lib/sync';
 
 export interface UseAddExpenseResult {
   addExpense: (params: CreateExpenseParams) => Promise<string>;
@@ -10,7 +11,7 @@ export interface UseAddExpenseResult {
 /**
  * 支出を追加するフック
  * ローカル（IndexedDB）に即座に保存し、UIを即座に更新（< 50ms）
- * サーバー同期はバックグラウンドで行う（将来実装）
+ * サーバー同期はバックグラウンドで行う
  */
 export function useAddExpense(): UseAddExpenseResult {
   const handleAddExpense = useCallback(
@@ -23,8 +24,8 @@ export function useAddExpense(): UseAddExpenseResult {
 
       // 3. useLiveQuery が自動検知して UI が即座に更新される
 
-      // 4. バックグラウンド同期（将来実装）
-      // syncToServer(expense).catch(console.error);
+      // 4. バックグラウンド同期（UIをブロックしない）
+      syncPendingExpenses().catch(console.error);
 
       return id;
     },

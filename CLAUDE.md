@@ -395,6 +395,77 @@ export function ExpenseInput({ onSubmit, initialBudget = 0 }: ExpenseInputProps)
 }
 ```
 
+### React パターン
+
+**useEffect 使用禁止**
+
+副作用の管理には以下のパターンを優先する：
+
+1. **データフェッチ**: TanStack Query の `useQuery`, `useMutation` を使用
+2. **サブスクリプション**: TanStack Query の subscription 機能
+3. **ライフサイクル制御**: Suspense + ErrorBoundary
+4. **モジュールレベル初期化**: ブラウザ環境チェック付きでモジュールロード時に実行
+
+```typescript
+// ❌ 悪い例
+function Component() {
+  useEffect(() => {
+    startSync();
+  }, []);
+}
+
+// ✅ 良い例1: モジュールレベル初期化
+// sync.ts
+if (typeof window !== 'undefined') {
+  startBackgroundSync();
+}
+
+// ✅ 良い例2: TanStack Query
+function Component() {
+  const { data } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: fetchExpenses,
+  });
+}
+```
+
+### エラーハンドリング
+
+**try-catch は最小限に**
+
+- try-catch はエラーを隠蔽しデバッグを困難にする
+- 原則として、予期しないエラーはそのまま上位に伝播させる
+- グローバルエラーハンドラー（Hono の `onError`, React ErrorBoundary）で一元管理
+
+**使用が許可される場合**:
+
+1. **外部API呼び出し**: リトライロジックが必要な場合
+2. **ユーザー入力のパース**: JSON.parse など明示的に失敗が予想される場合
+3. **リソースクリーンアップ**: finally でのクリーンアップが必須の場合
+
+```typescript
+// ❌ 悪い例: エラーを隠蔽
+try {
+  await db.insert(data);
+} catch (error) {
+  console.error(error);
+  return { success: false };
+}
+
+// ✅ 良い例: エラーをそのまま伝播
+await db.insert(data); // エラーはグローバルハンドラーで処理
+
+// ✅ 許可される例: リトライロジック
+async function fetchWithRetry(url: string, retries = 3) {
+  try {
+    return await fetch(url);
+  } catch (error) {
+    if (retries > 0) return fetchWithRetry(url, retries - 1);
+    throw error;
+  }
+}
+```
+
 ## パフォーマンス目標
 
 | 指標 | 目標値 |

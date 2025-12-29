@@ -12,9 +12,4 @@ export default defineConfig({
       '#lib': fileURLToPath(new URL('./lib', import.meta.url)),
     },
   },
-  test: {
-    globals: true,
-    environment: 'happy-dom',
-    setupFiles: './tests/setup.ts',
-  },
 });

@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-API_DIR="${PROJECT_ROOT}/packages/api"
+APP_DIR="${PROJECT_ROOT}/apps/household-app"
 
 # 色定義
 RED='\033[0;31m'
@@ -38,13 +38,13 @@ if [ $# -lt 1 ]; then
 fi
 
 ENVIRONMENT="$1"
-DB_NAME="maronn-household"
+DB_NAME="household-db"
 
 if [ "${ENVIRONMENT}" = "production" ]; then
-    DB_NAME="maronn-household-production"
+    DB_NAME="household-db-production"
 fi
 
-cd "${API_DIR}"
+cd "${APP_DIR}"
 
 log_info "Setting up D1 database for ${ENVIRONMENT} environment..."
 log_info "Database name: ${DB_NAME}"
@@ -104,7 +104,7 @@ log_info "Running migrations..."
 
 if [ "${ENVIRONMENT}" = "production" ]; then
     # 本番環境へのマイグレーション
-    for migration in migrations/*.sql; do
+    for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log_info "Applying migration: $(basename "$migration")"
             wrangler d1 execute "${DB_NAME}" --remote --file="$migration"
@@ -112,7 +112,7 @@ if [ "${ENVIRONMENT}" = "production" ]; then
     done
 else
     # 開発環境へのマイグレーション
-    for migration in migrations/*.sql; do
+    for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log_info "Applying migration: $(basename "$migration")"
             wrangler d1 execute "${DB_NAME}" --local --file="$migration" 2>/dev/null || \

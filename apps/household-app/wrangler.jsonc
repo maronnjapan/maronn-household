@@ -6,8 +6,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "MY_VIKE_DEMO_DATABASE",
-      "database_id": "my-vike-demo-database",
+      "database_name": "HOUSEHOLD_DB",
+      "database_id": "household-db",
       "migrations_dir": "database/migrations"
     }
   ]

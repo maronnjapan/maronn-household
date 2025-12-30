@@ -2,7 +2,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../styles/global.css";
 
-import logoUrl from "../assets/logo.svg";
+import logoUrl from "../assets/kakeibo-icon.svg";
 import { Link } from "../components/Link";
 import { trpc, getTRPCClient } from "../trpc/client";
 
@@ -34,9 +34,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
+        <Logo />
         <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
         <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
-          <Logo />
           <Link href="/household">Household</Link>
           <Link href="/household/budget">Budget</Link>
           <Link href="/calendar">Calendar</Link>

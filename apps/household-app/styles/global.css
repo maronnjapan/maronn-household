@@ -133,9 +133,17 @@ body.page-transition #page-content {
   font-weight: 600;
 }
 
-#sidebar .logo {
-  margin-bottom: 20px;
-  padding: 0 16px;
+/* Logo outside sidebar */
+.logo {
+  position: fixed;
+  top: 16px;
+  left: 80px;
+  z-index: 100;
+}
+
+.logo img {
+  height: 48px;
+  width: 48px;
 }
 
 /* Main Content */

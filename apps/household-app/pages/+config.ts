@@ -7,8 +7,8 @@ import vikeReact from "vike-react/config";
 
 export default {
   // https://vike.dev/head-tags
-  title: "My Vike App",
-  description: "Demo showcasing Vike",
+  title: "家計簿アプリ",
+  description: "シンプルで使いやすい家計簿アプリケーションです。",
 
   extends: [vikeReact, vikePhoton],
 

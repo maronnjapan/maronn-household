@@ -132,6 +132,42 @@ export async function updateSyncStatus(
 }
 
 /**
+ * 支出を更新
+ */
+export async function updateExpense(
+  id: string,
+  updates: Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>>
+): Promise<ExpenseEntity | null> {
+  const existing = await db.expenses.get(id);
+  if (!existing) {
+    return null;
+  }
+
+  const updatedExpense: ExpenseEntity = {
+    ...existing,
+    ...updates,
+    updatedAt: new Date().toISOString(),
+    syncStatus: 'pending',
+  };
+
+  await db.expenses.put(updatedExpense);
+  return updatedExpense;
+}
+
+/**
+ * 支出を削除
+ */
+export async function deleteExpense(id: string): Promise<boolean> {
+  const existing = await db.expenses.get(id);
+  if (!existing) {
+    return false;
+  }
+
+  await db.expenses.delete(id);
+  return true;
+}
+
+/**
  * サーバーからの支出データをIndexedDBにマージ
  * 既存データよりも新しいデータのみ更新する
  */

@@ -34,6 +34,20 @@ const getExpensesInputSchema = z.object({
   month: z.string().optional(),
 });
 
+const updateExpenseInputSchema = z.object({
+  id: z.string(),
+  amount: z.number().optional(),
+  category: z.string().optional(),
+  memo: z.string().optional(),
+  date: z.string().optional(),
+  updatedAt: z.string(),
+  deviceId: z.string(),
+});
+
+const deleteExpenseInputSchema = z.object({
+  id: z.string(),
+});
+
 const budgetInputSchema = z.object({
   month: z.string(),
 });
@@ -148,6 +162,71 @@ export const appRouter = router({
         .all();
 
       return { expenses: results, month };
+    }),
+
+  // 支出を更新
+  updateExpense: publicProcedure
+    .input(updateExpenseInputSchema)
+    .mutation(async (opts) => {
+      const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const userId = 'default-user';
+
+      // 既存データを確認
+      const existing = await database
+        .select()
+        .from(expenses)
+        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
+        .get();
+
+      if (!existing) {
+        return { success: false, message: 'Expense not found' };
+      }
+
+      // updatedAt が新しい場合のみ更新
+      if (new Date(existing.updatedAt) >= new Date(updatedAt)) {
+        return { success: true, updated: false, message: 'Already up to date' };
+      }
+
+      await database
+        .update(expenses)
+        .set({
+          amount: amount ?? existing.amount,
+          category: category !== undefined ? (category || null) : existing.category,
+          memo: memo !== undefined ? (memo || null) : existing.memo,
+          date: date ?? existing.date,
+          updatedAt,
+          deviceId,
+        })
+        .where(eq(expenses.id, id))
+        .run();
+
+      return { success: true, updated: true };
+    }),
+
+  // 支出を削除
+  deleteExpense: publicProcedure
+    .input(deleteExpenseInputSchema)
+    .mutation(async (opts) => {
+      const { id } = opts.input;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const userId = 'default-user';
+
+      // 削除
+      await database
+        .delete(expenses)
+        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
+        .run();
+
+      return { success: true };
     }),
 
   // 予算を取得

@@ -55,10 +55,14 @@ function getDeviceId(providedDeviceId?: string): string {
 }
 
 /**
- * 現在の日付を YYYY-MM-DD 形式で取得
+ * 現在の日付を YYYY-MM-DD 形式で取得（ローカルタイムゾーン基準）
  */
 function getCurrentDate(): string {
-  return new Date().toISOString().split('T')[0] as string;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**

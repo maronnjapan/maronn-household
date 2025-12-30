@@ -43,12 +43,13 @@ export function useRemainingBudget(
   );
 
   // 支出をサーバーから取得（端末間同期用）
+  // staleTime: 0 で常に最新データを取得（他ページでの変更を即座に反映）
   const expensesQuery = trpc.getExpenses.useQuery(
     { month },
     {
       retry: 1,
-      staleTime: 30 * 1000, // 30秒（別端末からのデータを反映するため短く設定）
-      refetchOnWindowFocus: true, // ウィンドウフォーカス時に再取得
+      staleTime: 0,
+      refetchOnWindowFocus: true,
     }
   );
 

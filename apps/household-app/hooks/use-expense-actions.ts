@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { updateExpense, deleteExpense } from '../lib/db';
-import { vanillaTrpc } from '../trpc/client';
+import { trpc, vanillaTrpc } from '../trpc/client';
 import { getDeviceId } from '../lib/device';
 
 export interface UpdateExpenseParams {
@@ -65,6 +65,8 @@ async function syncDeleteToServer(id: string): Promise<void> {
  * ローカルファースト: 即座にIndexedDBを更新し、バックグラウンドでサーバーに同期
  */
 export function useExpenseActions(): UseExpenseActionsResult {
+  const utils = trpc.useUtils();
+
   const handleUpdateExpense = useCallback(
     async (id: string, params: UpdateExpenseParams): Promise<boolean> => {
       // 1. IndexedDB を即座に更新（< 50ms）
@@ -78,24 +80,33 @@ export function useExpenseActions(): UseExpenseActionsResult {
       const deviceId = getDeviceId();
       syncUpdateToServer(id, params, updated.updatedAt, deviceId).catch(console.error);
 
+      // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
+      await utils.getExpenses.invalidate();
+
       return true;
     },
-    []
+    [utils]
   );
 
-  const handleDeleteExpense = useCallback(async (id: string): Promise<boolean> => {
-    // 1. IndexedDB から即座に削除（< 50ms）
-    const deleted = await deleteExpense(id);
+  const handleDeleteExpense = useCallback(
+    async (id: string): Promise<boolean> => {
+      // 1. IndexedDB から即座に削除（< 50ms）
+      const deleted = await deleteExpense(id);
 
-    if (!deleted) {
-      return false;
-    }
+      if (!deleted) {
+        return false;
+      }
 
-    // 2. バックグラウンドでサーバーに同期（UIをブロックしない）
-    syncDeleteToServer(id).catch(console.error);
+      // 2. バックグラウンドでサーバーに同期（UIをブロックしない）
+      syncDeleteToServer(id).catch(console.error);
 
-    return true;
-  }, []);
+      // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
+      await utils.getExpenses.invalidate();
+
+      return true;
+    },
+    [utils]
+  );
 
   return {
     handleUpdateExpense,

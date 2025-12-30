@@ -375,6 +375,89 @@
   font-size: 1.125rem;
 }
 
+/* 支出なしメッセージ */
+.no-expenses {
+  text-align: center;
+  color: #666;
+  padding: 24px 0;
+  margin: 0;
+}
+
+/* 新規追加ボタン */
+.btn-add-new {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 16px;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-add-new:hover {
+  background: #1976d2;
+}
+
+/* 新規追加フォーム */
+.expense-add-form {
+  margin-top: 16px;
+  padding: 16px;
+  background: #e3f2fd;
+  border-radius: 8px;
+}
+
+.add-fields {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.add-input {
+  padding: 10px;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.add-input.amount {
+  width: 120px;
+}
+
+.add-input.memo {
+  flex: 1;
+}
+
+.add-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.add-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-add-save {
+  padding: 8px 20px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: bold;
+}
+
+.btn-add-save:hover {
+  background: #43a047;
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 600px) {
   .calendar-page {
@@ -405,5 +488,13 @@
 
   .calendar-title {
     font-size: 1rem;
+  }
+
+  .add-fields {
+    flex-direction: column;
+  }
+
+  .add-input.amount {
+    width: 100%;
   }
 }

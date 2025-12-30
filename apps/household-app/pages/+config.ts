@@ -16,4 +16,8 @@ export default {
   photon: {
     server: "../server/entry.ts",
   },
+  redirects: {
+    // Internal
+    '/': '/household',
+  }
 } satisfies Config;

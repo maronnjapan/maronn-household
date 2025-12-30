@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { ExpenseEntity } from '@maronn/domain';
 import { getExpensesByMonth, mergeExpensesFromServer } from '../lib/db';
@@ -30,6 +31,7 @@ export function useCalendarExpenses(
   month: number = new Date().getMonth() + 1
 ): CalendarExpensesResult {
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+  const lastMergedAtRef = useRef<number>(0);
 
   // 支出をサーバーから取得（端末間同期用）
   const expensesQuery = trpc.getExpenses.useQuery(
@@ -41,26 +43,29 @@ export function useCalendarExpenses(
     }
   );
 
+  // サーバーからデータが取得されたらマージ（useLiveQueryの外で行う）
+  // これにより useLiveQuery が純粋な読み取りクエリになり、IndexedDB変更を正しく検知できる
   const serverDataUpdatedAt = expensesQuery.dataUpdatedAt;
+  if (expensesQuery.data?.expenses && serverDataUpdatedAt > lastMergedAtRef.current) {
+    lastMergedAtRef.current = serverDataUpdatedAt;
+    const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
+      id: e.id,
+      amount: e.amount,
+      category: e.category ?? undefined,
+      memo: e.memo ?? undefined,
+      date: e.date,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      deviceId: e.deviceId,
+      syncStatus: 'synced' as const,
+    }));
+    // 非同期でマージを実行（レンダリングをブロックしない）
+    // 月を渡すことで、サーバーで削除されたデータもローカルから削除される
+    mergeExpensesFromServer(serverExpenses, monthStr).catch(console.error);
+  }
 
-  // 支出をIndexedDBからリアルタイム取得
+  // 支出をIndexedDBからリアルタイム取得（読み取り専用）
   const expensesData = useLiveQuery(async () => {
-    // サーバーからデータが取得されていればマージ
-    if (expensesQuery.data?.expenses) {
-      const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
-        id: e.id,
-        amount: e.amount,
-        category: e.category ?? undefined,
-        memo: e.memo ?? undefined,
-        date: e.date,
-        createdAt: e.createdAt,
-        updatedAt: e.updatedAt,
-        deviceId: e.deviceId,
-        syncStatus: 'synced' as const,
-      }));
-      await mergeExpensesFromServer(serverExpenses);
-    }
-
     const expenses = await getExpensesByMonth(monthStr);
 
     // 日付ごとにグループ化
@@ -85,7 +90,7 @@ export function useCalendarExpenses(
     }
 
     return { expensesByDay, totalSpent };
-  }, [monthStr, serverDataUpdatedAt]);
+  }, [monthStr]);
 
   if (!expensesData) {
     return {

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { calculateRemaining } from '@maronn/domain';
 import type { ExpenseEntity } from '@maronn/domain';
@@ -29,6 +30,8 @@ export interface RemainingBudgetResult {
 export function useRemainingBudget(
   month: string = getCurrentMonth()
 ): RemainingBudgetResult {
+  const lastMergedAtRef = useRef<number>(0);
+
   // 予算をサーバーから取得（ネットワーク環境に依存）
   const budgetQuery = trpc.getBudget.useQuery(
     { month },
@@ -49,29 +52,29 @@ export function useRemainingBudget(
     }
   );
 
-  // サーバーからのデータ取得状態（依存配列用）
+  // サーバーからデータが取得されたらマージ（useLiveQueryの外で行う）
+  // これにより useLiveQuery が純粋な読み取りクエリになり、IndexedDB変更を正しく検知できる
   const serverDataUpdatedAt = expensesQuery.dataUpdatedAt;
+  if (expensesQuery.data?.expenses && serverDataUpdatedAt > lastMergedAtRef.current) {
+    lastMergedAtRef.current = serverDataUpdatedAt;
+    const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
+      id: e.id,
+      amount: e.amount,
+      category: e.category ?? undefined,
+      memo: e.memo ?? undefined,
+      date: e.date,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      deviceId: e.deviceId,
+      syncStatus: 'synced' as const,
+    }));
+    // 非同期でマージを実行（レンダリングをブロックしない）
+    // 月を渡すことで、サーバーで削除されたデータもローカルから削除される
+    mergeExpensesFromServer(serverExpenses, month).catch(console.error);
+  }
 
-  // 支出をIndexedDBからリアルタイム取得（ローカルファースト）
-  // サーバーからのデータ取得完了時にも再実行してマージを行う
+  // 支出をIndexedDBからリアルタイム取得（読み取り専用）
   const expensesData = useLiveQuery(async () => {
-    // サーバーからデータが取得されていればマージ（毎回マージして最新状態を保つ）
-    if (expensesQuery.data?.expenses) {
-      const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
-        id: e.id,
-        amount: e.amount,
-        category: e.category ?? undefined,
-        memo: e.memo ?? undefined,
-        date: e.date,
-        createdAt: e.createdAt,
-        updatedAt: e.updatedAt,
-        deviceId: e.deviceId,
-        syncStatus: 'synced' as const,
-      }));
-      // マージ完了を待ってからIndexedDBを読み込む
-      await mergeExpensesFromServer(serverExpenses);
-    }
-
     const expenses = await getExpensesByMonth(month);
     const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -79,7 +82,7 @@ export function useRemainingBudget(
       expenses,
       spent,
     };
-  }, [month, serverDataUpdatedAt]);
+  }, [month]);
 
   // 予算額を決定（サーバーから取得できない場合やエラー時はデフォルト値）
   const budgetAmount = budgetQuery.data?.budget?.amount ?? DEFAULT_BUDGET_AMOUNT;

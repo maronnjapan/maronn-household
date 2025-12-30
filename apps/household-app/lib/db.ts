@@ -169,14 +169,24 @@ export async function deleteExpense(id: string): Promise<boolean> {
 
 /**
  * サーバーからの支出データをIndexedDBにマージ
- * 既存データよりも新しいデータのみ更新する
+ * - サーバーにあってローカルにないデータは追加
+ * - サーバーのデータがローカルより新しい場合は更新
+ * - ローカルにあってサーバーにないデータ（削除された）は削除
+ *   ただし、syncStatus: 'pending' のデータは保持（まだ同期されていない）
+ *
+ * @param serverExpenses サーバーから取得した支出データ
+ * @param month 対象月（YYYY-MM形式）。指定すると、その月のローカルデータで
+ *              サーバーに存在しないものを削除する
  */
 export async function mergeExpensesFromServer(
-  serverExpenses: ExpenseEntity[]
+  serverExpenses: ExpenseEntity[],
+  month?: string
 ): Promise<void> {
-  if (serverExpenses.length === 0) return;
-
   await db.transaction('rw', db.expenses, async () => {
+    // サーバーにあるデータのIDセット
+    const serverIds = new Set(serverExpenses.map((e) => e.id));
+
+    // サーバーのデータをローカルにマージ
     for (const serverExpense of serverExpenses) {
       const localExpense = await db.expenses.get(serverExpense.id);
 
@@ -194,6 +204,29 @@ export async function mergeExpensesFromServer(
         });
       }
       // ローカルが新しい場合はそのまま（pendingのまま）
+    }
+
+    // 月が指定されている場合、サーバーで削除されたデータをローカルからも削除
+    if (month) {
+      const startDate = `${month}-01`;
+      const year = parseInt(month.split('-')[0] as string);
+      const monthNum = parseInt(month.split('-')[1] as string);
+      const nextMonth =
+        monthNum === 12 ? `${year + 1}-01` : `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+      const endDate = `${nextMonth}-01`;
+
+      // その月のローカルデータを取得
+      const localExpenses = await db.expenses
+        .where('date')
+        .between(startDate, endDate, true, false)
+        .toArray();
+
+      // サーバーに存在しない、かつ synced 状態のデータを削除
+      for (const localExpense of localExpenses) {
+        if (!serverIds.has(localExpense.id) && localExpense.syncStatus === 'synced') {
+          await db.expenses.delete(localExpense.id);
+        }
+      }
     }
   });
 }

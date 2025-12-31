@@ -426,6 +426,56 @@ async function fetchWithRetry(url: string, retries = 3) {
 | オフライン時の動作 | 100%機能 |
 | Lighthouse Performance | > 90 |
 
+### /household ページの表示速度優先ルール
+
+**最優先事項**: 金額入力フィールドの即座表示とIndexedDB保存
+
+`/household` ページは本アプリの核心機能であり、爆速表示を最優先する。
+
+#### 表示速度の定義
+
+「表示完了」とは以下の状態を指す：
+
+1. **金額入力フィールドが表示されている**
+2. **入力内容がIndexedDBに即座に保存できる状態にある**
+
+この2つが達成されれば、以下の要素の表示は後回しでよい：
+
+- 予算額の表示
+- 今月の支出合計の表示
+- 残額の表示
+- その他の補助的な情報
+
+#### CSS読み込みの原則
+
+**`global.css` には `/household` ページ以外のスタイルを含めない**
+
+理由：
+- `global.css` はすべてのページで読み込まれる
+- 不要なスタイルの読み込みは `/household` ページの表示速度を低下させる
+- 特別な事情がない限り、各ページ専用のCSSファイルを使用する
+
+```typescript
+// ❌ 悪い例: global.css に予算設定ページのスタイルを含める
+// apps/household-app/styles/global.css
+.budget-page { ... }  // /household では使用しないスタイル
+
+// ✅ 良い例: ページ専用のCSSファイルを作成
+// apps/household-app/pages/household/budget/budget.css
+.budget-page { ... }
+
+// apps/household-app/pages/household/budget/+Page.tsx
+import './budget.css';
+```
+
+#### 優先順位
+
+1. **最優先**: 金額入力フィールドの表示とIndexedDB保存機能
+2. **次点**: 支出一覧の表示（useLiveQuery経由）
+3. **最後**: 予算・支出合計・残額の表示（サーバーから取得が必要な場合）
+
+オフラインでも金額入力と保存ができることが絶対条件。
+
 ## 開発コマンド
 
 ```bash

@@ -1,6 +1,7 @@
 import { BudgetInput } from '../../../components/BudgetInput';
 import { useSetBudget, useGetBudget } from '../../../hooks/use-set-budget';
 import { getCurrentMonth } from '../../../lib/db';
+import './budget.css';
 
 /**
  * 予算設定ページ

@@ -369,3 +369,278 @@ footer {
     font-size: 1.1rem;
   }
 }
+
+/* Budget Page Styles */
+.budget-page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+@media (min-width: 640px) {
+  .budget-page {
+    padding: 20px;
+  }
+}
+
+.budget-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+@media (max-width: 639px) {
+  .budget-section {
+    padding: 20px;
+  }
+}
+
+.budget-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.budget-info {
+  flex: 1;
+}
+
+.budget-info label {
+  display: block;
+  font-size: 0.9rem;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+}
+
+.budget-amount {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.budget-amount.skeleton {
+  color: #bdc3c7;
+  font-size: 1.2rem;
+}
+
+.edit-button {
+  padding: 14px 24px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  min-height: 56px;
+  min-width: 100px;
+  color: white;
+  background: #3498db;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(41, 128, 185, 0.3);
+  touch-action: manipulation;
+}
+
+.edit-button:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.edit-button:active:not(:disabled) {
+  transform: scale(0.97);
+  background: #2573a7;
+}
+
+.edit-button:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.budget-input {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.budget-input .input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.budget-input label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.budget-amount-input {
+  padding: 16px 20px;
+  font-size: 18px;
+  min-height: 56px;
+  border: 2px solid #ecf0f1;
+  border-radius: 12px;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  -webkit-appearance: none;
+}
+
+.budget-amount-input:focus {
+  outline: none;
+  border-color: #3498db;
+  border-width: 3px;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.budget-amount-input:active {
+  transform: scale(0.995);
+}
+
+.button-group {
+  display: flex;
+  gap: 12px;
+  flex-direction: column;
+}
+
+@media (min-width: 640px) {
+  .button-group {
+    flex-direction: row;
+  }
+}
+
+.save-button {
+  flex: 1;
+  padding: 18px;
+  font-size: 1.25rem;
+  font-weight: bold;
+  min-height: 60px;
+  color: white;
+  background: #27ae60;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(39, 174, 96, 0.3);
+  touch-action: manipulation;
+}
+
+.save-button:hover:not(:disabled) {
+  background: #229954;
+}
+
+.save-button:active:not(:disabled) {
+  transform: scale(0.97);
+  background: #1e8449;
+}
+
+.save-button:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cancel-button {
+  flex: 1;
+  padding: 18px;
+  font-size: 1.25rem;
+  font-weight: bold;
+  min-height: 60px;
+  color: #7f8c8d;
+  background: white;
+  border: 2px solid #ecf0f1;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(189, 195, 199, 0.3);
+  touch-action: manipulation;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #bdc3c7;
+}
+
+.cancel-button:active:not(:disabled) {
+  transform: scale(0.97);
+  background: #ecf0f1;
+}
+
+.cancel-button:disabled {
+  background: #f8f9fa;
+  color: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.info-section {
+  background: #e8f5e9;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.info-section h2 {
+  font-size: 1.1rem;
+  color: #27ae60;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.info-section ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.info-section li {
+  color: #2c3e50;
+  font-size: 0.95rem;
+  line-height: 1.8;
+  margin-bottom: 8px;
+}
+
+.info-section li:last-child {
+  margin-bottom: 0;
+}
+
+.error-message {
+  background: #ffebee;
+  border-left: 4px solid #e74c3c;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.error-message p {
+  margin: 0;
+  color: #c0392b;
+  font-size: 0.95rem;
+}
+
+.error-detail {
+  margin-top: 8px !important;
+  font-size: 0.85rem !important;
+  color: #e74c3c !important;
+  font-family: monospace;
+}
+
+@media (min-width: 640px) {
+  .budget-amount-input {
+    font-size: 1rem;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .edit-button {
+    min-height: 48px;
+    font-size: 1rem;
+    padding: 12px 20px;
+  }
+
+  .save-button,
+  .cancel-button {
+    min-height: 52px;
+    font-size: 1.1rem;
+  }
+}

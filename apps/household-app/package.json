@@ -12,6 +12,7 @@
     "drizzle:migrate:remote": "wrangler d1 migrations apply household-db --remote",
     "drizzle:studio": "drizzle-kit studio",
     "deploy": "vike build && wrangler deploy",
+    "deploy:ci": "vike build && wrangler deploy",
     "generate-types": "wrangler types"
   },
   "dependencies": {

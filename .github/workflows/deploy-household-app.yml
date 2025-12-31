@@ -40,9 +40,6 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
-      - name: Build
-        run: pnpm build
-
       - name: Generate migration files
         run: pnpm --filter household-app drizzle:generate
 

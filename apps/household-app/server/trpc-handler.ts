@@ -15,6 +15,7 @@ interface Env {
   AUTH0_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  NODE_ENV?: string;
 }
 
 export const trpcHandler = ((endpoint) =>

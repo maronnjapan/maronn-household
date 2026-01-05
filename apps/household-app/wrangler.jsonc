@@ -31,7 +31,7 @@
       // TODO: Replace with actual Hyperdrive ID from `wrangler hyperdrive list`
       "id": "YOUR_HYPERDRIVE_ID_HERE"
     }
-  ]
+  ],
   // 環境変数（シークレット）の設定方法:
   // ローカル開発: .dev.vars.example をコピーして .dev.vars を作成
   // 本番環境: wrangler secret put コマンドまたはCloudflare Dashboardで設定

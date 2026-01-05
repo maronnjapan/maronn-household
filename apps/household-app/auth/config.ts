@@ -5,6 +5,12 @@ import postgres from "postgres";
 import * as authSchema from "../database/drizzle/schema/auth";
 
 /**
+ * Better Authインスタンスの型
+ * createAuth関数の戻り値型として使用
+ */
+export type Auth = ReturnType<typeof betterAuth>;
+
+/**
  * Better Auth設定
  * Auth0を使用したOAuth認証
  * Hyperdrive経由でSupabase PostgreSQLに接続
@@ -101,5 +107,3 @@ export function createAuth(env: Env): Auth {
 
   return auth;
 }
-
-export type Auth = ReturnType<typeof createAuth>;

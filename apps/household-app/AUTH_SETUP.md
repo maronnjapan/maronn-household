@@ -67,10 +67,10 @@
 cd apps/household-app
 
 # 認証用マイグレーションファイルを生成
-pnpm drizzle:generate
+DRIZZLE_TARGET=auth pnpm drizzle:generate
 
 # Supabaseに接続して認証テーブルを作成
-npx drizzle-kit migrate
+DRIZZLE_TARGET=auth npx drizzle-kit migrate
 ```
 
 マイグレーションにより、以下の**認証テーブルのみ**が作成されます：
@@ -231,25 +231,36 @@ BETTER_AUTH_URL="http://localhost:5173"
 HYPERDRIVE_ID="your-hyperdrive-id"
 ```
 
-### 6-2. 本番環境用 (`wrangler.jsonc`)
+### 6-2. 本番環境用（シークレット設定）
 
-`wrangler.jsonc` の `vars` セクションを更新:
+**⚠️ 重要**: シークレット情報は `wrangler.jsonc` に直接記載せず、以下の方法で設定してください。
 
-```jsonc
-{
-  "vars": {
-    "AUTH0_DOMAIN": "your-tenant.auth0.com",
-    "AUTH0_CLIENT_ID": "your-client-id",
-    "AUTH0_CLIENT_SECRET": "your-client-secret",
-    "BETTER_AUTH_SECRET": "your-random-secret",
-    "BETTER_AUTH_URL": "https://your-app.pages.dev"
-  }
-}
+#### 方法1: wrangler secret put コマンド（推奨）
+
+```bash
+cd apps/household-app
+
+# 各シークレットを設定
+wrangler secret put AUTH0_DOMAIN
+wrangler secret put AUTH0_CLIENT_ID
+wrangler secret put AUTH0_CLIENT_SECRET
+wrangler secret put BETTER_AUTH_SECRET
+wrangler secret put BETTER_AUTH_URL
 ```
 
-**⚠️ セキュリティ注意**:
-- `wrangler.jsonc` に機密情報を直接記載しないでください
-- 本番環境では Cloudflare Dashboard の環境変数設定を使用してください
+各コマンド実行後、プロンプトが表示されるので値を入力してください。
+
+#### 方法2: Cloudflare Dashboard
+
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) にログイン
+2. **Workers & Pages** → **household-app** を選択
+3. **Settings** → **Variables and Secrets** を開く
+4. 以下の環境変数を追加:
+   - `AUTH0_DOMAIN`: `your-tenant.auth0.com`
+   - `AUTH0_CLIENT_ID`: `your-client-id`
+   - `AUTH0_CLIENT_SECRET`: `your-client-secret`（暗号化）
+   - `BETTER_AUTH_SECRET`: `your-random-secret`（暗号化）
+   - `BETTER_AUTH_URL`: `https://your-app.pages.dev`
 
 ---
 

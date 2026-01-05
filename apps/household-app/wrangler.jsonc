@@ -11,7 +11,16 @@
       "enabled": true
     }
   },
-  // PostgreSQL接続用のHyperdrive（D1から移行）
+  // D1データベース（支出・予算データ用）
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "household-db",
+      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34",
+      "migrations_dir": "database/migrations"
+    }
+  ],
+  // PostgreSQL接続用のHyperdrive（認証データ用）
   // Hyperdriveの設定方法: wrangler hyperdrive create <name> --connection-string="postgresql://..."
   "hyperdrive": [
     {
@@ -27,5 +36,4 @@
     "BETTER_AUTH_SECRET": "YOUR_BETTER_AUTH_SECRET",
     "BETTER_AUTH_URL": "http://localhost:5173"
   }
-  // 注: D1は削除しました。PostgreSQL + Hyperdriveを使用します。
 }

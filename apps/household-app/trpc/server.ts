@@ -1,9 +1,8 @@
+import type { dbD1 } from "../database/drizzle/db";
 import { initTRPC, TRPCError } from "@trpc/server";
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
-import { expenses, budgets } from '../database/drizzle/schema/household-pg';
-import { user } from '../database/drizzle/schema/auth';
+import { expenses, budgets } from '../database/drizzle/schema/household';
 import { z } from 'zod';
 
 /**
@@ -11,8 +10,9 @@ import { z } from 'zod';
  * セッション情報とユーザー情報を含む
  */
 interface Context {
+  db: ReturnType<typeof dbD1>;
   env?: {
-    HYPERDRIVE: Hyperdrive;
+    DB: D1Database;
     [key: string]: any;
   };
   session?: any;
@@ -60,27 +60,6 @@ export const protectedProcedure = t.procedure.use(async (opts) => {
     },
   });
 });
-
-/**
- * DB接続を取得する共通ヘルパー
- */
-function getDatabase(ctx: Context) {
-  if (!ctx.env?.HYPERDRIVE) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Database connection not available',
-    });
-  }
-
-  const client = postgres(ctx.env.HYPERDRIVE.connectionString, {
-    max: 5,
-    fetch_types: false,
-  });
-
-  return drizzle(client, {
-    schema: { ...expenses, ...budgets, ...user },
-  });
-}
 
 // 入力バリデーション用のスキーマ
 const expenseInputSchema = z.object({
@@ -142,30 +121,33 @@ export const appRouter = router({
       const { id, amount, category, memo, date, createdAt, updatedAt, deviceId } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
-      const db = getDatabase(opts.ctx);
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 既存データをチェック（重複登録防止）
-      const existing = await db
+      const existing = await database
         .select()
         .from(expenses)
         .where(eq(expenses.id, id))
-        .limit(1);
+        .get();
 
-      if (existing.length > 0) {
-        const existingExpense = existing[0];
+      if (existing) {
         // 既に存在する場合はupdatedAtで更新判定
-        if (new Date(existingExpense.updatedAt) < new Date(updatedAt)) {
-          await db
+        if (new Date(existing.updatedAt) < new Date(updatedAt)) {
+          await database
             .update(expenses)
             .set({
               amount,
               category: category || null,
               memo: memo || null,
-              date: new Date(date),
-              updatedAt: new Date(updatedAt),
+              date,
+              updatedAt,
               deviceId,
             })
-            .where(eq(expenses.id, id));
+            .where(eq(expenses.id, id))
+            .run();
 
           return { success: true, updated: true };
         }
@@ -174,7 +156,7 @@ export const appRouter = router({
       }
 
       // 新規挿入
-      await db
+      await database
         .insert(expenses)
         .values({
           id,
@@ -182,11 +164,12 @@ export const appRouter = router({
           amount,
           category: category || null,
           memo: memo || null,
-          date: new Date(date),
-          createdAt: new Date(createdAt),
-          updatedAt: new Date(updatedAt),
+          date,
+          createdAt,
+          updatedAt,
           deviceId,
-        });
+        })
+        .run();
 
       return { success: true, created: true };
     }),
@@ -206,13 +189,16 @@ export const appRouter = router({
         month = `${year}-${monthNum}`;
       }
 
-      const db = getDatabase(opts.ctx);
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 月の範囲を計算
-      const startDate = new Date(`${month}-01T00:00:00Z`);
-      const endDate = new Date(`${month}-31T23:59:59Z`); // 簡易的な実装
+      const startDate = `${month}-01`;
+      const endDate = `${month}-31`; // 簡易的な実装
 
-      const results = await db
+      const results = await database
         .select()
         .from(expenses)
         .where(
@@ -221,7 +207,8 @@ export const appRouter = router({
             gte(expenses.date, startDate),
             lte(expenses.date, endDate)
           )
-        );
+        )
+        .all();
 
       return { expenses: results, month };
     }),
@@ -233,40 +220,41 @@ export const appRouter = router({
       const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
       const userId = opts.ctx.user.id;
 
-      const db = getDatabase(opts.ctx);
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 既存データを確認
-      const existing = await db
+      const existing = await database
         .select()
         .from(expenses)
         .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
-        .limit(1);
+        .get();
 
-      if (existing.length === 0) {
+      if (!existing) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Expense not found',
         });
       }
 
-      const existingExpense = existing[0];
-
       // updatedAt が新しい場合のみ更新
-      if (new Date(existingExpense.updatedAt) >= new Date(updatedAt)) {
+      if (new Date(existing.updatedAt) >= new Date(updatedAt)) {
         return { success: true, updated: false, message: 'Already up to date' };
       }
 
-      await db
+      await database
         .update(expenses)
         .set({
-          amount: amount ?? existingExpense.amount,
-          category: category !== undefined ? (category || null) : existingExpense.category,
-          memo: memo !== undefined ? (memo || null) : existingExpense.memo,
-          date: date ? new Date(date) : existingExpense.date,
-          updatedAt: new Date(updatedAt),
+          amount: amount ?? existing.amount,
+          category: category !== undefined ? (category || null) : existing.category,
+          memo: memo !== undefined ? (memo || null) : existing.memo,
+          date: date ?? existing.date,
+          updatedAt,
           deviceId,
         })
-        .where(eq(expenses.id, id));
+        .where(eq(expenses.id, id))
+        .run();
 
       return { success: true, updated: true };
     }),
@@ -278,12 +266,15 @@ export const appRouter = router({
       const { id } = opts.input;
       const userId = opts.ctx.user.id;
 
-      const db = getDatabase(opts.ctx);
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 削除
-      await db
+      await database
         .delete(expenses)
-        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)));
+        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
+        .run();
 
       return { success: true };
     }),
@@ -295,10 +286,13 @@ export const appRouter = router({
       const { month } = opts.input;
       const userId = opts.ctx.user.id;
 
-      const db = getDatabase(opts.ctx);
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 指定月の予算を取得
-      const result = await db
+      const result = await database
         .select()
         .from(budgets)
         .where(
@@ -307,9 +301,9 @@ export const appRouter = router({
             eq(budgets.month, month)
           )
         )
-        .limit(1);
+        .get();
 
-      return { budget: result.length > 0 ? result[0] : null };
+      return { budget: result };
     }),
 
   // 予算を更新（認証必須）
@@ -318,12 +312,15 @@ export const appRouter = router({
     .mutation(async (opts) => {
       const { month, amount } = opts.input;
       const userId = opts.ctx.user.id;
-      const updatedAt = new Date();
+      const updatedAt = new Date().toISOString();
 
-      const db = getDatabase(opts.ctx);
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
 
       // 既存の予算をチェック
-      const existing = await db
+      const existing = await database
         .select()
         .from(budgets)
         .where(
@@ -332,24 +329,25 @@ export const appRouter = router({
             eq(budgets.month, month)
           )
         )
-        .limit(1);
+        .get();
 
-      if (existing.length > 0) {
+      if (existing) {
         // 更新
-        await db
+        await database
           .update(budgets)
           .set({
             amount,
             updatedAt,
           })
-          .where(eq(budgets.id, existing[0].id));
+          .where(eq(budgets.id, existing.id))
+          .run();
 
         return { success: true, updated: true };
       }
 
       // 新規挿入
       const id = `${userId}-${month}`;
-      await db
+      await database
         .insert(budgets)
         .values({
           id,
@@ -357,7 +355,8 @@ export const appRouter = router({
           month,
           amount,
           updatedAt,
-        });
+        })
+        .run();
 
       return { success: true, created: true };
     }),

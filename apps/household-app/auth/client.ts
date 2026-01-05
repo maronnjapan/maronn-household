@@ -4,11 +4,14 @@ import { navigate } from "vike/client/router";
 /**
  * Better Auth ベースURLの取得
  * 環境変数から取得し、未設定の場合はフォールバック値を使用
+ *
+ * Vikeの環境変数規約に従い、PUBLIC_ENV__ プレフィックスを使用
+ * @see https://vike.dev/env
  */
 const getBaseURL = (): string => {
-  // 環境変数から取得（Viteの場合は VITE_BETTER_AUTH_URL）
-  if (import.meta.env.VITE_BETTER_AUTH_URL) {
-    return import.meta.env.VITE_BETTER_AUTH_URL;
+  // 環境変数から取得（Vikeの規約: PUBLIC_ENV__ プレフィックス）
+  if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
+    return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;
   }
 
   // ブラウザ環境ではwindow.location.originを使用

@@ -22,6 +22,13 @@ const target = process.env.DRIZZLE_TARGET || "household";
 
 if (target === "auth") {
   // 認証用テーブル（PostgreSQL / Supabase）
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is required for PostgreSQL migrations. " +
+      "Please set it in your .env file."
+    );
+  }
+
   export default defineConfig({
     dialect: "postgresql",
     schema: "./database/drizzle/schema/auth.ts",
@@ -29,18 +36,15 @@ if (target === "auth") {
     dbCredentials: {
       // マイグレーション生成時はSupabaseの直接接続文字列を使用
       // 実行時はHyperdriveを使用（wrangler経由）
-      url: process.env.DATABASE_URL || "",
+      url: process.env.DATABASE_URL,
     },
   });
 } else {
   // 支出・予算データ（D1 / SQLite）
+  // D1はwrangler経由で実行するため、dbCredentialsは不要
   export default defineConfig({
     dialect: "sqlite",
     schema: "./database/drizzle/schema/household.ts",
     out: "./database/migrations/household",
-    dbCredentials: {
-      // D1はwrangler経由で実行するため、urlは不要
-      url: "file:./local.db", // ローカル開発用のダミー
-    },
   });
 }

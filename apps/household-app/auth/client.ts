@@ -2,11 +2,30 @@ import { createAuthClient } from "better-auth/react";
 import { navigate } from "vike/client/router";
 
 /**
+ * Better Auth ベースURLの取得
+ * 環境変数から取得し、未設定の場合はフォールバック値を使用
+ */
+const getBaseURL = (): string => {
+  // 環境変数から取得（Viteの場合は VITE_BETTER_AUTH_URL）
+  if (import.meta.env.VITE_BETTER_AUTH_URL) {
+    return import.meta.env.VITE_BETTER_AUTH_URL;
+  }
+
+  // ブラウザ環境ではwindow.location.originを使用
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+
+  // サーバーサイドレンダリング時のフォールバック
+  return 'http://localhost:5173';
+};
+
+/**
  * Better Auth クライアント（React用）
  * フロントエンドでセッション管理、ログイン/ログアウトを行う
  */
 export const authClient = createAuthClient({
-  baseURL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
+  baseURL: getBaseURL(),
 });
 
 /**
@@ -26,16 +45,26 @@ export const signIn = {
 
 /**
  * ログアウト用のヘルパー関数
- * Vikeのルーターナビゲーションを使用してページリロードを回避
+ * onSuccessコールバック内でVikeのナビゲーションを実行
  */
 export const signOut = async () => {
-  try {
-    await authClient.signOut();
-    // Vikeのクライアントサイドナビゲーションを使用
-    await navigate("/");
-  } catch (error) {
-    console.error("Sign out error:", error);
-    // エラー時はフォールバックとしてページリロード
-    window.location.href = "/";
-  }
+  await authClient.signOut({
+    fetchOptions: {
+      onSuccess: async () => {
+        // ログアウト成功後にクライアントサイドナビゲーション
+        try {
+          await navigate("/");
+        } catch (error) {
+          console.error("Navigation error after sign out:", error);
+          // ナビゲーション失敗時はページリロード
+          window.location.href = "/";
+        }
+      },
+      onError: (error) => {
+        console.error("Sign out error:", error);
+        // エラー時もホームページにリダイレクト
+        window.location.href = "/";
+      },
+    },
+  });
 };

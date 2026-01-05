@@ -42,8 +42,17 @@ function validateEnv(env: Env): void {
   }
 }
 
-// Authインスタンスのキャッシュ（Worker内で再利用）
-const authCache = new WeakMap<Env, Auth>();
+/**
+ * Better Authインスタンスのキャッシュ（モジュールレベルのシングルトン）
+ *
+ * WeakMapは使用しない理由:
+ * Cloudflare Workersではリクエストごとに異なるenvオブジェクトインスタンスが渡されるため、
+ * オブジェクト参照の等価性に依存するWeakMapではキャッシュが機能しない。
+ *
+ * 代わりに、モジュールレベルのシングルトンパターンを使用。
+ * Better Authインスタンスは環境変数が変わらない限り再利用可能。
+ */
+let cachedAuth: Auth | null = null;
 
 /**
  * Better Authインスタンスを取得（キャッシュ済みの場合は再利用）
@@ -57,9 +66,8 @@ export function createAuth(env: Env): Auth {
   validateEnv(env);
 
   // キャッシュ済みのインスタンスがあれば再利用
-  const cached = authCache.get(env);
-  if (cached) {
-    return cached;
+  if (cachedAuth) {
+    return cachedAuth;
   }
 
   // Hyperdrive経由でPostgreSQLに接続
@@ -88,8 +96,8 @@ export function createAuth(env: Env): Auth {
     },
   });
 
-  // キャッシュに保存
-  authCache.set(env, auth);
+  // モジュールレベルでキャッシュ
+  cachedAuth = auth;
 
   return auth;
 }

@@ -7,7 +7,7 @@ import styles from "./AuthButton.module.css";
  * 認証状態に応じて表示を切り替える
  */
 export function AuthButton() {
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated } = useAuth();
 
   if (isLoading) {
     return (
@@ -17,16 +17,11 @@ export function AuthButton() {
     );
   }
 
-  if (isAuthenticated && user) {
+  if (isAuthenticated) {
     return (
-      <div className={styles.container}>
-        <span className={styles.username}>
-          {user.name || user.email}
-        </span>
-        <button onClick={signOut} className={styles.button}>
-          ログアウト
-        </button>
-      </div>
+      <button onClick={signOut} className={styles.button}>
+        ログアウト
+      </button>
     );
   }
 

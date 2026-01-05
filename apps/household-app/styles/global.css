@@ -1,3 +1,22 @@
+/**
+ * Z-Index階層管理
+ * アプリケーション全体のz-index値を統一的に管理
+ *
+ * 階層構造:
+ * - --z-logo: 100          - ロゴ（最下層）
+ * - --z-sidebar-overlay: 998  - サイドバーオーバーレイ
+ * - --z-sidebar: 999       - サイドバー本体
+ * - --z-hamburger: 1000    - ハンバーガーメニューボタン
+ * - --z-auth-button: 1000  - 認証ボタン（ハンバーガーと同階層）
+ */
+:root {
+  --z-logo: 100;
+  --z-sidebar-overlay: 998;
+  --z-sidebar: 999;
+  --z-hamburger: 1000;
+  --z-auth-button: 1000;
+}
+
 /* Reset */
 * {
   margin: 0;
@@ -33,7 +52,7 @@ body.page-transition #page-content {
   position: fixed;
   top: 20px;
   left: 20px;
-  z-index: 1000;
+  z-index: var(--z-hamburger);
   background: white;
   border: none;
   border-radius: 8px;
@@ -82,7 +101,7 @@ body.page-transition #page-content {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 998;
+  z-index: var(--z-sidebar-overlay);
   opacity: 0;
   visibility: hidden;
   transition: all 0.3s ease;
@@ -106,7 +125,7 @@ body.page-transition #page-content {
   flex-direction: column;
   gap: 8px;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
-  z-index: 999;
+  z-index: var(--z-sidebar);
   transition: left 0.3s ease;
   overflow-y: auto;
 }
@@ -138,12 +157,20 @@ body.page-transition #page-content {
   position: fixed;
   top: 16px;
   left: 80px;
-  z-index: 100;
+  z-index: var(--z-logo);
 }
 
 .logo img {
   height: 48px;
   width: 48px;
+}
+
+/* Auth Button Container */
+.auth-button-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: var(--z-auth-button);
 }
 
 /* Main Content */

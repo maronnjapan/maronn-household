@@ -34,12 +34,20 @@ export const authClient = createAuthClient({
 export const signIn = {
   /**
    * Auth0でログイン
+   * OAuth連携の開始に失敗した場合はユーザーにフィードバックを提供
    */
-  auth0: () => {
-    authClient.signIn.social({
-      provider: "auth0",
-      callbackURL: "/household",
-    });
+  auth0: async () => {
+    try {
+      await authClient.signIn.social({
+        provider: "auth0",
+        callbackURL: "/household",
+      });
+    } catch (error) {
+      console.error("Failed to initiate Auth0 sign-in:", error);
+      if (typeof window !== "undefined") {
+        window.alert("ログインを開始できませんでした。しばらく待ってから再度お試しください。");
+      }
+    }
   },
 };
 

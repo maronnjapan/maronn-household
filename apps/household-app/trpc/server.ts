@@ -48,6 +48,7 @@ export const publicProcedure = t.procedure;
 /**
  * 認証保護されたプロシージャ
  * ログインしているユーザーのみアクセス可能
+ * ユーザーIDの存在も保証する
  */
 export const protectedProcedure = t.procedure.use(async (opts) => {
   const { ctx } = opts;
@@ -59,10 +60,18 @@ export const protectedProcedure = t.procedure.use(async (opts) => {
     });
   }
 
+  // ユーザーIDの存在を確認（実際のプロシージャで直接使用されるため）
+  if (!ctx.user.id) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'User ID is missing from the authenticated user object',
+    });
+  }
+
   return opts.next({
     ctx: {
       ...ctx,
-      user: ctx.user, // 型安全性のため
+      user: ctx.user, // 型安全性のため（idの存在も保証済み）
     },
   });
 });

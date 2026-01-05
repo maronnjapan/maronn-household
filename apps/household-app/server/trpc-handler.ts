@@ -37,7 +37,15 @@ export const trpcHandler = ((endpoint) =>
           }
         } catch (error) {
           console.error('Error getting session:', error);
-          // セッション取得失敗は許容（未認証状態として扱う）
+
+          // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
+          // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
+          const nodeEnv =
+            (env && env.NODE_ENV) ||
+            (typeof process !== "undefined" ? process.env?.NODE_ENV : undefined);
+          if (nodeEnv && nodeEnv !== "production") {
+            throw error;
+          }
         }
       }
 
@@ -46,13 +54,15 @@ export const trpcHandler = ((endpoint) =>
         req: request,
         router: appRouter,
         createContext({ req, resHeaders }) {
+          // コンテキスト展開を明示的に行い、プロパティの衝突を防ぐ
           return {
             ...context,
-            ...runtime,
             req,
             resHeaders,
             session,
             user,
+            runtime,
+            env,
           };
         },
       });

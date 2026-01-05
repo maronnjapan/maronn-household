@@ -122,12 +122,7 @@ function Logo() {
 
 function AuthButtonContainer() {
   return (
-    <div style={{
-      position: 'fixed',
-      top: '1rem',
-      right: '1rem',
-      zIndex: 1000,
-    }}>
+    <div className="auth-button-container">
       <AuthButton />
     </div>
   );

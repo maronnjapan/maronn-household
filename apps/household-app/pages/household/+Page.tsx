@@ -3,6 +3,7 @@ import { ExpenseInput } from '../../components/ExpenseInput';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import type { CreateExpenseParams } from '@maronn/domain';
+import './household.css';
 
 /**
  * 家計簿ページ - 爆速表示の家計簿

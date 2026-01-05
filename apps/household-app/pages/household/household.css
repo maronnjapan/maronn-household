@@ -7,58 +7,60 @@
 .expense-input.calculator {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 /* 電卓ディスプレイ */
 .calculator-display {
   background: #2c3e50;
   color: white;
-  padding: 20px;
-  border-radius: 12px;
-  min-height: 100px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  min-height: 70px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 4px;
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .calculator-display .expression {
-  font-size: 1.8rem;
+  font-size: 1.4rem;
   font-weight: 500;
   text-align: right;
   word-break: break-all;
-  min-height: 36px;
+  min-height: 28px;
+  line-height: 1.2;
 }
 
 .calculator-display .result {
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: #3498db;
   text-align: right;
-  min-height: 24px;
+  min-height: 20px;
+  line-height: 1.2;
 }
 
 /* 電卓ボタングリッド */
 .calculator-buttons {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 8px;
 }
 
 /* 電卓ボタン共通スタイル */
 .calc-btn {
-  padding: 24px;
-  font-size: 1.5rem;
+  padding: 12px 8px;
+  font-size: 1.2rem;
   font-weight: 600;
   background: white;
   border: 2px solid #ecf0f1;
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
   touch-action: manipulation;
   -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
-  min-height: 64px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,42 +142,42 @@
 
 /* メモセクション */
 .memo-section {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .memo-section .memo-input {
   width: 100%;
-  padding: 16px 20px;
-  font-size: 1.1rem;
+  padding: 10px 12px;
+  font-size: 1rem;
   border: 2px solid #ecf0f1;
-  border-radius: 12px;
+  border-radius: 8px;
   transition: all 0.2s;
   -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
-  min-height: 56px;
+  min-height: 44px;
 }
 
 .memo-section .memo-input:focus {
   outline: none;
   border-color: #3498db;
-  border-width: 3px;
-  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
 
 /* 送信ボタン */
 .submit-button {
   width: 100%;
-  padding: 20px;
-  font-size: 1.3rem;
+  padding: 12px 16px;
+  font-size: 1.1rem;
   font-weight: bold;
   color: white;
   background: #3498db;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   -webkit-tap-highlight-color: rgba(41, 128, 185, 0.3);
   touch-action: manipulation;
-  min-height: 64px;
+  min-height: 48px;
 }
 
 .submit-button:hover:not(:disabled) {
@@ -196,28 +198,57 @@
 
 /* レスポンシブ対応 */
 @media (min-width: 640px) {
+  .expense-input.calculator {
+    gap: 16px;
+  }
+
+  .calculator-display {
+    padding: 20px;
+    min-height: 100px;
+    border-radius: 12px;
+  }
+
   .calculator-display .expression {
     font-size: 2rem;
+    min-height: 36px;
   }
 
   .calculator-display .result {
     font-size: 1.3rem;
+    min-height: 24px;
+  }
+
+  .calculator-buttons {
+    gap: 12px;
   }
 
   .calc-btn {
     padding: 20px;
     font-size: 1.3rem;
     min-height: 56px;
+    border-radius: 12px;
+  }
+
+  .memo-section {
+    margin-top: 8px;
   }
 
   .memo-section .memo-input {
-    font-size: 1rem;
-    min-height: 48px;
-    padding: 12px 16px;
+    padding: 16px 20px;
+    font-size: 1.1rem;
+    min-height: 56px;
+    border-radius: 12px;
+  }
+
+  .memo-section .memo-input:focus {
+    border-width: 3px;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
   }
 
   .submit-button {
-    font-size: 1.2rem;
-    min-height: 56px;
+    padding: 20px;
+    font-size: 1.3rem;
+    min-height: 64px;
+    border-radius: 12px;
   }
 }

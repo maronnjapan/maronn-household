@@ -11,12 +11,21 @@
       "enabled": true
     }
   },
-  "d1_databases": [
+  // PostgreSQL接続用のHyperdrive（D1から移行）
+  // Hyperdriveの設定方法: wrangler hyperdrive create <name> --connection-string="postgresql://..."
+  "hyperdrive": [
     {
-      "binding": "DB",
-      "database_name": "household-db",
-      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34",
-      "migrations_dir": "database/migrations"
+      "binding": "HYPERDRIVE",
+      "id": "YOUR_HYPERDRIVE_ID_HERE"
     }
-  ]
+  ],
+  // 環境変数
+  "vars": {
+    "AUTH0_DOMAIN": "YOUR_AUTH0_DOMAIN",
+    "AUTH0_CLIENT_ID": "YOUR_AUTH0_CLIENT_ID",
+    "AUTH0_CLIENT_SECRET": "YOUR_AUTH0_CLIENT_SECRET",
+    "BETTER_AUTH_SECRET": "YOUR_BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL": "http://localhost:5173"
+  }
+  // 注: D1は削除しました。PostgreSQL + Hyperdriveを使用します。
 }

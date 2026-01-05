@@ -1,15 +1,36 @@
-import type { dbD1 } from "../database/drizzle/db";
-import { initTRPC } from "@trpc/server";
-import { drizzle } from 'drizzle-orm/d1';
+import { initTRPC, TRPCError } from "@trpc/server";
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import { eq, and, gte, lte } from 'drizzle-orm';
-import { expenses, budgets } from '../database/drizzle/schema/household';
+import { expenses, budgets } from '../database/drizzle/schema/household-pg';
+import { user } from '../database/drizzle/schema/auth';
 import { z } from 'zod';
+
+/**
+ * tRPCコンテキスト型定義
+ * セッション情報とユーザー情報を含む
+ */
+interface Context {
+  env?: {
+    HYPERDRIVE: Hyperdrive;
+    [key: string]: any;
+  };
+  session?: any;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    [key: string]: any;
+  } | null;
+  req?: Request;
+  resHeaders?: Headers;
+}
 
 /**
  * Initialization of tRPC backend
  * Should be done only once per backend!
  */
-const t = initTRPC.context<{ db: ReturnType<typeof dbD1>; env?: { DB: D1Database } }>().create();
+const t = initTRPC.context<Context>().create();
 
 /**
  * Export reusable router and procedure helpers
@@ -17,6 +38,49 @@ const t = initTRPC.context<{ db: ReturnType<typeof dbD1>; env?: { DB: D1Database
  */
 export const router = t.router;
 export const publicProcedure = t.procedure;
+
+/**
+ * 認証保護されたプロシージャ
+ * ログインしているユーザーのみアクセス可能
+ */
+export const protectedProcedure = t.procedure.use(async (opts) => {
+  const { ctx } = opts;
+
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'You must be logged in to access this resource',
+    });
+  }
+
+  return opts.next({
+    ctx: {
+      ...ctx,
+      user: ctx.user, // 型安全性のため
+    },
+  });
+});
+
+/**
+ * DB接続を取得する共通ヘルパー
+ */
+function getDatabase(ctx: Context) {
+  if (!ctx.env?.HYPERDRIVE) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Database connection not available',
+    });
+  }
+
+  const client = postgres(ctx.env.HYPERDRIVE.connectionString, {
+    max: 5,
+    fetch_types: false,
+  });
+
+  return drizzle(client, {
+    schema: { ...expenses, ...budgets, ...user },
+  });
+}
 
 // 入力バリデーション用のスキーマ
 const expenseInputSchema = z.object({
@@ -58,47 +122,50 @@ const updateBudgetInputSchema = z.object({
 });
 
 export const appRouter = router({
-  // デモエンドポイント
+  // デモエンドポイント（認証不要）
   demo: publicProcedure.query(async () => {
     return { demo: true, message: "Household app tRPC is working!" };
   }),
 
-  // 支出を保存
-  createExpense: publicProcedure
+  // セッション情報取得（認証不要）
+  getSession: publicProcedure.query(async (opts) => {
+    return {
+      session: opts.ctx.session,
+      user: opts.ctx.user,
+    };
+  }),
+
+  // 支出を保存（認証必須）
+  createExpense: protectedProcedure
     .input(expenseInputSchema)
     .mutation(async (opts) => {
       const { id, amount, category, memo, date, createdAt, updatedAt, deviceId } = opts.input;
+      const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
-      // DBを取得（contextにenvがあればそちらを使う）
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      // 認証未実装のため、デフォルトユーザーを使用
-      const userId = 'default-user';
+      const db = getDatabase(opts.ctx);
 
       // 既存データをチェック（重複登録防止）
-      const existing = await database
+      const existing = await db
         .select()
         .from(expenses)
         .where(eq(expenses.id, id))
-        .get();
+        .limit(1);
 
-      if (existing) {
+      if (existing.length > 0) {
+        const existingExpense = existing[0];
         // 既に存在する場合はupdatedAtで更新判定
-        if (new Date(existing.updatedAt) < new Date(updatedAt)) {
-          await database
+        if (new Date(existingExpense.updatedAt) < new Date(updatedAt)) {
+          await db
             .update(expenses)
             .set({
               amount,
               category: category || null,
               memo: memo || null,
-              date,
-              updatedAt,
+              date: new Date(date),
+              updatedAt: new Date(updatedAt),
               deviceId,
             })
-            .where(eq(expenses.id, id))
-            .run();
+            .where(eq(expenses.id, id));
 
           return { success: true, updated: true };
         }
@@ -107,7 +174,7 @@ export const appRouter = router({
       }
 
       // 新規挿入
-      await database
+      await db
         .insert(expenses)
         .values({
           id,
@@ -115,20 +182,21 @@ export const appRouter = router({
           amount,
           category: category || null,
           memo: memo || null,
-          date,
-          createdAt,
-          updatedAt,
+          date: new Date(date),
+          createdAt: new Date(createdAt),
+          updatedAt: new Date(updatedAt),
           deviceId,
-        })
-        .run();
+        });
 
       return { success: true, created: true };
     }),
 
-  // 支出を取得（月別）
-  getExpenses: publicProcedure
+  // 支出を取得（月別）（認証必須）
+  getExpenses: protectedProcedure
     .input(getExpensesInputSchema)
     .query(async (opts) => {
+      const userId = opts.ctx.user.id;
+
       // month パラメータが指定されていない場合は現在の月を使用
       let month = opts.input.month;
       if (!month) {
@@ -138,18 +206,13 @@ export const appRouter = router({
         month = `${year}-${monthNum}`;
       }
 
-      // DBを取得（contextにenvがあればそちらを使う）
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      const userId = 'default-user';
+      const db = getDatabase(opts.ctx);
 
       // 月の範囲を計算
-      const startDate = `${month}-01`;
-      const endDate = `${month}-31`; // 簡易的な実装
+      const startDate = new Date(`${month}-01T00:00:00Z`);
+      const endDate = new Date(`${month}-31T23:59:59Z`); // 簡易的な実装
 
-      const results = await database
+      const results = await db
         .select()
         .from(expenses)
         .where(
@@ -158,92 +221,84 @@ export const appRouter = router({
             gte(expenses.date, startDate),
             lte(expenses.date, endDate)
           )
-        )
-        .all();
+        );
 
       return { expenses: results, month };
     }),
 
-  // 支出を更新
-  updateExpense: publicProcedure
+  // 支出を更新（認証必須）
+  updateExpense: protectedProcedure
     .input(updateExpenseInputSchema)
     .mutation(async (opts) => {
       const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
+      const userId = opts.ctx.user.id;
 
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      const userId = 'default-user';
+      const db = getDatabase(opts.ctx);
 
       // 既存データを確認
-      const existing = await database
+      const existing = await db
         .select()
         .from(expenses)
         .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
-        .get();
+        .limit(1);
 
-      if (!existing) {
-        return { success: false, message: 'Expense not found' };
+      if (existing.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Expense not found',
+        });
       }
 
+      const existingExpense = existing[0];
+
       // updatedAt が新しい場合のみ更新
-      if (new Date(existing.updatedAt) >= new Date(updatedAt)) {
+      if (new Date(existingExpense.updatedAt) >= new Date(updatedAt)) {
         return { success: true, updated: false, message: 'Already up to date' };
       }
 
-      await database
+      await db
         .update(expenses)
         .set({
-          amount: amount ?? existing.amount,
-          category: category !== undefined ? (category || null) : existing.category,
-          memo: memo !== undefined ? (memo || null) : existing.memo,
-          date: date ?? existing.date,
-          updatedAt,
+          amount: amount ?? existingExpense.amount,
+          category: category !== undefined ? (category || null) : existingExpense.category,
+          memo: memo !== undefined ? (memo || null) : existingExpense.memo,
+          date: date ? new Date(date) : existingExpense.date,
+          updatedAt: new Date(updatedAt),
           deviceId,
         })
-        .where(eq(expenses.id, id))
-        .run();
+        .where(eq(expenses.id, id));
 
       return { success: true, updated: true };
     }),
 
-  // 支出を削除
-  deleteExpense: publicProcedure
+  // 支出を削除（認証必須）
+  deleteExpense: protectedProcedure
     .input(deleteExpenseInputSchema)
     .mutation(async (opts) => {
       const { id } = opts.input;
+      const userId = opts.ctx.user.id;
 
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      const userId = 'default-user';
+      const db = getDatabase(opts.ctx);
 
       // 削除
-      await database
+      await db
         .delete(expenses)
-        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
-        .run();
+        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)));
 
       return { success: true };
     }),
 
-  // 予算を取得
-  getBudget: publicProcedure
+  // 予算を取得（認証必須）
+  getBudget: protectedProcedure
     .input(budgetInputSchema)
     .query(async (opts) => {
       const { month } = opts.input;
+      const userId = opts.ctx.user.id;
 
-      // DBを取得
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      const userId = 'default-user';
+      const db = getDatabase(opts.ctx);
 
       // 指定月の予算を取得
-      const result = await database
+      const result = await db
         .select()
         .from(budgets)
         .where(
@@ -252,27 +307,23 @@ export const appRouter = router({
             eq(budgets.month, month)
           )
         )
-        .get();
+        .limit(1);
 
-      return { budget: result };
+      return { budget: result.length > 0 ? result[0] : null };
     }),
 
-  // 予算を更新
-  updateBudget: publicProcedure
+  // 予算を更新（認証必須）
+  updateBudget: protectedProcedure
     .input(updateBudgetInputSchema)
     .mutation(async (opts) => {
       const { month, amount } = opts.input;
+      const userId = opts.ctx.user.id;
+      const updatedAt = new Date();
 
-      // DBを取得
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
-
-      const userId = 'default-user';
-      const updatedAt = new Date().toISOString();
+      const db = getDatabase(opts.ctx);
 
       // 既存の予算をチェック
-      const existing = await database
+      const existing = await db
         .select()
         .from(budgets)
         .where(
@@ -281,25 +332,24 @@ export const appRouter = router({
             eq(budgets.month, month)
           )
         )
-        .get();
+        .limit(1);
 
-      if (existing) {
+      if (existing.length > 0) {
         // 更新
-        await database
+        await db
           .update(budgets)
           .set({
             amount,
             updatedAt,
           })
-          .where(eq(budgets.id, existing.id))
-          .run();
+          .where(eq(budgets.id, existing[0].id));
 
         return { success: true, updated: true };
       }
 
       // 新規挿入
       const id = `${userId}-${month}`;
-      await database
+      await db
         .insert(budgets)
         .values({
           id,
@@ -307,8 +357,7 @@ export const appRouter = router({
           month,
           amount,
           updatedAt,
-        })
-        .run();
+        });
 
       return { success: true, created: true };
     }),

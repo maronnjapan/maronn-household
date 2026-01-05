@@ -30,6 +30,11 @@ export function calculateRemainingDays(
   currentDate: Date = new Date()
 ): number {
   const [year, monthNum] = month.split('-').map(Number);
+
+  // 月の値が不正な場合は0を返す
+  if (year === undefined || monthNum === undefined) {
+    return 0;
+  }
   const lastDay = new Date(year, monthNum, 0).getDate(); // 月末日
   const today = currentDate.getDate();
 

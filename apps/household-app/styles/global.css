@@ -24,6 +24,7 @@ a {
   opacity: 1;
   transition: opacity 0.3s ease-in-out;
 }
+
 body.page-transition #page-content {
   opacity: 0;
 }
@@ -167,23 +168,18 @@ body.page-transition #page-content {
 .home-page {
   max-width: 600px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 0.5rem 1rem;
 }
 
 @media (min-width: 640px) {
   .home-page {
-    padding: 20px;
+    padding: 0.5rem 1rem;
   }
 }
 
 header {
   text-align: center;
   margin-bottom: 30px;
-}
-
-header h1 {
-  font-size: 2rem;
-  color: #2c3e50;
 }
 
 .month {

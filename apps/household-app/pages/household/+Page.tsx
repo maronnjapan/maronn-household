@@ -27,7 +27,6 @@ export function Page() {
   return (
     <main className="home-page">
       <header>
-        <h1>家計簿</h1>
         <p className="month">{month}</p>
       </header>
 

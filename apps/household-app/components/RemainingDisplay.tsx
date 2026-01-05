@@ -2,6 +2,8 @@ interface RemainingDisplayProps {
   budget: number;
   spent: number;
   remaining: number;
+  dailyAverage: number;
+  dailyLimit: number;
   isLoading?: boolean;
 }
 
@@ -20,6 +22,8 @@ export function RemainingDisplay({
   budget,
   spent,
   remaining,
+  dailyAverage,
+  dailyLimit,
   isLoading = false,
 }: RemainingDisplayProps) {
   if (isLoading) {
@@ -48,6 +52,17 @@ export function RemainingDisplay({
         <p className={`remaining-value ${remaining < 0 ? 'negative' : ''}`}>
           {formatCurrency(remaining)}
         </p>
+      </div>
+
+      <div className="daily-info">
+        <div className="daily-average">
+          <span className="label">一日平均:</span>
+          <span className="value">{formatCurrency(Math.round(dailyAverage))}</span>
+        </div>
+        <div className="daily-limit">
+          <span className="label">一日使用可能額:</span>
+          <span className="value">{formatCurrency(Math.round(dailyLimit))}</span>
+        </div>
       </div>
     </div>
   );

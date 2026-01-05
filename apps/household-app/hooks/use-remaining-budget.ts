@@ -1,6 +1,10 @@
 import { useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { calculateRemaining } from '@maronn/domain';
+import {
+  calculateRemaining,
+  calculateDailyAverage,
+  calculateDailyLimit,
+} from '@maronn/domain';
 import type { ExpenseEntity } from '@maronn/domain';
 import { getExpensesByMonth, getCurrentMonth, mergeExpensesFromServer } from '../lib/db';
 import { DEFAULT_BUDGET_AMOUNT } from '../lib/const';
@@ -10,6 +14,8 @@ export interface RemainingBudgetResult {
   budget: number;
   spent: number;
   remaining: number;
+  dailyAverage: number;
+  dailyLimit: number;
   month: string;
   isLoading: boolean;
   isBudgetLoading: boolean;
@@ -94,6 +100,8 @@ export function useRemainingBudget(
       budget: budgetAmount,
       spent: 0,
       remaining: budgetAmount,
+      dailyAverage: 0,
+      dailyLimit: calculateDailyLimit(budgetAmount, month),
       month,
       isLoading: true,
       isBudgetLoading: budgetQuery.isLoading,
@@ -102,11 +110,15 @@ export function useRemainingBudget(
   }
 
   const remaining = calculateRemaining(budgetAmount, expensesData.expenses);
+  const dailyAverage = calculateDailyAverage(expensesData.spent, month);
+  const dailyLimit = calculateDailyLimit(remaining, month);
 
   return {
     budget: budgetAmount,
     spent: expensesData.spent,
     remaining,
+    dailyAverage,
+    dailyLimit,
     month,
     isLoading: false,
     isBudgetLoading: budgetQuery.isLoading,

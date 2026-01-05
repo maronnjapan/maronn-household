@@ -1,6 +1,5 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { genericOAuth } from "better-auth/plugins";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as authSchema from "../database/drizzle/schema/auth";
@@ -20,8 +19,51 @@ interface Env {
   BETTER_AUTH_URL: string;
 }
 
-export function createAuth(env: Env) {
+/**
+ * 環境変数を検証し、必須項目が欠けている場合はエラーを投げる
+ */
+function validateEnv(env: Env): void {
+  const requiredVars = [
+    'HYPERDRIVE',
+    'AUTH0_DOMAIN',
+    'AUTH0_CLIENT_ID',
+    'AUTH0_CLIENT_SECRET',
+    'BETTER_AUTH_SECRET',
+    'BETTER_AUTH_URL',
+  ] as const;
+
+  const missing = requiredVars.filter((key) => !env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(', ')}. ` +
+      'Please check AUTH_SETUP.md for configuration instructions.'
+    );
+  }
+}
+
+// Authインスタンスのキャッシュ（Worker内で再利用）
+const authCache = new WeakMap<Env, Auth>();
+
+/**
+ * Better Authインスタンスを取得（キャッシュ済みの場合は再利用）
+ *
+ * @param env - Cloudflare Workers環境変数
+ * @returns Better Authインスタンス
+ * @throws 環境変数が不足している場合
+ */
+export function createAuth(env: Env): Auth {
+  // 環境変数の検証
+  validateEnv(env);
+
+  // キャッシュ済みのインスタンスがあれば再利用
+  const cached = authCache.get(env);
+  if (cached) {
+    return cached;
+  }
+
   // Hyperdrive経由でPostgreSQLに接続
+  // Hyperdriveが接続プーリングを管理するため、明示的なクリーンアップは不要
   const client = postgres(env.HYPERDRIVE.connectionString, {
     max: 5,
     fetch_types: false,
@@ -29,7 +71,7 @@ export function createAuth(env: Env) {
 
   const db = drizzle(client, { schema: authSchema });
 
-  return betterAuth({
+  const auth = betterAuth({
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: authSchema,
@@ -45,6 +87,11 @@ export function createAuth(env: Env) {
       },
     },
   });
+
+  // キャッシュに保存
+  authCache.set(env, auth);
+
+  return auth;
 }
 
 export type Auth = ReturnType<typeof createAuth>;

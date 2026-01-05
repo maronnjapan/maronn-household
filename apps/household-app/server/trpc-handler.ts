@@ -2,15 +2,29 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { enhance, type Get, type UniversalHandler } from "@universal-middleware/core";
 import { appRouter } from "../trpc/server";
 import { createAuth } from "../auth/config";
+import type { Session, User } from "better-auth/types";
+
+/**
+ * Cloudflare Workers環境変数の型定義
+ */
+interface Env {
+  DB: D1Database;
+  HYPERDRIVE: Hyperdrive;
+  AUTH0_DOMAIN: string;
+  AUTH0_CLIENT_ID: string;
+  AUTH0_CLIENT_SECRET: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+}
 
 export const trpcHandler = ((endpoint) =>
   enhance(
     async (request, context, runtime) => {
-      const env = (runtime as { runtime: "workerd"; env?: any })?.env;
+      const env = (runtime as { runtime: "workerd"; env?: Env })?.env;
 
       // Better Authからセッション情報を取得
-      let session = null;
-      let user = null;
+      let session: Session | null = null;
+      let user: User | null = null;
 
       if (env) {
         try {

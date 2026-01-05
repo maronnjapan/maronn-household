@@ -1,5 +1,6 @@
 import { useAuth } from "../hooks/use-auth";
 import { signIn, signOut } from "../auth/client";
+import styles from "./AuthButton.module.css";
 
 /**
  * ログイン/ログアウトボタンコンポーネント
@@ -10,7 +11,7 @@ export function AuthButton() {
 
   if (isLoading) {
     return (
-      <button disabled style={styles.button}>
+      <button disabled className={styles.button}>
         読込中...
       </button>
     );
@@ -18,11 +19,11 @@ export function AuthButton() {
 
   if (isAuthenticated && user) {
     return (
-      <div style={styles.container}>
-        <span style={styles.username}>
+      <div className={styles.container}>
+        <span className={styles.username}>
           {user.name || user.email}
         </span>
-        <button onClick={signOut} style={styles.button}>
+        <button onClick={signOut} className={styles.button}>
           ログアウト
         </button>
       </div>
@@ -30,30 +31,8 @@ export function AuthButton() {
   }
 
   return (
-    <button onClick={signIn.auth0} style={styles.button}>
+    <button onClick={signIn.auth0} className={styles.button}>
       Auth0でログイン
     </button>
   );
 }
-
-const styles = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-  },
-  username: {
-    fontSize: '0.875rem',
-    color: '#666',
-  },
-  button: {
-    padding: '0.5rem 1rem',
-    fontSize: '0.875rem',
-    fontWeight: '500',
-    border: '1px solid #ddd',
-    borderRadius: '0.375rem',
-    backgroundColor: '#fff',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-};

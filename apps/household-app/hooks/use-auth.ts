@@ -12,5 +12,7 @@ export function useAuth() {
     session: session.data?.session ?? null,
     isLoading: session.isPending,
     isAuthenticated: !!session.data?.user,
+    isError: session.isError,
+    error: session.error,
   };
 }

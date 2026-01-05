@@ -4,6 +4,20 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { expenses, budgets } from '../database/drizzle/schema/household';
 import { z } from 'zod';
+import type { Session, User } from "better-auth/types";
+
+/**
+ * Cloudflare Workers環境変数の型定義
+ */
+interface Env {
+  DB: D1Database;
+  HYPERDRIVE: Hyperdrive;
+  AUTH0_DOMAIN: string;
+  AUTH0_CLIENT_ID: string;
+  AUTH0_CLIENT_SECRET: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+}
 
 /**
  * tRPCコンテキスト型定義
@@ -11,17 +25,9 @@ import { z } from 'zod';
  */
 interface Context {
   db: ReturnType<typeof dbD1>;
-  env?: {
-    DB: D1Database;
-    [key: string]: any;
-  };
-  session?: any;
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    [key: string]: any;
-  } | null;
+  env?: Env;
+  session?: Session | null;
+  user?: User | null;
   req?: Request;
   resHeaders?: Headers;
 }

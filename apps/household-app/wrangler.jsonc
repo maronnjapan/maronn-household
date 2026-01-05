@@ -21,19 +21,19 @@
     }
   ],
   // PostgreSQL接続用のHyperdrive（認証データ用）
-  // Hyperdriveの設定方法: wrangler hyperdrive create <name> --connection-string="postgresql://..."
+  // Hyperdriveの設定方法:
+  // 1. wrangler hyperdrive create household-auth --connection-string="postgresql://user:pass@host:5432/db"
+  // 2. 作成されたHyperdrive IDを下記の "id" に設定
+  // 3. AUTH_SETUP.mdを参照してSupabase接続文字列を取得
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
+      // TODO: Replace with actual Hyperdrive ID from `wrangler hyperdrive list`
       "id": "YOUR_HYPERDRIVE_ID_HERE"
     }
-  ],
-  // 環境変数
-  "vars": {
-    "AUTH0_DOMAIN": "YOUR_AUTH0_DOMAIN",
-    "AUTH0_CLIENT_ID": "YOUR_AUTH0_CLIENT_ID",
-    "AUTH0_CLIENT_SECRET": "YOUR_AUTH0_CLIENT_SECRET",
-    "BETTER_AUTH_SECRET": "YOUR_BETTER_AUTH_SECRET",
-    "BETTER_AUTH_URL": "http://localhost:5173"
-  }
+  ]
+  // 環境変数（シークレット）の設定方法:
+  // ローカル開発: .dev.vars.example をコピーして .dev.vars を作成
+  // 本番環境: wrangler secret put コマンドまたはCloudflare Dashboardで設定
+  // 詳細は AUTH_SETUP.md および .dev.vars.example を参照
 }

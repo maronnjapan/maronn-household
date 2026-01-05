@@ -1,4 +1,5 @@
 import { createAuthClient } from "better-auth/react";
+import { navigate } from "vike/client/router";
 
 /**
  * Better Auth クライアント（React用）
@@ -25,13 +26,16 @@ export const signIn = {
 
 /**
  * ログアウト用のヘルパー関数
+ * Vikeのルーターナビゲーションを使用してページリロードを回避
  */
 export const signOut = async () => {
-  await authClient.signOut({
-    fetchOptions: {
-      onSuccess: () => {
-        window.location.href = "/";
-      },
-    },
-  });
+  try {
+    await authClient.signOut();
+    // Vikeのクライアントサイドナビゲーションを使用
+    await navigate("/");
+  } catch (error) {
+    console.error("Sign out error:", error);
+    // エラー時はフォールバックとしてページリロード
+    window.location.href = "/";
+  }
 };

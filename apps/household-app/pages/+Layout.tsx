@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { usePageContext } from "vike-react/usePageContext";
 import "../styles/global.css";
 
 import logoUrl from "../assets/kakeibo-icon.svg";
 import { Link } from "../components/Link";
+import { Footer } from "../components/Footer";
 import { trpc, getTRPCClient } from "../trpc/client";
 
 const queryClient = new QueryClient({
@@ -19,7 +21,7 @@ const queryClient = new QueryClient({
 const trpcClient = getTRPCClient();
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-
+  const pageContext = usePageContext();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleMenu = () => {
@@ -29,6 +31,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const closeMenu = () => {
     setIsMenuOpen(false);
   };
+
+  // /household ページでは広告を非表示
+  const isHouseholdPage = pageContext.urlPathname === "/household";
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
@@ -42,6 +47,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/calendar">Calendar</Link>
         </Sidebar>
         <Content>{children}</Content>
+        <Footer showAd={!isHouseholdPage} />
       </QueryClientProvider>
     </trpc.Provider>
   );

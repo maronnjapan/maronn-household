@@ -2,6 +2,20 @@ import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
 import { db, updateSyncStatus, getCurrentMonth } from './db';
 import { vanillaTrpc } from '../trpc/client';
+import { authClient } from '../auth/client';
+
+/**
+ * 現在の認証状態をチェック
+ * Reactフック外で使用するための非同期関数
+ */
+async function isAuthenticated(): Promise<boolean> {
+  try {
+    const session = await authClient.getSession();
+    return !!session.data?.user;
+  } catch {
+    return false;
+  }
+}
 
 // リトライ設定
 const MAX_RETRY_COUNT = 3;
@@ -60,6 +74,7 @@ async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
 
 /**
  * pending 状態の支出をすべてサーバーに送信
+ * 認証していない場合はスキップ
  */
 export async function syncPendingExpenses(): Promise<{
   success: number;
@@ -68,6 +83,12 @@ export async function syncPendingExpenses(): Promise<{
   // オフラインの場合はスキップ
   if (!navigator.onLine) {
     console.info('Offline: skipping sync');
+    return { success: 0, failed: 0 };
+  }
+
+  // 認証していない場合はスキップ
+  if (!(await isAuthenticated())) {
+    console.info('Not authenticated: skipping sync');
     return { success: 0, failed: 0 };
   }
 
@@ -118,7 +139,18 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
       vanillaTrpc.getExpenses.query({ month })
     );
 
-    return result.expenses || [];
+    // サーバーから取得したデータにsyncStatus: 'synced'を追加
+    return (result.expenses || []).map((e) => ({
+      id: e.id,
+      amount: e.amount,
+      category: e.category ?? undefined,
+      memo: e.memo ?? undefined,
+      date: e.date,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      deviceId: e.deviceId,
+      syncStatus: 'synced' as const,
+    }));
   } catch (error) {
     console.error('Failed to download expenses:', month, error);
     return [];
@@ -127,6 +159,7 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
 
 /**
  * サーバーから支出をダウンロードしてローカルにマージ
+ * 認証していない場合はスキップ
  */
 export async function syncDownloadExpenses(
   month?: string
@@ -139,6 +172,12 @@ export async function syncDownloadExpenses(
   // オフラインの場合はスキップ
   if (!navigator.onLine) {
     console.info('Offline: skipping download');
+    return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
+  }
+
+  // 認証していない場合はスキップ
+  if (!(await isAuthenticated())) {
+    console.info('Not authenticated: skipping download');
     return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
   }
 
@@ -214,10 +253,17 @@ export async function syncDownloadExpenses(
 
 /**
  * 双方向同期を実行（アップロード + ダウンロード）
+ * 認証していない場合はスキップ
  */
 export async function syncBidirectional(): Promise<void> {
   if (!navigator.onLine) {
     console.info('Offline: skipping bidirectional sync');
+    return;
+  }
+
+  // 認証していない場合はスキップ
+  if (!(await isAuthenticated())) {
+    console.info('Not authenticated: skipping bidirectional sync');
     return;
   }
 

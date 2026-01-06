@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { ExpenseEntity } from '@maronn/domain';
 import { getExpensesByMonth, mergeExpensesFromServer } from '../lib/db';
 import { trpc } from '../trpc/client';
+import { useAuth } from './use-auth';
 
 export interface DayExpenses {
   date: string; // 'YYYY-MM-DD'
@@ -32,12 +33,14 @@ export function useCalendarExpenses(
 ): CalendarExpensesResult {
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
   const lastMergedAtRef = useRef<number>(0);
+  const { isAuthenticated, userId } = useAuth();
 
-  // 支出をサーバーから取得（端末間同期用）
+  // 支出をサーバーから取得（認証時のみ、端末間同期用）
   // staleTime: 0 で常に最新データを取得（他ページでの変更を即座に反映）
   const expensesQuery = trpc.getExpenses.useQuery(
     { month: monthStr },
     {
+      enabled: isAuthenticated, // 認証時のみ実行
       retry: 1,
       staleTime: 0,
       refetchOnWindowFocus: true,
@@ -47,7 +50,7 @@ export function useCalendarExpenses(
   // サーバーからデータが取得されたらマージ（useLiveQueryの外で行う）
   // これにより useLiveQuery が純粋な読み取りクエリになり、IndexedDB変更を正しく検知できる
   const serverDataUpdatedAt = expensesQuery.dataUpdatedAt;
-  if (expensesQuery.data?.expenses && serverDataUpdatedAt > lastMergedAtRef.current) {
+  if (isAuthenticated && expensesQuery.data?.expenses && serverDataUpdatedAt > lastMergedAtRef.current) {
     lastMergedAtRef.current = serverDataUpdatedAt;
     const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
       id: e.id,
@@ -61,13 +64,13 @@ export function useCalendarExpenses(
       syncStatus: 'synced' as const,
     }));
     // 非同期でマージを実行（レンダリングをブロックしない）
-    // 月を渡すことで、サーバーで削除されたデータもローカルから削除される
-    mergeExpensesFromServer(serverExpenses, monthStr).catch(console.error);
+    // 月とuserIdを渡すことで、サーバーで削除されたデータもローカルから削除される
+    mergeExpensesFromServer(serverExpenses, monthStr, userId).catch(console.error);
   }
 
-  // 支出をIndexedDBからリアルタイム取得（読み取り専用）
+  // 支出をIndexedDBからリアルタイム取得（ユーザーIDでフィルタリング）
   const expensesData = useLiveQuery(async () => {
-    const expenses = await getExpensesByMonth(monthStr);
+    const expenses = await getExpensesByMonth(monthStr, userId);
 
     // 日付ごとにグループ化
     const expensesByDay = new Map<string, DayExpenses>();

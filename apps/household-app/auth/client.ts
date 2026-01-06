@@ -5,21 +5,24 @@ import { navigate } from "vike/client/router";
  * Better Auth ベースURLの取得
  * 環境変数から取得し、未設定の場合はフォールバック値を使用
  *
- * Vikeの環境変数規約に従い、PUBLIC_ENV__ プレフィックスを使用
+ * Cloudflare Workersでは環境変数が取得できない場合があるため、
+ * ブラウザ環境では window.location.origin を優先的に使用
  * @see https://vike.dev/env
  */
 const getBaseURL = (): string => {
-  // 環境変数から取得（Vikeの規約: PUBLIC_ENV__ プレフィックス）
-  if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
-    return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;
-  }
-
-  // ブラウザ環境ではwindow.location.originを使用
+  // ブラウザ環境では window.location.origin を優先
+  // （Cloudflare Workersデプロイ後も確実に動作する）
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
 
-  throw new Error("BETTER_AUTH_URL is not defined in environment variables.");
+  // サーバーサイドでは環境変数から取得
+  if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
+    return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;
+  }
+
+  // フォールバック: ローカル開発環境
+  return 'http://localhost:3000';
 };
 
 /**

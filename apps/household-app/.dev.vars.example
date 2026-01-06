@@ -1,0 +1,18 @@
+# Cloudflare Workers ローカル開発環境用のシークレット変数
+# このファイルをコピーして .dev.vars を作成し、実際の値を設定してください
+# .dev.vars は .gitignore に含まれているため、誤ってコミットされることはありません
+
+# PostgreSQLデータベース接続文字列
+# Supabase等のPostgreSQLプロバイダーから取得したURLを設定
+DATABASE_URL=postgresql://user:password@host:5432/database
+
+NODE_ENV=development
+
+# Better Auth設定
+# openssl rand -base64 32 などで生成した32文字以上のランダム文字列
+BETTER_AUTH_SECRET=your-random-secret-string-min-32-chars
+BETTER_AUTH_URL=http://localhost:5173
+
+# 本番環境へのデプロイ時は、以下のコマンドでシークレットを設定してください:
+# wrangler secret put BETTER_AUTH_SECRET
+# wrangler secret put BETTER_AUTH_URL

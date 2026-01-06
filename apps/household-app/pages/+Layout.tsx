@@ -5,6 +5,7 @@ import "../styles/global.css";
 import logoUrl from "../assets/kakeibo-icon.svg";
 import { Link } from "../components/Link";
 import { trpc, getTRPCClient } from "../trpc/client";
+import { AuthButton } from "../components/AuthButton";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
         <Logo />
+        <AuthButtonContainer />
         <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
         <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
           <Link href="/household">Household</Link>
@@ -114,6 +116,14 @@ function Logo() {
       <a href="/">
         <img src={logoUrl} height={64} width={64} alt="logo" />
       </a>
+    </div>
+  );
+}
+
+function AuthButtonContainer() {
+  return (
+    <div className="auth-button-container">
+      <AuthButton />
     </div>
   );
 }

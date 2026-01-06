@@ -1,20 +1,71 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { enhance, type Get, type UniversalHandler } from "@universal-middleware/core";
 import { appRouter } from "../trpc/server";
+import { createAuth } from "../auth/config";
+import type { Session, User } from "better-auth/types";
+
+/**
+ * Cloudflare Workers環境変数の型定義
+ */
+interface Env {
+  DB: D1Database;
+  DATABASE_URL: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+  NODE_ENV?: string;
+}
 
 export const trpcHandler = ((endpoint) =>
   enhance(
-    (request, context, runtime) => {
+    async (request, context, runtime) => {
+      const env = (runtime as { runtime: "workerd"; env?: Env })?.env;
+
+      // Better Authからセッション情報を取得
+      let session: Session | null = null;
+      let user: User | null = null;
+
+      if (!env) {
+        throw new Error("Environment not available");
+      }
+
+      try {
+        const auth = createAuth(env);
+        const authSession = await auth.api.getSession({ headers: request.headers });
+
+        if (authSession) {
+          session = authSession.session;
+          user = authSession.user;
+        }
+      } catch (error) {
+        // 本番環境でも監視可能にするため、エラーを必ずログに出力
+        console.error('[Auth] Session retrieval failed. This may indicate auth misconfiguration or database connectivity issues:', error);
+
+        // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
+        // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
+        const nodeEnv =
+          (env && env.NODE_ENV) ||
+          (typeof process !== "undefined" ? process.env?.NODE_ENV : undefined);
+        if (nodeEnv && nodeEnv !== "production") {
+          throw error;
+        }
+        // Note: 本番環境ではエラーログは上記で出力済み。未認証状態として処理を継続
+      }
+
+
       return fetchRequestHandler({
         endpoint,
         req: request,
         router: appRouter,
         createContext({ req, resHeaders }) {
+          // コンテキスト展開を明示的に行い、プロパティの衝突を防ぐ
           return {
             ...context,
-            ...(runtime as { runtime: "workerd"; env?: { DB: D1Database } }),
             req,
             resHeaders,
+            session,
+            user,
+            runtime,
+            env,
           };
         },
       });

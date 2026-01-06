@@ -1,5 +1,6 @@
 import { dbMiddleware } from "./db-middleware";
 import { trpcHandler } from "./trpc-handler";
+import { authHandler } from "./auth-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -26,6 +27,9 @@ function startApp() {
   apply(app, [
     // Make database available in Context as `context.db`
     dbMiddleware,
+
+    // Better Auth endpoints
+    authHandler("/api/auth"),
 
     // tRPC route. See https://trpc.io/docs/server/adapters
     trpcHandler("/api/trpc"),

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { DEFAULT_BUDGET_AMOUNT } from '../lib/const';
 
 interface BudgetInputProps {
   currentBudget?: number;
@@ -6,15 +7,20 @@ interface BudgetInputProps {
   onUpdate: (amount: number) => void | Promise<void>;
   isUpdating?: boolean;
   isLoading?: boolean;
+  isAuthenticated?: boolean;
 }
 
 /**
  * 予算設定コンポーネント
  * 月の予算を設定する
+ * 認証していない場合は編集不可、デフォルト予算を表示
  */
-export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false, isLoading = false }: BudgetInputProps) {
+export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false, isLoading = false, isAuthenticated = true }: BudgetInputProps) {
   const [amount, setAmount] = useState(currentBudget?.toString() || '');
   const [isEditing, setIsEditing] = useState(false);
+
+  // 表示する予算額（認証時はサーバーから取得した値、未認証時はデフォルト値）
+  const displayBudget = isAuthenticated ? currentBudget : DEFAULT_BUDGET_AMOUNT;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,13 +52,18 @@ export function BudgetInput({ currentBudget, month, onUpdate, isUpdating = false
             <p className="budget-amount skeleton">読込中...</p>
           ) : (
             <p className="budget-amount">
-              {currentBudget ? `¥${currentBudget.toLocaleString()}` : '未設定'}
+              {displayBudget ? `¥${displayBudget.toLocaleString()}` : '未設定'}
+              {!isAuthenticated && <span className="default-badge">（デフォルト）</span>}
             </p>
           )}
         </div>
-        <button type="button" onClick={handleEdit} className="edit-button" disabled={isLoading}>
-          {currentBudget ? '変更' : '設定'}
-        </button>
+        {isAuthenticated ? (
+          <button type="button" onClick={handleEdit} className="edit-button" disabled={isLoading}>
+            {displayBudget ? '変更' : '設定'}
+          </button>
+        ) : (
+          <p className="auth-required-message">予算を変更するにはログインが必要です</p>
+        )}
       </div>
     );
   }

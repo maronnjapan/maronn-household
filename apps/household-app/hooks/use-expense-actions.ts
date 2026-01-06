@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { updateExpense, deleteExpense } from '../lib/db';
 import { trpc, vanillaTrpc } from '../trpc/client';
 import { getDeviceId } from '../lib/device';
+import { useAuth } from './use-auth';
 
 export interface UpdateExpenseParams {
   amount?: number;
@@ -62,10 +63,11 @@ async function syncDeleteToServer(id: string): Promise<void> {
 
 /**
  * 支出の編集・削除アクションを提供するフック
- * ローカルファースト: 即座にIndexedDBを更新し、バックグラウンドでサーバーに同期
+ * ローカルファースト: 即座にIndexedDBを更新し、バックグラウンドでサーバーに同期（認証時のみ）
  */
 export function useExpenseActions(): UseExpenseActionsResult {
   const utils = trpc.useUtils();
+  const { isAuthenticated } = useAuth();
 
   const handleUpdateExpense = useCallback(
     async (id: string, params: UpdateExpenseParams): Promise<boolean> => {
@@ -76,16 +78,18 @@ export function useExpenseActions(): UseExpenseActionsResult {
         return false;
       }
 
-      // 2. バックグラウンドでサーバーに同期（UIをブロックしない）
-      const deviceId = getDeviceId();
-      syncUpdateToServer(id, params, updated.updatedAt, deviceId).catch(console.error);
+      // 2. 認証時のみバックグラウンドでサーバーに同期（UIをブロックしない）
+      if (isAuthenticated) {
+        const deviceId = getDeviceId();
+        syncUpdateToServer(id, params, updated.updatedAt, deviceId).catch(console.error);
 
-      // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
-      await utils.getExpenses.invalidate();
+        // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
+        await utils.getExpenses.invalidate();
+      }
 
       return true;
     },
-    [utils]
+    [utils, isAuthenticated]
   );
 
   const handleDeleteExpense = useCallback(
@@ -97,15 +101,17 @@ export function useExpenseActions(): UseExpenseActionsResult {
         return false;
       }
 
-      // 2. バックグラウンドでサーバーに同期（UIをブロックしない）
-      syncDeleteToServer(id).catch(console.error);
+      // 2. 認証時のみバックグラウンドでサーバーに同期（UIをブロックしない）
+      if (isAuthenticated) {
+        syncDeleteToServer(id).catch(console.error);
 
-      // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
-      await utils.getExpenses.invalidate();
+        // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
+        await utils.getExpenses.invalidate();
+      }
 
       return true;
     },
-    [utils]
+    [utils, isAuthenticated]
   );
 
   return {

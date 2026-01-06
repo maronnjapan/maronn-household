@@ -13,6 +13,8 @@ NODE_ENV=development
 BETTER_AUTH_SECRET=your-random-secret-string-min-32-chars
 BETTER_AUTH_URL=http://localhost:5173
 
+PUBLIC_ENV__BETTER_AUTH_URL=http://localhost:5173
+
 # 本番環境へのデプロイ時は、以下のコマンドでシークレットを設定してください:
 # wrangler secret put BETTER_AUTH_SECRET
 # wrangler secret put BETTER_AUTH_URL

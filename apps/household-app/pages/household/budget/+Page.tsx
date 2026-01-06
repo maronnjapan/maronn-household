@@ -6,10 +6,11 @@ import './budget.css';
 /**
  * 予算設定ページ
  * 月次予算を設定・更新する専用ページ
+ * 認証していない場合は編集不可
  */
 export function Page() {
   const month = getCurrentMonth();
-  const { budget, isLoading, error } = useGetBudget(month);
+  const { budget, isLoading, error, isAuthenticated } = useGetBudget(month);
   const { updateBudget, isUpdating } = useSetBudget();
 
   const handleUpdateBudget = async (amount: number) => {
@@ -37,6 +38,7 @@ export function Page() {
           onUpdate={handleUpdateBudget}
           isUpdating={isUpdating}
           isLoading={isLoading}
+          isAuthenticated={isAuthenticated}
         />
       </section>
 

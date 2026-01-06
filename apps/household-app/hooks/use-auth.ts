@@ -1,21 +1,23 @@
 import { authClient } from "../auth/client";
+import { ANONYMOUS_USER_ID } from "../lib/db";
 
 /**
  * 認証状態を管理するカスタムフック
  * Better AuthのuseSessionを使用
  *
- * 注: 現時点ではユーザー情報をフロントエンドに公開する必要がないため、
- * 認証状態（isAuthenticated）のみを提供します。
- * 将来的にユーザー情報が必要になった場合は、userプロパティを追加してください。
+ * userIdはIndexedDBのデータ分離に使用:
+ * - 認証時: 実際のユーザーID
+ * - 未認証時: ANONYMOUS_USER_ID ('anonymous')
  */
 export function useAuth() {
   const session = authClient.useSession();
+  const isAuthenticated = !!session.data?.user;
 
   return {
-    // user: session.data?.user ?? null, // 将来必要になったら有効化
+    userId: isAuthenticated ? session.data!.user.id : ANONYMOUS_USER_ID,
     isLoading: session.isPending,
-    isAuthenticated: !!session.data?.user,
-    isError: session.isError,
+    isAuthenticated,
+    isError: !!session.error,
     error: session.error,
   };
 }

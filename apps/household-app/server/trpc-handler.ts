@@ -9,7 +9,7 @@ import type { Session, User } from "better-auth/types";
  */
 interface Env {
   DB: D1Database;
-  HYPERDRIVE: Hyperdrive;
+  DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   NODE_ENV?: string;

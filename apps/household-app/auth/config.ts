@@ -13,11 +13,11 @@ export type Auth = ReturnType<typeof betterAuth>;
 /**
  * Better Auth設定
  * メール/パスワード認証
- * Hyperdrive経由でSupabase PostgreSQLに接続
+ * DATABASE_URL環境変数経由でPostgreSQLに接続
  */
 
 interface Env {
-  HYPERDRIVE: Hyperdrive;
+  DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
 }
@@ -27,7 +27,7 @@ interface Env {
  */
 function validateEnv(env: Env): void {
   const requiredVars = [
-    'HYPERDRIVE',
+    'DATABASE_URL',
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
   ] as const;
@@ -70,9 +70,8 @@ export function createAuth(env: Env): Auth {
     return cachedAuth;
   }
 
-  // Hyperdrive経由でPostgreSQLに接続
-  // Hyperdriveが接続プーリングを管理するため、明示的なクリーンアップは不要
-  const client = postgres(env.HYPERDRIVE.connectionString, {
+  // PostgreSQLに接続
+  const client = postgres(env.DATABASE_URL, {
     max: 5,
     fetch_types: false,
     prepare: false

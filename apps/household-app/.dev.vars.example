@@ -2,6 +2,10 @@
 # このファイルをコピーして .dev.vars を作成し、実際の値を設定してください
 # .dev.vars は .gitignore に含まれているため、誤ってコミットされることはありません
 
+# PostgreSQLデータベース接続文字列
+# Supabase等のPostgreSQLプロバイダーから取得したURLを設定
+DATABASE_URL=postgresql://user:password@host:5432/database
+
 # Better Auth設定
 # openssl rand -base64 32 などで生成した32文字以上のランダム文字列
 BETTER_AUTH_SECRET=your-random-secret-string-min-32-chars

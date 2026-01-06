@@ -5,8 +5,6 @@ import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
 export default startApp() as unknown;
 
 function startApp() {
@@ -14,7 +12,10 @@ function startApp() {
 
   // CORS設定
   app.use('/*', (c, next) => {
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    // Cloudflare Workers環境では env を通じて環境変数にアクセス
+    const env = c.env as { NODE_ENV?: string } | undefined;
+    const nodeEnv = env?.NODE_ENV || 'production';
+    const isDevelopment = nodeEnv === 'development';
 
     return cors({
       origin: isDevelopment ? '*' : [],
@@ -38,16 +39,27 @@ function startApp() {
   // グローバルエラーハンドラー
   app.onError((err, c) => {
     console.error('Unhandled error:', err);
+    const env = c.env as { NODE_ENV?: string } | undefined;
+    const nodeEnv = env?.NODE_ENV || 'production';
+    const isDevelopment = nodeEnv === 'development';
+
     return c.json(
       {
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        message: isDevelopment ? err.message : undefined,
+        stack: isDevelopment ? err.stack : undefined,
       },
       500
     );
   });
 
-  return serve(app, {
-    port,
-  });
+  // Cloudflare Workers環境では serve() を使う
+  // ローカル開発時はポートを指定、本番環境では指定しない
+  const isLocal = typeof process !== 'undefined' && process.env?.NODE_ENV;
+  if (isLocal) {
+    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+    return serve(app, { port });
+  }
+
+  return serve(app);
 }

@@ -94,7 +94,7 @@ export function useCalendarExpenses(
     }
 
     return { expensesByDay, totalSpent };
-  }, [monthStr]);
+  }, [monthStr, userId]);
 
   if (!expensesData) {
     return {

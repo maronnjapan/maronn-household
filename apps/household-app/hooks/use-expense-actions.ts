@@ -67,12 +67,12 @@ async function syncDeleteToServer(id: string): Promise<void> {
  */
 export function useExpenseActions(): UseExpenseActionsResult {
   const utils = trpc.useUtils();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, userId } = useAuth();
 
   const handleUpdateExpense = useCallback(
     async (id: string, params: UpdateExpenseParams): Promise<boolean> => {
       // 1. IndexedDB を即座に更新（< 50ms）
-      const updated = await updateExpense(id, params);
+      const updated = await updateExpense(id, params, userId);
 
       if (!updated) {
         return false;
@@ -89,13 +89,13 @@ export function useExpenseActions(): UseExpenseActionsResult {
 
       return true;
     },
-    [utils, isAuthenticated]
+    [utils, isAuthenticated, userId]
   );
 
   const handleDeleteExpense = useCallback(
     async (id: string): Promise<boolean> => {
       // 1. IndexedDB から即座に削除（< 50ms）
-      const deleted = await deleteExpense(id);
+      const deleted = await deleteExpense(id, userId);
 
       if (!deleted) {
         return false;
@@ -111,7 +111,7 @@ export function useExpenseActions(): UseExpenseActionsResult {
 
       return true;
     },
-    [utils, isAuthenticated]
+    [utils, isAuthenticated, userId]
   );
 
   return {

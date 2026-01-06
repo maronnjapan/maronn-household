@@ -121,7 +121,10 @@ export async function setBudget(
  * @param month 対象月（YYYY-MM形式）
  * @param userId ユーザーID（未認証時はANONYMOUS_USER_ID）
  */
-export async function getExpensesByMonth(month: string, userId: string = ANONYMOUS_USER_ID): Promise<LocalExpenseEntity[]> {
+export async function getExpensesByMonth(
+  month: string,
+  userId: string = ANONYMOUS_USER_ID
+): Promise<LocalExpenseEntity[]> {
   // month は 'YYYY-MM' 形式
   const startDate = `${month}-01`;
   const year = parseInt(month.split('-')[0] as string);
@@ -130,9 +133,8 @@ export async function getExpensesByMonth(month: string, userId: string = ANONYMO
   const endDate = `${nextMonth}-01`;
 
   return db.expenses
-    .where('date')
-    .between(startDate, endDate, true, false)
-    .filter((expense) => expense.userId === userId)
+    .where('[userId+date]')
+    .between([userId, startDate], [userId, endDate], true, false)
     .toArray();
 }
 
@@ -271,9 +273,8 @@ export async function mergeExpensesFromServer(
 
       // その月・そのユーザーのローカルデータを取得
       const localExpenses = await db.expenses
-        .where('date')
-        .between(startDate, endDate, true, false)
-        .filter((e) => e.userId === userId)
+        .where('[userId+date]')
+        .between([userId, startDate], [userId, endDate], true, false)
         .toArray();
 
       // サーバーに存在しない、かつ synced 状態のデータを削除

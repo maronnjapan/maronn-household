@@ -31,7 +31,7 @@ export function useAddExpense(): UseAddExpenseResult {
 
       // 4. 認証時のみバックグラウンド同期を実行（UIをブロックしない）
       if (isAuthenticated) {
-        syncPendingExpenses().catch(console.error);
+        syncPendingExpenses(userId).catch(console.error);
 
         // 5. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
         await utils.getExpenses.invalidate();

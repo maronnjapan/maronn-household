@@ -7,13 +7,22 @@
     "dev": "vike dev",
     "build": "vike build",
     "preview": "vike build && vike preview",
-    "drizzle:generate": "drizzle-kit generate",
+    "drizzle:generate:household": "drizzle-kit generate",
+    "drizzle:generate:auth": "DRIZZLE_TARGET=auth drizzle-kit generate",
     "drizzle:migrate": "wrangler d1 migrations apply household-db --local",
     "drizzle:migrate:remote": "wrangler d1 migrations apply household-db --remote",
     "drizzle:studio": "drizzle-kit studio",
     "deploy": "vike build && wrangler deploy",
     "deploy:ci": "vike build && wrangler deploy",
-    "generate-types": "wrangler types"
+    "generate-types": "wrangler types",
+    "supabase:login": "supabase login",
+    "supabase:init": "supabase init",
+    "supabase:link": "supabase link",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:projects:list": "supabase projects list",
+    "supabase:projects:create": "supabase projects create maronn-household-db ",
+    "supabase:db:push": "supabase db push"
   },
   "dependencies": {
     "@maronn/domain": "workspace:*",
@@ -45,6 +54,7 @@
     "@types/react-dom": "^19.2.3",
     "@universal-middleware/core": "^0.4.13",
     "@vitejs/plugin-react": "^5.1.2",
+    "supabase": "^2.70.5",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "wrangler": "^4.54.0"

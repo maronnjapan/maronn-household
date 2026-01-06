@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "../hooks/use-auth";
-import { signIn, signOut } from "../auth/client";
+import { signOut } from "../auth/client";
 import styles from "./AuthButton.module.css";
 
 /**
@@ -10,11 +10,6 @@ import styles from "./AuthButton.module.css";
 export function AuthButton() {
   const { isLoading, isAuthenticated, isError, error } = useAuth();
 
-  // パフォーマンス最適化のためuseCallbackでメモ化
-  const handleSignIn = useCallback(async () => {
-    await signIn.auth0();
-  }, []);
-
   const handleSignOut = useCallback(async () => {
     await signOut();
   }, []);
@@ -22,18 +17,18 @@ export function AuthButton() {
   // セッション取得エラー時の表示
   if (isError) {
     return (
-      <button disabled className={styles.button} title={error?.message}>
-        エラー
-      </button>
+      <a href="/auth/login" className={styles.button} title={error?.message}>
+        ログイン
+      </a>
     );
   }
 
   // 読込中の表示
   if (isLoading) {
     return (
-      <button disabled className={styles.button}>
+      <span className={styles.button}>
         読込中...
-      </button>
+      </span>
     );
   }
 
@@ -48,8 +43,8 @@ export function AuthButton() {
 
   // 未ログインの場合
   return (
-    <button onClick={handleSignIn} className={styles.button}>
-      Auth0でログイン
-    </button>
+    <a href="/auth/login" className={styles.button}>
+      ログイン
+    </a>
   );
 }

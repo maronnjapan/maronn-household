@@ -20,6 +20,8 @@ import { defineConfig } from "drizzle-kit";
 
 const target = process.env.DRIZZLE_TARGET || "household";
 
+let config = null;
+
 if (target === "auth") {
   // 認証用テーブル（PostgreSQL / Supabase）
   if (!process.env.DATABASE_URL) {
@@ -29,10 +31,10 @@ if (target === "auth") {
     );
   }
 
-  export default defineConfig({
+  config = defineConfig({
     dialect: "postgresql",
     schema: "./database/drizzle/schema/auth.ts",
-    out: "./database/migrations/auth",
+    out: "./supabase/migrations/",
     dbCredentials: {
       // マイグレーション生成時はSupabaseの直接接続文字列を使用
       // 実行時はHyperdriveを使用（wrangler経由）
@@ -42,9 +44,11 @@ if (target === "auth") {
 } else {
   // 支出・予算データ（D1 / SQLite）
   // D1はwrangler経由で実行するため、dbCredentialsは不要
-  export default defineConfig({
+  config = defineConfig({
     dialect: "sqlite",
     schema: "./database/drizzle/schema/household.ts",
     out: "./database/migrations/household",
   });
 }
+
+export default config;

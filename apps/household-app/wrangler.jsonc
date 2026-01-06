@@ -28,8 +28,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      // TODO: Replace with actual Hyperdrive ID from `wrangler hyperdrive list`
-      "id": "YOUR_HYPERDRIVE_ID_HERE"
+      "id": "ed74cd74710040dc876c23eba9e21714"
     }
   ],
   // 環境変数（シークレット）の設定方法:

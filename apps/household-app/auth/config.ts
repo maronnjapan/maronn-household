@@ -12,15 +12,12 @@ export type Auth = ReturnType<typeof betterAuth>;
 
 /**
  * Better Auth設定
- * Auth0を使用したOAuth認証
+ * メール/パスワード認証
  * Hyperdrive経由でSupabase PostgreSQLに接続
  */
 
 interface Env {
   HYPERDRIVE: Hyperdrive;
-  AUTH0_DOMAIN: string;
-  AUTH0_CLIENT_ID: string;
-  AUTH0_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
 }
@@ -31,9 +28,6 @@ interface Env {
 function validateEnv(env: Env): void {
   const requiredVars = [
     'HYPERDRIVE',
-    'AUTH0_DOMAIN',
-    'AUTH0_CLIENT_ID',
-    'AUTH0_CLIENT_SECRET',
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
   ] as const;
@@ -43,7 +37,7 @@ function validateEnv(env: Env): void {
   if (missing.length > 0) {
     throw new Error(
       `Missing required environment variables: ${missing.join(', ')}. ` +
-      'Please check AUTH_SETUP.md for configuration instructions.'
+      'Please check your environment configuration.'
     );
   }
 }
@@ -81,6 +75,7 @@ export function createAuth(env: Env): Auth {
   const client = postgres(env.HYPERDRIVE.connectionString, {
     max: 5,
     fetch_types: false,
+    prepare: false
   });
 
   const db = drizzle(client, { schema: authSchema });
@@ -92,13 +87,10 @@ export function createAuth(env: Env): Auth {
     }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    basePath: "/api/auth",
     trustedOrigins: [env.BETTER_AUTH_URL],
-    socialProviders: {
-      auth0: {
-        clientId: env.AUTH0_CLIENT_ID,
-        clientSecret: env.AUTH0_CLIENT_SECRET,
-        domain: env.AUTH0_DOMAIN,
-      },
+    emailAndPassword: {
+      enabled: true,
     },
   });
 

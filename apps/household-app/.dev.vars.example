@@ -2,18 +2,11 @@
 # このファイルをコピーして .dev.vars を作成し、実際の値を設定してください
 # .dev.vars は .gitignore に含まれているため、誤ってコミットされることはありません
 
-# Auth0設定
-AUTH0_DOMAIN=your-tenant.auth0.com
-AUTH0_CLIENT_ID=your-client-id
-AUTH0_CLIENT_SECRET=your-client-secret
-
 # Better Auth設定
+# openssl rand -base64 32 などで生成した32文字以上のランダム文字列
 BETTER_AUTH_SECRET=your-random-secret-string-min-32-chars
 BETTER_AUTH_URL=http://localhost:5173
 
 # 本番環境へのデプロイ時は、以下のコマンドでシークレットを設定してください:
-# wrangler secret put AUTH0_DOMAIN
-# wrangler secret put AUTH0_CLIENT_ID
-# wrangler secret put AUTH0_CLIENT_SECRET
 # wrangler secret put BETTER_AUTH_SECRET
 # wrangler secret put BETTER_AUTH_URL

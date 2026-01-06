@@ -18,11 +18,11 @@ export const authHandler = ((endpoint) =>
       const auth = createAuth(env);
 
       // Better Authのハンドラーを呼び出し
-      return auth.handler(request);
+      return await auth.handler(request);
     },
     {
       name: "household-app:auth-handler",
-      path: `${endpoint}/*`,
+      path: `${endpoint}/**`,
       method: ["GET", "POST"],
       immutable: false,
     },

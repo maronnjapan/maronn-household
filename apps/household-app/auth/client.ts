@@ -19,8 +19,7 @@ const getBaseURL = (): string => {
     return window.location.origin;
   }
 
-  // サーバーサイドレンダリング時のフォールバック
-  return 'http://localhost:5173';
+  throw new Error("BETTER_AUTH_URL is not defined in environment variables.");
 };
 
 /**
@@ -28,30 +27,28 @@ const getBaseURL = (): string => {
  * フロントエンドでセッション管理、ログイン/ログアウトを行う
  */
 export const authClient = createAuthClient({
-  baseURL: getBaseURL(),
+  baseURL: getBaseURL() + "/api/auth",
 });
 
 /**
- * ログイン用のヘルパー関数
+ * メール/パスワードでサインアップ
  */
-export const signIn = {
-  /**
-   * Auth0でログイン
-   * OAuth連携の開始に失敗した場合はユーザーにフィードバックを提供
-   */
-  auth0: async () => {
-    try {
-      await authClient.signIn.social({
-        provider: "auth0",
-        callbackURL: "/household",
-      });
-    } catch (error) {
-      console.error("Failed to initiate Auth0 sign-in:", error);
-      if (typeof window !== "undefined") {
-        window.alert("ログインを開始できませんでした。しばらく待ってから再度お試しください。");
-      }
-    }
-  },
+export const signUp = async (email: string, password: string, name: string) => {
+  return await authClient.signUp.email({
+    email,
+    password,
+    name,
+  });
+};
+
+/**
+ * メール/パスワードでサインイン
+ */
+export const signIn = async (email: string, password: string) => {
+  return await authClient.signIn.email({
+    email,
+    password,
+  });
 };
 
 /**

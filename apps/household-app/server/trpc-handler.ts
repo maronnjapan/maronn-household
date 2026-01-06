@@ -10,9 +10,6 @@ import type { Session, User } from "better-auth/types";
 interface Env {
   DB: D1Database;
   HYPERDRIVE: Hyperdrive;
-  AUTH0_DOMAIN: string;
-  AUTH0_CLIENT_ID: string;
-  AUTH0_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   NODE_ENV?: string;
@@ -27,28 +24,31 @@ export const trpcHandler = ((endpoint) =>
       let session: Session | null = null;
       let user: User | null = null;
 
-      if (env) {
-        try {
-          const auth = createAuth(env);
-          const authSession = await auth.api.getSession({ headers: request.headers });
+      if (!env) {
+        throw new Error("Environment not available");
+      }
 
-          if (authSession) {
-            session = authSession.session;
-            user = authSession.user;
-          }
-        } catch (error) {
-          console.error('Error getting session:', error);
+      try {
+        const auth = createAuth(env);
+        const authSession = await auth.api.getSession({ headers: request.headers });
 
-          // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
-          // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
-          const nodeEnv =
-            (env && env.NODE_ENV) ||
-            (typeof process !== "undefined" ? process.env?.NODE_ENV : undefined);
-          if (nodeEnv && nodeEnv !== "production") {
-            throw error;
-          }
+        if (authSession) {
+          session = authSession.session;
+          user = authSession.user;
+        }
+      } catch (error) {
+        console.error('Error getting session:', error);
+
+        // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
+        // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
+        const nodeEnv =
+          (env && env.NODE_ENV) ||
+          (typeof process !== "undefined" ? process.env?.NODE_ENV : undefined);
+        if (nodeEnv && nodeEnv !== "production") {
+          throw error;
         }
       }
+
 
       return fetchRequestHandler({
         endpoint,

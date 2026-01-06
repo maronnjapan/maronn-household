@@ -4,6 +4,7 @@ import { Calendar } from '../../components/Calendar';
 import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-expenses';
 import { useExpenseActions } from '../../hooks/use-expense-actions';
 import { useAddExpense } from '../../hooks/use-add-expense';
+import { useGetBudget } from '../../hooks/use-set-budget';
 import './calendar.css';
 
 /**
@@ -40,9 +41,19 @@ export function Page() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddingState | null>(null);
 
+  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
   const { expensesByDay, totalSpent, isLoading } = useCalendarExpenses(year, month);
+  const { budget } = useGetBudget(monthStr);
   const { handleUpdateExpense, handleDeleteExpense } = useExpenseActions();
   const { addExpense } = useAddExpense();
+
+  // 月の日数を計算
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  // 1日あたりの予算を計算（デフォルト予算: 120,000円）
+  const DEFAULT_BUDGET = 120000;
+  const monthlyBudget = budget?.amount ?? DEFAULT_BUDGET;
+  const dailyBudget = monthlyBudget / daysInMonth;
 
   const handlePrevMonth = () => {
     if (month === 1) {
@@ -177,6 +188,7 @@ export function Page() {
             year={year}
             month={month}
             expensesByDay={expensesByDay}
+            dailyBudget={dailyBudget}
             onPrevMonth={handlePrevMonth}
             onNextMonth={handleNextMonth}
             onDayClick={handleDayClick}

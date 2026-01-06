@@ -4,6 +4,7 @@ interface CalendarProps {
   year: number;
   month: number;
   expensesByDay: Map<string, DayExpenses>;
+  dailyBudget: number;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onDayClick?: (date: string, expenses: DayExpenses | undefined) => void;
@@ -57,6 +58,7 @@ export function Calendar({
   year,
   month,
   expensesByDay,
+  dailyBudget,
   onPrevMonth,
   onNextMonth,
   onDayClick,
@@ -104,10 +106,20 @@ export function Calendar({
           const isSunday = dayOfWeek === 0;
           const isSaturday = dayOfWeek === 6;
 
+          // 1日あたりの予算と比較して色分け
+          let budgetClass = '';
+          if (dayExpenses) {
+            if (dayExpenses.total > dailyBudget) {
+              budgetClass = 'over-budget';
+            } else if (dayExpenses.total <= dailyBudget) {
+              budgetClass = 'under-budget';
+            }
+          }
+
           return (
             <div
               key={dateStr}
-              className={`calendar-day ${isToday ? 'today' : ''} ${dayExpenses ? 'has-expense' : ''} ${isSunday ? 'sunday' : ''} ${isSaturday ? 'saturday' : ''}`}
+              className={`calendar-day ${isToday ? 'today' : ''} ${dayExpenses ? 'has-expense' : ''} ${budgetClass} ${isSunday ? 'sunday' : ''} ${isSaturday ? 'saturday' : ''}`}
               onClick={() => onDayClick?.(dateStr, dayExpenses)}
             >
               <span className="calendar-day-number">{day}</span>

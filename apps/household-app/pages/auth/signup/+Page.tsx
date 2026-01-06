@@ -27,15 +27,21 @@ export function Page() {
 
     setIsLoading(true);
 
-    const result = await signUp(email, password, name);
+    try {
+      const result = await signUp(email, password, name);
 
-    if (result.error) {
-      setError(result.error.message ?? "登録に失敗しました");
+      if (result.error) {
+        setError(result.error.message ?? "登録に失敗しました");
+        return;
+      }
+
+      await navigate("/household");
+    } catch (err) {
+      console.error("Error during signup or navigation", err);
+      setError("登録後の画面遷移に失敗しました。もう一度お試しください。");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    await navigate("/household");
   };
 
   return (

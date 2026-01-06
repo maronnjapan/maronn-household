@@ -70,8 +70,10 @@ export const signOut = async () => {
       },
       onError: (error) => {
         console.error("Sign out error:", error);
-        // エラー時もホームページにリダイレクト
-        window.location.href = "/";
+        // エラー時はリダイレクトせず、ユーザーにエラーを通知
+        if (typeof window !== "undefined") {
+          window.alert("ログアウトに失敗しました。時間をおいて再度お試しください。");
+        }
       },
     },
   });

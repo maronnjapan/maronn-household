@@ -37,7 +37,8 @@ export const trpcHandler = ((endpoint) =>
           user = authSession.user;
         }
       } catch (error) {
-        console.error('Error getting session:', error);
+        // 本番環境でも監視可能にするため、エラーを必ずログに出力
+        console.error('[Auth] Session retrieval failed. This may indicate auth misconfiguration or database connectivity issues:', error);
 
         // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
         // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
@@ -47,6 +48,7 @@ export const trpcHandler = ((endpoint) =>
         if (nodeEnv && nodeEnv !== "production") {
           throw error;
         }
+        // Note: 本番環境ではエラーログは上記で出力済み。未認証状態として処理を継続
       }
 
 

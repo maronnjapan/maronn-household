@@ -2,6 +2,19 @@ import Dexie, { type Table } from 'dexie';
 import type { ExpenseEntity, SyncStatus } from '@maronn/domain';
 
 /**
+ * 未認証ユーザー用のID
+ */
+export const ANONYMOUS_USER_ID = 'anonymous';
+
+/**
+ * IndexedDB用の支出エンティティ（userIdを含む）
+ * ログインユーザーと未認証ユーザーのデータを分離するため
+ */
+export interface LocalExpenseEntity extends ExpenseEntity {
+  userId: string; // 認証ユーザーID or 'anonymous'
+}
+
+/**
  * 予算エンティティ
  */
 export interface BudgetEntity {
@@ -24,7 +37,7 @@ export interface SyncMeta {
  * IndexedDB データベース
  */
 export class HouseholdDB extends Dexie {
-  expenses!: Table<ExpenseEntity>;
+  expenses!: Table<LocalExpenseEntity>;
   budgets!: Table<BudgetEntity>;
   syncMeta!: Table<SyncMeta>;
 
@@ -38,6 +51,13 @@ export class HouseholdDB extends Dexie {
       expenses: 'id, date, syncStatus, createdAt', // Primary: id, Indexes: date (for month queries), syncStatus (for pending sync), createdAt (for sorting)
       budgets: 'id, month, updatedAt', // Primary: id (month), Indexes: month (for lookups), updatedAt (for conflict resolution)
       syncMeta: 'id', // Primary: id (singleton for sync state)
+    });
+
+    // Version 2: userIdインデックスを追加（ユーザーごとのデータ分離用）
+    this.version(2).stores({
+      expenses: 'id, date, syncStatus, createdAt, userId, [userId+date]', // userIdと複合インデックスを追加
+      budgets: 'id, month, updatedAt',
+      syncMeta: 'id',
     });
   }
 }
@@ -97,9 +117,14 @@ export async function setBudget(
 }
 
 /**
- * 指定月の支出を取得
+ * 指定月・指定ユーザーの支出を取得
+ * @param month 対象月（YYYY-MM形式）
+ * @param userId ユーザーID（未認証時はANONYMOUS_USER_ID）
  */
-export async function getExpensesByMonth(month: string): Promise<ExpenseEntity[]> {
+export async function getExpensesByMonth(
+  month: string,
+  userId: string = ANONYMOUS_USER_ID
+): Promise<LocalExpenseEntity[]> {
   // month は 'YYYY-MM' 形式
   const startDate = `${month}-01`;
   const year = parseInt(month.split('-')[0] as string);
@@ -108,16 +133,22 @@ export async function getExpensesByMonth(month: string): Promise<ExpenseEntity[]
   const endDate = `${nextMonth}-01`;
 
   return db.expenses
-    .where('date')
-    .between(startDate, endDate, true, false)
+    .where('[userId+date]')
+    .between([userId, startDate], [userId, endDate], true, false)
     .toArray();
 }
 
 /**
  * 支出を追加
+ * @param expense 支出エンティティ
+ * @param userId ユーザーID（未認証時はANONYMOUS_USER_ID）
  */
-export async function addExpense(expense: ExpenseEntity): Promise<string> {
-  await db.expenses.add(expense);
+export async function addExpense(expense: ExpenseEntity, userId: string = ANONYMOUS_USER_ID): Promise<string> {
+  const localExpense: LocalExpenseEntity = {
+    ...expense,
+    userId,
+  };
+  await db.expenses.add(localExpense);
   return expense.id;
 }
 
@@ -133,17 +164,26 @@ export async function updateSyncStatus(
 
 /**
  * 支出を更新
+ * @param id 支出ID
+ * @param updates 更新内容
+ * @param userId ユーザーID（オプション、指定時はそのユーザーのデータのみ更新可能）
  */
 export async function updateExpense(
   id: string,
-  updates: Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>>
-): Promise<ExpenseEntity | null> {
+  updates: Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>>,
+  userId?: string
+): Promise<LocalExpenseEntity | null> {
   const existing = await db.expenses.get(id);
   if (!existing) {
     return null;
   }
 
-  const updatedExpense: ExpenseEntity = {
+  // userIdが指定されている場合、そのユーザーのデータのみ更新可能
+  if (userId !== undefined && existing.userId !== userId) {
+    return null;
+  }
+
+  const updatedExpense: LocalExpenseEntity = {
     ...existing,
     ...updates,
     updatedAt: new Date().toISOString(),
@@ -156,10 +196,17 @@ export async function updateExpense(
 
 /**
  * 支出を削除
+ * @param id 支出ID
+ * @param userId ユーザーID（オプション、指定時はそのユーザーのデータのみ削除可能）
  */
-export async function deleteExpense(id: string): Promise<boolean> {
+export async function deleteExpense(id: string, userId?: string): Promise<boolean> {
   const existing = await db.expenses.get(id);
   if (!existing) {
+    return false;
+  }
+
+  // userIdが指定されている場合、そのユーザーのデータのみ削除可能
+  if (userId !== undefined && existing.userId !== userId) {
     return false;
   }
 
@@ -177,11 +224,18 @@ export async function deleteExpense(id: string): Promise<boolean> {
  * @param serverExpenses サーバーから取得した支出データ
  * @param month 対象月（YYYY-MM形式）。指定すると、その月のローカルデータで
  *              サーバーに存在しないものを削除する
+ * @param userId ユーザーID（認証ユーザーのデータのみマージ）
  */
 export async function mergeExpensesFromServer(
   serverExpenses: ExpenseEntity[],
-  month?: string
+  month?: string,
+  userId?: string
 ): Promise<void> {
+  // userIdが指定されていない場合はマージしない（認証時のみマージ）
+  if (!userId) {
+    return;
+  }
+
   await db.transaction('rw', db.expenses, async () => {
     // サーバーにあるデータのIDセット
     const serverIds = new Set(serverExpenses.map((e) => e.id));
@@ -194,12 +248,14 @@ export async function mergeExpensesFromServer(
         // ローカルに存在しない場合は追加（同期済みとしてマーク）
         await db.expenses.add({
           ...serverExpense,
+          userId,
           syncStatus: 'synced',
         });
-      } else if (new Date(serverExpense.updatedAt) > new Date(localExpense.updatedAt)) {
-        // サーバーのデータが新しい場合は更新
+      } else if (localExpense.userId === userId && new Date(serverExpense.updatedAt) > new Date(localExpense.updatedAt)) {
+        // サーバーのデータが新しい場合は更新（同じユーザーのデータのみ）
         await db.expenses.put({
           ...serverExpense,
+          userId,
           syncStatus: 'synced',
         });
       }
@@ -215,10 +271,10 @@ export async function mergeExpensesFromServer(
         monthNum === 12 ? `${year + 1}-01` : `${year}-${String(monthNum + 1).padStart(2, '0')}`;
       const endDate = `${nextMonth}-01`;
 
-      // その月のローカルデータを取得
+      // その月・そのユーザーのローカルデータを取得
       const localExpenses = await db.expenses
-        .where('date')
-        .between(startDate, endDate, true, false)
+        .where('[userId+date]')
+        .between([userId, startDate], [userId, endDate], true, false)
         .toArray();
 
       // サーバーに存在しない、かつ synced 状態のデータを削除

@@ -1,7 +1,21 @@
 import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
-import { db, updateSyncStatus, getCurrentMonth } from './db';
+import { db, updateSyncStatus, getCurrentMonth, type LocalExpenseEntity } from './db';
 import { vanillaTrpc } from '../trpc/client';
+import { authClient } from '../auth/client';
+
+/**
+ * 現在の認証済みユーザーIDを取得
+ * Reactフック外で使用するための非同期関数
+ */
+async function getAuthenticatedUserId(): Promise<string | null> {
+  try {
+    const session = await authClient.getSession();
+    return session.data?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // リトライ設定
 const MAX_RETRY_COUNT = 3;
@@ -60,8 +74,9 @@ async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
 
 /**
  * pending 状態の支出をすべてサーバーに送信
+ * 認証していない場合はスキップ
  */
-export async function syncPendingExpenses(): Promise<{
+export async function syncPendingExpenses(userId?: string): Promise<{
   success: number;
   failed: number;
 }> {
@@ -71,11 +86,18 @@ export async function syncPendingExpenses(): Promise<{
     return { success: 0, failed: 0 };
   }
 
+  const authenticatedUserId = userId ?? (await getAuthenticatedUserId());
+  if (!authenticatedUserId) {
+    console.info('Not authenticated: skipping sync');
+    return { success: 0, failed: 0 };
+  }
+
   try {
     // pending な支出を取得
     const pendingExpenses = await db.expenses
       .where('syncStatus')
       .equals('pending')
+      .filter((expense) => expense.userId === authenticatedUserId)
       .toArray();
 
     if (pendingExpenses.length === 0) {
@@ -118,7 +140,18 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
       vanillaTrpc.getExpenses.query({ month })
     );
 
-    return result.expenses || [];
+    // サーバーから取得したデータにsyncStatus: 'synced'を追加
+    return (result.expenses || []).map((e) => ({
+      id: e.id,
+      amount: e.amount,
+      category: e.category ?? undefined,
+      memo: e.memo ?? undefined,
+      date: e.date,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      deviceId: e.deviceId,
+      syncStatus: 'synced' as const,
+    }));
   } catch (error) {
     console.error('Failed to download expenses:', month, error);
     return [];
@@ -127,9 +160,11 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
 
 /**
  * サーバーから支出をダウンロードしてローカルにマージ
+ * 認証していない場合はスキップ
  */
 export async function syncDownloadExpenses(
-  month?: string
+  month?: string,
+  userId?: string
 ): Promise<{
   downloaded: number;
   added: number;
@@ -142,11 +177,22 @@ export async function syncDownloadExpenses(
     return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
   }
 
+  const authenticatedUserId = userId ?? (await getAuthenticatedUserId());
+  if (!authenticatedUserId) {
+    console.info('Not authenticated: skipping download');
+    return { downloaded: 0, added: 0, updated: 0, conflicts: 0 };
+  }
+
   try {
     const targetMonth = month || getCurrentMonth();
 
     // サーバーから支出を取得
-    const remoteExpenses = await downloadExpenses(targetMonth);
+    const remoteExpenses: LocalExpenseEntity[] = (await downloadExpenses(targetMonth)).map(
+      (expense) => ({
+        ...expense,
+        userId: authenticatedUserId,
+      })
+    );
 
     if (remoteExpenses.length === 0) {
       console.info('No remote expenses to sync');
@@ -166,8 +212,8 @@ export async function syncDownloadExpenses(
     const endDate = `${nextMonth}-01`;
 
     const localExpenses = await db.expenses
-      .where('date')
-      .between(startDate, endDate, true, false)
+      .where('[userId+date]')
+      .between([authenticatedUserId, startDate], [authenticatedUserId, endDate], true, false)
       .toArray();
 
     // マージ処理
@@ -178,21 +224,26 @@ export async function syncDownloadExpenses(
     let conflictsCount = 0;
 
     // 新しい支出を追加
+    const ensureUserScoped = (expense: ExpenseEntity): LocalExpenseEntity => ({
+      ...(expense as LocalExpenseEntity),
+      userId: (expense as LocalExpenseEntity).userId ?? authenticatedUserId,
+    });
+
     for (const expense of mergeResult.toAdd) {
-      await db.expenses.put(expense);
+      await db.expenses.put(ensureUserScoped(expense));
       addedCount++;
     }
 
     // 既存の支出を更新
     for (const expense of mergeResult.toUpdate) {
-      await db.expenses.put(expense);
+      await db.expenses.put(ensureUserScoped(expense));
       updatedCount++;
     }
 
     // 競合した支出を追加（両方残す）
     for (const conflict of mergeResult.conflicts) {
       // リモートの支出を新しいIDで追加
-      await db.expenses.put(conflict.remote);
+      await db.expenses.put(ensureUserScoped(conflict.remote));
       conflictsCount++;
     }
 
@@ -214,6 +265,7 @@ export async function syncDownloadExpenses(
 
 /**
  * 双方向同期を実行（アップロード + ダウンロード）
+ * 認証していない場合はスキップ
  */
 export async function syncBidirectional(): Promise<void> {
   if (!navigator.onLine) {
@@ -221,13 +273,19 @@ export async function syncBidirectional(): Promise<void> {
     return;
   }
 
+  const authenticatedUserId = await getAuthenticatedUserId();
+  if (!authenticatedUserId) {
+    console.info('Not authenticated: skipping bidirectional sync');
+    return;
+  }
+
   console.info('Starting bidirectional sync...');
 
   // 1. pending な支出をアップロード
-  await syncPendingExpenses();
+  await syncPendingExpenses(authenticatedUserId);
 
   // 2. サーバーから最新データをダウンロード
-  await syncDownloadExpenses();
+  await syncDownloadExpenses(undefined, authenticatedUserId);
 
   console.info('Bidirectional sync complete');
 }

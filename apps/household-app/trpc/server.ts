@@ -1,15 +1,39 @@
 import type { dbD1 } from "../database/drizzle/db";
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { expenses, budgets } from '../database/drizzle/schema/household';
 import { z } from 'zod';
+import type { Session, User } from "better-auth/types";
+
+/**
+ * Cloudflare Workers環境変数の型定義
+ */
+interface Env {
+  DB: D1Database;
+  DATABASE_URL: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+}
+
+/**
+ * tRPCコンテキスト型定義
+ * セッション情報とユーザー情報を含む
+ */
+interface Context {
+  db: ReturnType<typeof dbD1>;
+  env?: Env;
+  session?: Session | null;
+  user?: User | null;
+  req?: Request;
+  resHeaders?: Headers;
+}
 
 /**
  * Initialization of tRPC backend
  * Should be done only once per backend!
  */
-const t = initTRPC.context<{ db: ReturnType<typeof dbD1>; env?: { DB: D1Database } }>().create();
+const t = initTRPC.context<Context>().create();
 
 /**
  * Export reusable router and procedure helpers
@@ -17,6 +41,37 @@ const t = initTRPC.context<{ db: ReturnType<typeof dbD1>; env?: { DB: D1Database
  */
 export const router = t.router;
 export const publicProcedure = t.procedure;
+
+/**
+ * 認証保護されたプロシージャ
+ * ログインしているユーザーのみアクセス可能
+ * ユーザーIDの存在も保証する
+ */
+export const protectedProcedure = t.procedure.use(async (opts) => {
+  const { ctx } = opts;
+
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'You must be logged in to access this resource',
+    });
+  }
+
+  // ユーザーIDの存在を確認（実際のプロシージャで直接使用されるため）
+  if (!ctx.user.id) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'User ID is missing from the authenticated user object',
+    });
+  }
+
+  return opts.next({
+    ctx: {
+      ...ctx,
+      user: ctx.user, // 型安全性のため（idの存在も保証済み）
+    },
+  });
+});
 
 // 入力バリデーション用のスキーマ
 const expenseInputSchema = z.object({
@@ -58,24 +113,30 @@ const updateBudgetInputSchema = z.object({
 });
 
 export const appRouter = router({
-  // デモエンドポイント
+  // デモエンドポイント（認証不要）
   demo: publicProcedure.query(async () => {
     return { demo: true, message: "Household app tRPC is working!" };
   }),
 
-  // 支出を保存
-  createExpense: publicProcedure
+  // セッション情報取得（認証不要）
+  getSession: publicProcedure.query(async (opts) => {
+    return {
+      session: opts.ctx.session,
+      user: opts.ctx.user,
+    };
+  }),
+
+  // 支出を保存（認証必須）
+  createExpense: protectedProcedure
     .input(expenseInputSchema)
     .mutation(async (opts) => {
       const { id, amount, category, memo, date, createdAt, updatedAt, deviceId } = opts.input;
+      const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
-      // DBを取得（contextにenvがあればそちらを使う）
+      // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      // 認証未実装のため、デフォルトユーザーを使用
-      const userId = 'default-user';
 
       // 既存データをチェック（重複登録防止）
       const existing = await database
@@ -125,10 +186,12 @@ export const appRouter = router({
       return { success: true, created: true };
     }),
 
-  // 支出を取得（月別）
-  getExpenses: publicProcedure
+  // 支出を取得（月別）（認証必須）
+  getExpenses: protectedProcedure
     .input(getExpensesInputSchema)
     .query(async (opts) => {
+      const userId = opts.ctx.user.id;
+
       // month パラメータが指定されていない場合は現在の月を使用
       let month = opts.input.month;
       if (!month) {
@@ -138,12 +201,10 @@ export const appRouter = router({
         month = `${year}-${monthNum}`;
       }
 
-      // DBを取得（contextにenvがあればそちらを使う）
+      // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      const userId = 'default-user';
 
       // 月の範囲を計算
       const startDate = `${month}-01`;
@@ -164,17 +225,16 @@ export const appRouter = router({
       return { expenses: results, month };
     }),
 
-  // 支出を更新
-  updateExpense: publicProcedure
+  // 支出を更新（認証必須）
+  updateExpense: protectedProcedure
     .input(updateExpenseInputSchema)
     .mutation(async (opts) => {
       const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
+      const userId = opts.ctx.user.id;
 
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      const userId = 'default-user';
 
       // 既存データを確認
       const existing = await database
@@ -184,7 +244,10 @@ export const appRouter = router({
         .get();
 
       if (!existing) {
-        return { success: false, message: 'Expense not found' };
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Expense not found',
+        });
       }
 
       // updatedAt が新しい場合のみ更新
@@ -208,17 +271,16 @@ export const appRouter = router({
       return { success: true, updated: true };
     }),
 
-  // 支出を削除
-  deleteExpense: publicProcedure
+  // 支出を削除（認証必須）
+  deleteExpense: protectedProcedure
     .input(deleteExpenseInputSchema)
     .mutation(async (opts) => {
       const { id } = opts.input;
+      const userId = opts.ctx.user.id;
 
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      const userId = 'default-user';
 
       // 削除
       await database
@@ -229,18 +291,17 @@ export const appRouter = router({
       return { success: true };
     }),
 
-  // 予算を取得
-  getBudget: publicProcedure
+  // 予算を取得（認証必須）
+  getBudget: protectedProcedure
     .input(budgetInputSchema)
     .query(async (opts) => {
       const { month } = opts.input;
+      const userId = opts.ctx.user.id;
 
-      // DBを取得
+      // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      const userId = 'default-user';
 
       // 指定月の予算を取得
       const result = await database
@@ -257,19 +318,18 @@ export const appRouter = router({
       return { budget: result };
     }),
 
-  // 予算を更新
-  updateBudget: publicProcedure
+  // 予算を更新（認証必須）
+  updateBudget: protectedProcedure
     .input(updateBudgetInputSchema)
     .mutation(async (opts) => {
       const { month, amount } = opts.input;
+      const userId = opts.ctx.user.id;
+      const updatedAt = new Date().toISOString();
 
-      // DBを取得
+      // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
-
-      const userId = 'default-user';
-      const updatedAt = new Date().toISOString();
 
       // 既存の予算をチェック
       const existing = await database

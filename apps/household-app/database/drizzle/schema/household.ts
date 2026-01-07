@@ -1,15 +1,9 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  createdAt: text('created_at').notNull(),
-});
-
 export const expenses = sqliteTable('expenses', {
   id: text('id').primaryKey(),
   userId: text('user_id')
-    .notNull()
-    .references(() => users.id),
+    .notNull(),
   amount: integer('amount').notNull(),
   category: text('category'),
   memo: text('memo'),
@@ -22,8 +16,7 @@ export const expenses = sqliteTable('expenses', {
 export const budgets = sqliteTable('budgets', {
   id: text('id').primaryKey(),
   userId: text('user_id')
-    .notNull()
-    .references(() => users.id),
+    .notNull(),
   month: text('month').notNull(),
   amount: integer('amount').notNull(),
   updatedAt: text('updated_at').notNull(),

@@ -61,11 +61,11 @@ export function RemainingDisplay({
       <div className="daily-info">
         <div className="daily-average">
           <span className="label">一日平均:</span>
-          <span className="value">{formatCurrency(Math.round(dailyAverage))}</span>
+          <span className="value">{formatCurrency(Math.floor(dailyAverage))}</span>
         </div>
         <div className="daily-limit">
           <span className="label">一日使用可能額:</span>
-          <span className="value">{formatCurrency(Math.round(dailyLimit))}</span>
+          <span className="value">{formatCurrency(Math.floor(dailyLimit))}</span>
         </div>
       </div>
 
@@ -73,13 +73,13 @@ export function RemainingDisplay({
         <div className="today-remaining">
           <span className="label">今日の残り:</span>
           <span className={`value ${todayRemaining < 0 ? 'negative' : ''}`}>
-            {formatCurrency(Math.round(todayRemaining))}
+            {formatCurrency(Math.floor(todayRemaining))}
           </span>
         </div>
         <div className="budget-pace">
           <span className="label">予算ペース対比:</span>
           <span className={`value ${budgetPaceComparison < 0 ? 'negative' : 'positive'}`}>
-            {budgetPaceComparison >= 0 ? '+' : ''}{formatCurrency(Math.round(budgetPaceComparison))}
+            {budgetPaceComparison >= 0 ? '+' : ''}{formatCurrency(Math.floor(budgetPaceComparison))}
           </span>
         </div>
       </div>

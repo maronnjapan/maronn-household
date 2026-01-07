@@ -10,8 +10,11 @@ import { navigate } from "vike/client/router";
  */
 const getBaseURL = (): string => {
   // 環境変数から取得（Vikeの規約: PUBLIC_ENV__ プレフィックス）
-  if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
-    return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;
+  // if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
+  //   return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;
+  // }
+  if (process?.env?.BETTER_AUTH_URL) {
+    return process.env.BETTER_AUTH_URL;
   }
 
   // ブラウザ環境ではwindow.location.originを使用

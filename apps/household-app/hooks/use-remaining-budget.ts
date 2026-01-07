@@ -4,6 +4,8 @@ import {
   calculateRemaining,
   calculateDailyAverage,
   calculateDailyLimit,
+  calculateTodayRemaining,
+  calculateBudgetPaceComparison,
 } from '@maronn/domain';
 import type { ExpenseEntity } from '@maronn/domain';
 import { getExpensesByMonth, getCurrentMonth, mergeExpensesFromServer } from '../lib/db';
@@ -17,6 +19,8 @@ export interface RemainingBudgetResult {
   remaining: number;
   dailyAverage: number;
   dailyLimit: number;
+  todayRemaining: number;
+  budgetPaceComparison: number;
   month: string;
   isLoading: boolean;
   isBudgetLoading: boolean;
@@ -106,6 +110,8 @@ export function useRemainingBudget(
       remaining: budgetAmount,
       dailyAverage: 0,
       dailyLimit: calculateDailyLimit(budgetAmount, month),
+      todayRemaining: calculateTodayRemaining(budgetAmount, [], month),
+      budgetPaceComparison: calculateBudgetPaceComparison(budgetAmount, [], month),
       month,
       isLoading: true,
       isBudgetLoading: budgetQuery.isLoading,
@@ -116,6 +122,8 @@ export function useRemainingBudget(
   const remaining = calculateRemaining(budgetAmount, expensesData.expenses);
   const dailyAverage = calculateDailyAverage(expensesData.spent, month);
   const dailyLimit = calculateDailyLimit(remaining, month);
+  const todayRemaining = calculateTodayRemaining(budgetAmount, expensesData.expenses, month);
+  const budgetPaceComparison = calculateBudgetPaceComparison(budgetAmount, expensesData.expenses, month);
 
   return {
     budget: budgetAmount,
@@ -123,6 +131,8 @@ export function useRemainingBudget(
     remaining,
     dailyAverage,
     dailyLimit,
+    todayRemaining,
+    budgetPaceComparison,
     month,
     isLoading: false,
     isBudgetLoading: budgetQuery.isLoading,

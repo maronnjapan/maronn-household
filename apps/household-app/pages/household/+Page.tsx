@@ -14,7 +14,7 @@ export function Page() {
   // リアクティブに残額を取得
   // 支出: IndexedDBからリアルタイム取得（< 50ms）
   // 予算: サーバーから取得（ネットワーク環境に依存）
-  const { budget, spent, remaining, dailyAverage, dailyLimit, month, isLoading } =
+  const { budget, spent, remaining, dailyAverage, dailyLimit, todayRemaining, budgetPaceComparison, month, isLoading } =
     useRemainingBudget();
 
   // 支出追加フック
@@ -43,6 +43,8 @@ export function Page() {
           remaining={remaining}
           dailyAverage={dailyAverage}
           dailyLimit={dailyLimit}
+          todayRemaining={todayRemaining}
+          budgetPaceComparison={budgetPaceComparison}
           isLoading={isLoading}
         />
       </section>

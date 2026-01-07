@@ -4,6 +4,8 @@ interface RemainingDisplayProps {
   remaining: number;
   dailyAverage: number;
   dailyLimit: number;
+  todayRemaining: number;
+  budgetPaceComparison: number;
   isLoading?: boolean;
 }
 
@@ -24,6 +26,8 @@ export function RemainingDisplay({
   remaining,
   dailyAverage,
   dailyLimit,
+  todayRemaining,
+  budgetPaceComparison,
   isLoading = false,
 }: RemainingDisplayProps) {
   if (isLoading) {
@@ -62,6 +66,21 @@ export function RemainingDisplay({
         <div className="daily-limit">
           <span className="label">一日使用可能額:</span>
           <span className="value">{formatCurrency(Math.round(dailyLimit))}</span>
+        </div>
+      </div>
+
+      <div className="today-info">
+        <div className="today-remaining">
+          <span className="label">今日の残り:</span>
+          <span className={`value ${todayRemaining < 0 ? 'negative' : ''}`}>
+            {formatCurrency(Math.round(todayRemaining))}
+          </span>
+        </div>
+        <div className="budget-pace">
+          <span className="label">予算ペース対比:</span>
+          <span className={`value ${budgetPaceComparison < 0 ? 'negative' : 'positive'}`}>
+            {budgetPaceComparison >= 0 ? '+' : ''}{formatCurrency(Math.round(budgetPaceComparison))}
+          </span>
         </div>
       </div>
     </div>

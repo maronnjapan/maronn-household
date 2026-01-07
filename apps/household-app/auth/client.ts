@@ -9,6 +9,9 @@ import { navigate } from "vike/client/router";
  * @see https://vike.dev/env
  */
 const getBaseURL = (): string => {
+  console.log('import.meta.env:', import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL);
+  console.log('process.env:', process?.env?.BETTER_AUTH_URL);
+  console.log('window.location.origin:', typeof window !== 'undefined' ? window.location.origin : 'undefined');
   // 環境変数から取得（Vikeの規約: PUBLIC_ENV__ プレフィックス）
   // if (import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL) {
   //   return import.meta.env.PUBLIC_ENV__BETTER_AUTH_URL;

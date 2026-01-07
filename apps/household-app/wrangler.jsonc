@@ -28,8 +28,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "ed74cd74710040dc876c23eba9e21714",
-      "localConnectionString": "postgresql://postgres.sglbxufgknvhyixdwmzr:XVneGBvncZbDsT2zjEk6WeofMV99BV7simWuGpt9BFmkUQbhvEVwNgos0ciY@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+      "id": "ed74cd74710040dc876c23eba9e21714"
     }
   ],
   // 環境変数（シークレット）の設定方法:

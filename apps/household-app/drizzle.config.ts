@@ -47,7 +47,7 @@ if (target === "auth") {
   config = defineConfig({
     dialect: "sqlite",
     schema: "./database/drizzle/schema/household.ts",
-    out: "./database/migrations/household",
+    out: "./database/migrations/",
   });
 }
 

@@ -8,6 +8,13 @@
       "when": 1766999841684,
       "tag": "0000_broken_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1767749190086,
+      "tag": "0001_black_logan",
+      "breakpoints": true
     }
   ]
 }

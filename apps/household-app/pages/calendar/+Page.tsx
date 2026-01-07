@@ -6,6 +6,7 @@ import { useExpenseActions } from '../../hooks/use-expense-actions';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import { useGetBudget } from '../../hooks/use-set-budget';
 import './calendar.css';
+import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
 
 /**
  * 金額をフォーマット（カンマ区切り）
@@ -51,8 +52,7 @@ export function Page() {
   const daysInMonth = new Date(year, month, 0).getDate();
 
   // 1日あたりの予算を計算（デフォルト予算: 120,000円）
-  const DEFAULT_BUDGET = 120000;
-  const monthlyBudget = budget?.amount ?? DEFAULT_BUDGET;
+  const monthlyBudget = budget?.amount ?? DEFAULT_BUDGET_AMOUNT;
   const dailyBudget = monthlyBudget / daysInMonth;
 
   const handlePrevMonth = () => {

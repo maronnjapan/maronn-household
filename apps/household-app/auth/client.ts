@@ -32,9 +32,7 @@ const getBaseURL = (): string => {
  * Better Auth クライアント（React用）
  * フロントエンドでセッション管理、ログイン/ログアウトを行う
  */
-export const authClient = createAuthClient({
-  baseURL: getBaseURL() + "/api/auth",
-});
+export const authClient = createAuthClient();
 
 /**
  * メール/パスワードでサインアップ

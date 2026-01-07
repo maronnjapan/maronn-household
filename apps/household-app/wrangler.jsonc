@@ -35,4 +35,8 @@
   // ローカル開発: .dev.vars.example をコピーして .dev.vars を作成
   // 本番環境: wrangler secret put コマンドまたはCloudflare Dashboardで設定
   // 詳細は AUTH_SETUP.md および .dev.vars.example を参照
+  "vars": {
+    "NODE_ENV": "production",
+    "BETTER_AUTH_URL": "https://household-app.maronn.workers.dev"
+  }
 }

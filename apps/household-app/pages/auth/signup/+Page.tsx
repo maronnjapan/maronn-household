@@ -7,18 +7,12 @@ export function Page() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError("パスワードが一致しません");
-      return;
-    }
 
     if (password.length < 8) {
       setError("パスワードは8文字以上で入力してください");
@@ -77,18 +71,6 @@ export function Page() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            autoComplete="new-password"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="confirmPassword">パスワード（確認）</label>
-          <input
-            id="confirmPassword"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
             required
             minLength={8}
             autoComplete="new-password"

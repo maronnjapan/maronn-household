@@ -372,6 +372,32 @@ export const appRouter = router({
 
       return { success: true, created: true };
     }),
+
+  // アカウントデータ削除（D1のみ、認証必須）
+  // PostgreSQLのユーザー削除はBetterAuth経由で行う
+  deleteAccountData: protectedProcedure
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // expensesを削除
+      await database
+        .delete(expenses)
+        .where(eq(expenses.userId, userId))
+        .run();
+
+      // budgetsを削除
+      await database
+        .delete(budgets)
+        .where(eq(budgets.userId, userId))
+        .run();
+
+      return { success: true };
+    }),
 });
 
 export type AppRouter = typeof appRouter;

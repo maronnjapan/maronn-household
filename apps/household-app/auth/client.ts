@@ -82,3 +82,21 @@ export const signOut = async () => {
     },
   });
 };
+
+/**
+ * アカウント削除用のヘルパー関数
+ * BetterAuthのdeleteUser APIを呼び出す
+ * D1データの削除はtRPC経由で事前に行う必要がある
+ */
+export const deleteAccount = async () => {
+  return await authClient.deleteUser({
+    fetchOptions: {
+      onSuccess: () => {
+        console.log("User account deleted successfully");
+      },
+      onError: (error) => {
+        console.error("Delete account error:", error);
+      },
+    },
+  });
+};

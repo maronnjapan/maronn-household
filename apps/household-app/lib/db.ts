@@ -286,3 +286,24 @@ export async function mergeExpensesFromServer(
     }
   });
 }
+
+/**
+ * 指定ユーザーのIndexedDBデータを削除
+ * 退会処理時に呼び出す
+ * @param userId 削除対象のユーザーID
+ */
+export async function clearUserData(userId: string): Promise<void> {
+  await db.transaction('rw', db.expenses, async () => {
+    await db.expenses.where('userId').equals(userId).delete();
+  });
+}
+
+/**
+ * IndexedDB全体をクリア（退会時に使用）
+ * 匿名ユーザーデータも含めてすべて削除
+ */
+export async function clearAllLocalData(): Promise<void> {
+  await db.expenses.clear();
+  await db.budgets.clear();
+  await db.syncMeta.clear();
+}

@@ -43,6 +43,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/household">Household</Link>
           <Link href="/household/budget">Budget</Link>
           <Link href="/calendar">Calendar</Link>
+          <Link href="/settings">Settings</Link>
         </Sidebar>
         <Content>{children}</Content>
         <FloatingExpenseContainer />

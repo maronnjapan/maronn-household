@@ -76,6 +76,11 @@ export function createAuth(env: Env): Auth {
     emailAndPassword: {
       enabled: true,
     },
+    user: {
+      deleteUser: {
+        enabled: true,
+      },
+    },
   });
   return auth;
 }

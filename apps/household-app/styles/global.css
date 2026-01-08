@@ -461,6 +461,12 @@ footer {
   transform: scale(0.95);
 }
 
+/* 左利き用：左下に配置 */
+.floating-expense-button.left-handed {
+  right: auto;
+  left: 1.25rem;
+}
+
 .floating-expense-button svg {
   width: 1.75rem;
   height: 1.75rem;
@@ -473,6 +479,11 @@ footer {
     height: 4rem;
     bottom: 1.5rem;
     right: 1.5rem;
+  }
+
+  .floating-expense-button.left-handed {
+    right: auto;
+    left: 1.5rem;
   }
 
   .floating-expense-button svg {

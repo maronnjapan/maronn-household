@@ -10,6 +10,7 @@ interface FloatingExpenseButtonProps {
  * 画面右下（左利きの場合は左下）に固定表示され、クリックで支出入力モーダルを開く
  */
 export function FloatingExpenseButton({ onClick }: FloatingExpenseButtonProps) {
+  console.log('localStorage handPreference:', localStorage.getItem('handPreference'));
   const { isLeftHanded } = useHandPreference();
 
   return (

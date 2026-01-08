@@ -3,18 +3,24 @@
  * アプリケーション全体のz-index値を統一的に管理
  *
  * 階層構造:
- * - --z-logo: 100          - ロゴ（最下層）
- * - --z-sidebar-overlay: 998  - サイドバーオーバーレイ
- * - --z-sidebar: 999       - サイドバー本体
- * - --z-hamburger: 1000    - ハンバーガーメニューボタン
- * - --z-auth-button: 1000  - 認証ボタン（ハンバーガーと同階層）
+ * - --z-logo: 100               - ロゴ（最下層）
+ * - --z-floating-button: 900    - フローティング支出入力ボタン
+ * - --z-sidebar-overlay: 998    - サイドバーオーバーレイ
+ * - --z-sidebar: 999            - サイドバー本体
+ * - --z-hamburger: 1000         - ハンバーガーメニューボタン
+ * - --z-auth-button: 1000       - 認証ボタン（ハンバーガーと同階層）
+ * - --z-floating-modal-overlay: 1100 - フローティングモーダルオーバーレイ
+ * - --z-floating-modal: 1101    - フローティングモーダル本体（最上層）
  */
 :root {
   --z-logo: 100;
+  --z-floating-button: 900;
   --z-sidebar-overlay: 998;
   --z-sidebar: 999;
   --z-hamburger: 1000;
   --z-auth-button: 1000;
+  --z-floating-modal-overlay: 1100;
+  --z-floating-modal: 1101;
 }
 
 /* Reset */
@@ -417,5 +423,400 @@ footer {
   .add-button {
     min-height: 52px;
     font-size: 1.1rem;
+  }
+}
+
+/* ===========================================
+ * Floating Expense Button & Modal
+ * 全ページに表示されるフローティング支出入力ボタン
+ * =========================================== */
+
+/* Floating Expense Button */
+.floating-expense-button {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: #3498db;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0.25rem 0.75rem rgba(52, 152, 219, 0.4);
+  z-index: var(--z-floating-button);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  touch-action: manipulation;
+}
+
+.floating-expense-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0.375rem 1rem rgba(52, 152, 219, 0.5);
+}
+
+.floating-expense-button:active {
+  transform: scale(0.95);
+}
+
+.floating-expense-button svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  fill: white;
+}
+
+@media (min-width: 640px) {
+  .floating-expense-button {
+    width: 4rem;
+    height: 4rem;
+    bottom: 1.5rem;
+    right: 1.5rem;
+  }
+
+  .floating-expense-button svg {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
+/* Floating Modal Overlay */
+.floating-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-floating-modal-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+/* Floating Modal Container */
+.floating-modal {
+  background: white;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: min(25rem, 90vw);
+  max-height: 90vh;
+  overflow: hidden;
+  z-index: var(--z-floating-modal);
+  box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.2);
+}
+
+.floating-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 0.0625rem solid #ecf0f1;
+}
+
+.floating-modal-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.floating-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  cursor: pointer;
+  color: #7f8c8d;
+  padding: 0;
+  line-height: 1;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.floating-modal-close:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.floating-modal-body {
+  padding: 1rem 1.25rem 1.25rem;
+  max-height: calc(90vh - 3.75rem);
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .floating-modal {
+    max-width: min(26.25rem, 90vw);
+    border-radius: 1.25rem;
+  }
+
+  .floating-modal-header {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .floating-modal-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+  }
+}
+
+/* ===========================================
+ * Calculator UI Styles
+ * ExpenseInput コンポーネント用電卓スタイル
+ * =========================================== */
+
+/* 電卓UI全体 */
+.expense-input.calculator {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 電卓ディスプレイ */
+.calculator-display {
+  background: #2c3e50;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  min-height: 70px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.calculator-display .expression {
+  font-size: 1.4rem;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+  min-height: 28px;
+  line-height: 1.2;
+}
+
+.calculator-display .result {
+  font-size: 1rem;
+  color: #3498db;
+  text-align: right;
+  min-height: 20px;
+  line-height: 1.2;
+}
+
+/* 電卓ボタングリッド */
+.calculator-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* 電卓ボタン共通スタイル */
+.calc-btn {
+  padding: 12px 8px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  background: white;
+  border: 2px solid #ecf0f1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calc-btn:hover {
+  background: #f8f9fa;
+  border-color: #3498db;
+}
+
+.calc-btn:active {
+  transform: scale(0.95);
+  background: #e9ecef;
+}
+
+/* 演算子ボタン */
+.calc-btn.operator {
+  background: #3498db;
+  color: white;
+  border-color: #2980b9;
+}
+
+.calc-btn.operator:hover {
+  background: #2980b9;
+  border-color: #2573a7;
+}
+
+.calc-btn.operator:active {
+  background: #2573a7;
+}
+
+/* イコールボタン */
+.calc-btn.equals {
+  background: #27ae60;
+  color: white;
+  border-color: #229954;
+}
+
+.calc-btn.equals:hover {
+  background: #229954;
+  border-color: #1e8449;
+}
+
+.calc-btn.equals:active {
+  background: #1e8449;
+}
+
+/* クリアボタン */
+.calc-btn.clear {
+  background: #e74c3c;
+  color: white;
+  border-color: #c0392b;
+}
+
+.calc-btn.clear:hover {
+  background: #c0392b;
+  border-color: #a93226;
+}
+
+.calc-btn.clear:active {
+  background: #a93226;
+}
+
+/* バックスペースボタン */
+.calc-btn.backspace {
+  background: #f39c12;
+  color: white;
+  border-color: #e67e22;
+}
+
+.calc-btn.backspace:hover {
+  background: #e67e22;
+  border-color: #d35400;
+}
+
+.calc-btn.backspace:active {
+  background: #d35400;
+}
+
+/* メモセクション */
+.memo-section {
+  margin-top: 4px;
+}
+
+.memo-section .memo-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 1rem;
+  border: 2px solid #ecf0f1;
+  border-radius: 8px;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  min-height: 44px;
+}
+
+.memo-section .memo-input:focus {
+  outline: none;
+  border-color: #3498db;
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
+/* 送信ボタン */
+.submit-button {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: white;
+  background: #3498db;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(41, 128, 185, 0.3);
+  touch-action: manipulation;
+  min-height: 48px;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: #2980b9;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: scale(0.98);
+  background: #2573a7;
+}
+
+.submit-button:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 電卓レスポンシブ対応 */
+@media (min-width: 640px) {
+  .expense-input.calculator {
+    gap: 16px;
+  }
+
+  .calculator-display {
+    padding: 20px;
+    min-height: 100px;
+    border-radius: 12px;
+  }
+
+  .calculator-display .expression {
+    font-size: 2rem;
+    min-height: 36px;
+  }
+
+  .calculator-display .result {
+    font-size: 1.3rem;
+    min-height: 24px;
+  }
+
+  .calculator-buttons {
+    gap: 12px;
+  }
+
+  .calc-btn {
+    padding: 20px;
+    font-size: 1.3rem;
+    min-height: 56px;
+    border-radius: 12px;
+  }
+
+  .memo-section {
+    margin-top: 8px;
+  }
+
+  .memo-section .memo-input {
+    padding: 16px 20px;
+    font-size: 1.1rem;
+    min-height: 56px;
+    border-radius: 12px;
+  }
+
+  .memo-section .memo-input:focus {
+    border-width: 3px;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  }
+
+  .submit-button {
+    padding: 20px;
+    font-size: 1.3rem;
+    min-height: 64px;
+    border-radius: 12px;
   }
 }

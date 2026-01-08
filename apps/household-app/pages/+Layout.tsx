@@ -6,6 +6,7 @@ import logoUrl from "../assets/kakeibo-icon.svg";
 import { Link } from "../components/Link";
 import { trpc, getTRPCClient } from "../trpc/client";
 import { AuthButton } from "../components/AuthButton";
+import { FloatingExpenseContainer } from "../components/FloatingExpenseContainer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/calendar">Calendar</Link>
         </Sidebar>
         <Content>{children}</Content>
+        <FloatingExpenseContainer />
       </QueryClientProvider>
     </trpc.Provider>
   );

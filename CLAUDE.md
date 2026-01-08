@@ -312,6 +312,63 @@ test('オフラインでも支出入力ができる', async ({ page, context }) 
 - 副作用は hooks または専用モジュールに分離
 - any 禁止、unknown + 型ガードを使用
 
+### CSS / スタイリング
+
+**相対単位を優先使用**
+
+レスポンシブデザインとアクセシビリティ向上のため、CSSでは相対単位を基本とする。
+
+```css
+/* ✅ 推奨: 相対単位 */
+padding: 1rem;
+margin: 0.5rem 1.25rem;
+font-size: 1.2rem;
+width: 3.5rem;
+max-width: min(25rem, 90vw);
+border-radius: 1rem;
+gap: 0.75rem;
+
+/* ❌ 非推奨: 固定ピクセル */
+padding: 16px;
+margin: 8px 20px;
+font-size: 19px;
+width: 56px;
+max-width: 400px;
+border-radius: 16px;
+gap: 12px;
+```
+
+**単位の使い分け**
+
+| 単位 | 用途 |
+|------|------|
+| `rem` | フォントサイズ、余白、サイズ全般（基本はこれを使用） |
+| `em` | 親要素のフォントサイズに比例させたい場合 |
+| `%` | 親要素に対する相対的な幅・高さ |
+| `vw` / `vh` | ビューポート基準のサイズ |
+| `min()` / `max()` | 上限・下限の設定（例: `min(25rem, 90vw)`） |
+
+**例外: px使用が許可される場合**
+
+- `border-width`: 1pxの細い線は相対単位にすると表示が不安定になる
+- box-shadow のぼかし半径: デザイン意図を正確に表現するため
+- 非常に小さな値（1-2px程度）で相対単位だと意図しない表示になる場合
+
+```css
+/* 例外的にpxが許可されるケース */
+border: 1px solid #ccc;
+box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+```
+
+**メディアクエリはpxで指定**
+
+メディアクエリはデバイスの画面幅に基づくため、px指定が直感的。
+
+```css
+/* ✅ 推奨 */
+@media (min-width: 640px) { ... }
+```
+
 ### 命名規則
 
 ```typescript

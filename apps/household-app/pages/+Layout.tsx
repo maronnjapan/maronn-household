@@ -6,6 +6,7 @@ import logoUrl from "../assets/kakeibo-icon.svg";
 import { Link } from "../components/Link";
 import { trpc, getTRPCClient } from "../trpc/client";
 import { AuthButton } from "../components/AuthButton";
+import { ClientOnly } from 'vike-react/ClientOnly'
 import { FloatingExpenseContainer } from "../components/FloatingExpenseContainer";
 
 const queryClient = new QueryClient({
@@ -46,7 +47,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/settings">Settings</Link>
         </Sidebar>
         <Content>{children}</Content>
-        <FloatingExpenseContainer />
+        <ClientOnly fallback={null}>
+          <FloatingExpenseContainer />
+        </ClientOnly>
+
       </QueryClientProvider>
     </trpc.Provider>
   );

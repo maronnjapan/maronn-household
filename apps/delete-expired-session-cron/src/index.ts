@@ -93,7 +93,6 @@ export default {
 	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
 		console.log(`[scheduled] Cron triggered at ${controller.cron} (scheduled time: ${new Date(controller.scheduledTime).toISOString()})`);
 
-		// DATABASE_URLが設定されているか確認
 		if (!env.DATABASE_URL) {
 			console.error('[scheduled] DATABASE_URL is not set. Please set it using: wrangler secret put DATABASE_URL');
 			return;

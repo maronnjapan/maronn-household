@@ -1,0 +1,20 @@
+{
+	"name": "delete-no-user-household-data-cron",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"deploy:ci": "wrangler deploy",
+		"dev": "wrangler dev --test-scheduled",
+		"start": "wrangler dev --test-scheduled",
+		"cf-typegen": "wrangler types"
+	},
+	"dependencies": {
+		"postgres": "^3.4.7"
+	},
+	"devDependencies": {
+		"@types/pg": "^8.11.10",
+		"typescript": "^5.5.2",
+		"wrangler": "^4.54.0"
+	}
+}

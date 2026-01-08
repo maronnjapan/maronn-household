@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "delete-no-user-household-data-cron",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-01-03",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true
+	},
+	"triggers": {
+		"crons": [
+			"0 20 * * *"
+		]
+	},
+	// D1データベース（household-appと同じDB）
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "household-db",
+			"database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+		}
+	]
+	// DATABASE_URL はシークレットとして設定（Supabase接続用）
+	// wrangler secret put DATABASE_URL
+}

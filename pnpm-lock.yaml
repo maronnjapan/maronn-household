@@ -58,6 +58,22 @@ importers:
         specifier: ^4.54.0
         version: 4.54.0
 
+  apps/delete-no-user-household-data-cron:
+    dependencies:
+      postgres:
+        specifier: ^3.4.7
+        version: 3.4.7
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.16.0
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^4.54.0
+        version: 4.56.0
+
   apps/household-app:
     dependencies:
       '@maronn/domain':

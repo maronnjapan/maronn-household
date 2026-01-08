@@ -18,8 +18,8 @@
  * ```
  */
 
-export { Editor } from './Editor';
-export type { EditorProps } from './Editor';
+export { getEditorModule } from './editor.ts';
+export type { EditorProps } from './editor.ts';
 export type {
   EditorTheme,
   EditorConfig,

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Editor } from '@maronn/editor';
+import { useEffect, useState } from 'react';
+import { getEditorModule } from '@maronn/editor';
 
 const defaultMarkdown = `# Milkdown Editor Playground
 
@@ -34,6 +34,15 @@ function hello() {
 
 function App() {
   const [markdown, setMarkdown] = useState(defaultMarkdown);
+  const editor = getEditorModule({
+    root: '#milkdown-editor',
+    defaultValue: defaultMarkdown,
+    onChange: (md) => setMarkdown(md),
+  });
+
+  useEffect(() => {
+    editor.create();
+  }, []);
 
   return (
     <div style={{
@@ -57,12 +66,10 @@ function App() {
           border: '1px solid #ccc',
           borderRadius: '4px',
           overflow: 'auto'
-        }}>
-          <Editor
-            defaultValue={markdown}
-            onChange={setMarkdown}
-            height="100%"
-          />
+        }}
+
+        >
+          <div id="milkdown-editor" style={{ height: '100%' }}></div>
         </div>
 
         {/* プレビュー部分（将来の拡張用） */}

@@ -13,11 +13,13 @@ export type Auth = ReturnType<typeof betterAuth>;
 /**
  * Better Auth設定
  * メール/パスワード認証
- * DATABASE_URL環境変数経由でPostgreSQLに接続
+ * 本番環境: Hyperdrive経由でPostgreSQLに接続
+ * ローカル開発: DATABASE_URL環境変数で直接接続
  */
 
 interface Env {
-  DATABASE_URL: string;
+  DATABASE_URL?: string;  // ローカル開発用
+  HYPERDRIVE?: Hyperdrive;  // 本番環境用
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
 }
@@ -27,7 +29,6 @@ interface Env {
  */
 function validateEnv(env: Env): void {
   const requiredVars = [
-    'DATABASE_URL',
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
   ] as const;
@@ -40,6 +41,28 @@ function validateEnv(env: Env): void {
       'Please check your environment configuration.'
     );
   }
+
+  // DATABASE_URL または HYPERDRIVE のどちらかが必要
+  if (!env.HYPERDRIVE && !env.DATABASE_URL) {
+    throw new Error(
+      'Database connection not available. ' +
+      'Set DATABASE_URL in .dev.vars (local) or configure HYPERDRIVE (production).'
+    );
+  }
+}
+
+/**
+ * 環境に応じてデータベース接続文字列を取得
+ * 本番環境: Hyperdrive経由
+ * ローカル開発: DATABASE_URL直接
+ */
+function getConnectionString(env: Env): string {
+  // 本番環境: Hyperdriveを使用
+  if (env.HYPERDRIVE) {
+    return env.HYPERDRIVE.connectionString;
+  }
+  // ローカル開発: DATABASE_URLを直接使用
+  return env.DATABASE_URL!;
 }
 
 /**
@@ -56,7 +79,8 @@ export function createAuth(env: Env): Auth {
   // Cloudflare WorkersではI/Oオブジェクトをリクエスト間で共有できないため
   // （"Cannot perform I/O on behalf of a different request" エラー回避）、
   // リクエストごとにコネクション/Better Authインスタンスを生成する。
-  const client = postgres(env.DATABASE_URL, {
+  const connectionString = getConnectionString(env);
+  const client = postgres(connectionString, {
     max: 5,
     fetch_types: false,
     prepare: false

@@ -307,3 +307,39 @@ export async function clearAllLocalData(): Promise<void> {
   await db.budgets.clear();
   await db.syncMeta.clear();
 }
+
+/**
+ * 匿名ユーザーの支出データを認証ユーザーに移行
+ * セッション取得完了後に呼び出す
+ *
+ * @param targetUserId 移行先のユーザーID（認証済みユーザー）
+ * @returns 移行した支出の件数
+ */
+export async function migrateAnonymousExpenses(targetUserId: string): Promise<number> {
+  // 自分自身への移行は不要
+  if (targetUserId === ANONYMOUS_USER_ID) {
+    return 0;
+  }
+
+  const anonymousExpenses = await db.expenses
+    .where('userId')
+    .equals(ANONYMOUS_USER_ID)
+    .toArray();
+
+  if (anonymousExpenses.length === 0) {
+    return 0;
+  }
+
+  // トランザクションで一括更新（userIdを変更し、syncStatusをpendingに）
+  await db.transaction('rw', db.expenses, async () => {
+    for (const expense of anonymousExpenses) {
+      await db.expenses.update(expense.id, {
+        userId: targetUserId,
+        syncStatus: 'pending',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  return anonymousExpenses.length;
+}

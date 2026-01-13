@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { CreateExpenseParams } from '@maronn/domain';
 import { evaluateExpression } from '../utils/calculator';
+import { Accordion } from './Accordion';
+import { EXPENSE_CATEGORIES } from '../constants/categories';
 
 interface ExpenseInputProps {
   onAdd: (params: CreateExpenseParams) => void | Promise<void>;
@@ -13,6 +15,7 @@ interface ExpenseInputProps {
 export function ExpenseInput({ onAdd }: ExpenseInputProps) {
   const [expression, setExpression] = useState('');
   const [memo, setMemo] = useState('');
+  const [category, setCategory] = useState<string>('');
 
   // 式を評価して金額を取得
   const calculatedAmount = evaluateExpression(expression);
@@ -45,12 +48,14 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
     // 支出を追加
     await onAdd({
       amount,
+      category: category || undefined,
       memo: memo.trim() || undefined,
     });
 
     // フォームをクリア
     setExpression('');
     setMemo('');
+    setCategory('');
   };
 
   const isValid = calculatedAmount !== null && calculatedAmount > 0;
@@ -133,16 +138,45 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
         </button>
       </div>
 
-      {/* メモ入力 */}
-      <div className="memo-section">
-        <input
-          type="text"
-          placeholder="メモ（任意）"
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          className="memo-input"
-        />
-      </div>
+      {/* メモ・カテゴリー入力（アコーディオン） */}
+      <Accordion title="詳細設定（任意）" defaultOpen={false}>
+        <div className="detail-inputs">
+          {/* カテゴリー選択 */}
+          <div className="category-section">
+            <label htmlFor="category-select" className="input-label">
+              カテゴリー
+            </label>
+            <select
+              id="category-select"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="category-select"
+            >
+              <option value="">未選択</option>
+              {EXPENSE_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* メモ入力 */}
+          <div className="memo-section">
+            <label htmlFor="memo-input" className="input-label">
+              メモ
+            </label>
+            <input
+              id="memo-input"
+              type="text"
+              placeholder="メモを入力"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              className="memo-input"
+            />
+          </div>
+        </div>
+      </Accordion>
 
       {/* 送信ボタン */}
       <button type="button" onClick={handleSubmit} disabled={!isValid} className="submit-button">

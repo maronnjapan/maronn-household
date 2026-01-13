@@ -42,6 +42,7 @@
     "postgres": "^3.4.7",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "resend": "^4.0.1",
     "ulidx": "^2.4.1",
     "vike": "^0.4.249",
     "vike-photon": "^0.1.23",

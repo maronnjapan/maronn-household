@@ -14,6 +14,9 @@ interface Env {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  RESEND_API_KEY: string;
+  CONTACT_EMAIL_TO: string;
+  CONTACT_EMAIL_FROM: string;
 }
 
 /**
@@ -110,6 +113,13 @@ const budgetInputSchema = z.object({
 const updateBudgetInputSchema = z.object({
   month: z.string(),
   amount: z.number(),
+});
+
+const contactEmailInputSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
+  subject: z.string().min(1, 'Subject is required'),
+  message: z.string().min(1, 'Message is required'),
 });
 
 export const appRouter = router({
@@ -397,6 +407,59 @@ export const appRouter = router({
         .run();
 
       return { success: true };
+    }),
+
+  // お問い合わせメール送信（認証不要）
+  sendContactEmail: publicProcedure
+    .input(contactEmailInputSchema)
+    .mutation(async (opts) => {
+      const { name, email, subject, message } = opts.input;
+      const env = opts.ctx.env;
+
+      // 環境変数のチェック
+      if (!env?.RESEND_API_KEY) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'RESEND_API_KEY is not configured',
+        });
+      }
+
+      if (!env?.CONTACT_EMAIL_TO || !env?.CONTACT_EMAIL_FROM) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Email addresses are not configured',
+        });
+      }
+
+      // Resend SDKを動的にインポート（Cloudflare Workersでは動的インポートを使用）
+      const { Resend } = await import('resend');
+      const resend = new Resend(env.RESEND_API_KEY);
+
+      // メール送信
+      const { data, error } = await resend.emails.send({
+        from: env.CONTACT_EMAIL_FROM,
+        to: env.CONTACT_EMAIL_TO,
+        subject: `[お問い合わせ] ${subject}`,
+        replyTo: email,
+        html: `
+          <h2>お問い合わせがありました</h2>
+          <p><strong>名前:</strong> ${name}</p>
+          <p><strong>メールアドレス:</strong> ${email}</p>
+          <p><strong>件名:</strong> ${subject}</p>
+          <hr>
+          <h3>お問い合わせ内容:</h3>
+          <p style="white-space: pre-wrap;">${message}</p>
+        `,
+      });
+
+      if (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to send email: ${error.message}`,
+        });
+      }
+
+      return { success: true, emailId: data?.id };
     }),
 });
 

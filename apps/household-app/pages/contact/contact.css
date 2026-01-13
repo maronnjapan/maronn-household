@@ -1,0 +1,43 @@
+.contact-page {
+  max-width: min(40rem, 90vw);
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.contact-page header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.contact-page h1 {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  color: #333;
+}
+
+.contact-page .description {
+  font-size: 1rem;
+  color: #666;
+  line-height: 1.6;
+}
+
+.form-section {
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 640px) {
+  .contact-page {
+    padding: 1rem 0.5rem;
+  }
+
+  .form-section {
+    padding: 1.5rem;
+  }
+
+  .contact-page h1 {
+    font-size: 1.5rem;
+  }
+}

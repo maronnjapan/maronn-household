@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { ExpenseEntity } from '@maronn/domain';
 import { Calendar } from '../../components/Calendar';
 import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-expenses';
 import { useExpenseActions } from '../../hooks/use-expense-actions';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import { useGetBudget } from '../../hooks/use-set-budget';
+import { CSVImporter } from '../../components/CSVImporter';
+import type { ImportableExpense } from '../../lib/csv-parser';
 import './calendar.css';
 import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
 
@@ -41,12 +43,26 @@ export function Page() {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddingState | null>(null);
+  const [showCSVImporter, setShowCSVImporter] = useState(false);
 
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
   const { expensesByDay, totalSpent, isLoading } = useCalendarExpenses(year, month);
   const { budget } = useGetBudget(monthStr);
   const { handleUpdateExpense, handleDeleteExpense } = useExpenseActions();
   const { addExpense } = useAddExpense();
+
+  // CSVインポート処理
+  const handleCSVImport = useCallback(async (expenses: ImportableExpense[]) => {
+    // 複数の支出を順次追加
+    for (const expense of expenses) {
+      await addExpense({
+        amount: expense.amount,
+        date: expense.date,
+        memo: expense.memo,
+        category: expense.category,
+      });
+    }
+  }, [addExpense]);
 
   // 月の日数を計算
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -178,6 +194,14 @@ export function Page() {
         <p className="total-spent">
           月の支出合計: {isLoading ? '読み込み中...' : formatCurrency(totalSpent)}
         </p>
+        <div className="calendar-actions">
+          <button
+            className="csv-import-btn"
+            onClick={() => setShowCSVImporter(true)}
+          >
+            CSVインポート
+          </button>
+        </div>
       </header>
 
       <section className="calendar-section">
@@ -303,6 +327,13 @@ export function Page() {
             </div>
           </div>
         </div>
+      )}
+
+      {showCSVImporter && (
+        <CSVImporter
+          onImport={handleCSVImport}
+          onClose={() => setShowCSVImporter(false)}
+        />
       )}
     </main>
   );

@@ -1,6 +1,6 @@
 /**
- * CSVインポート用パーサー
- * 項目の増減に対応できる柔軟な設計
+ * CSV処理ユーティリティ
+ * 項目の増減に柔軟に対応できる設計
  */
 
 /**
@@ -19,25 +19,38 @@ export interface CSVParseResult {
 }
 
 /**
- * 支出インポート用のマッピング設定
- * CSVの列名と内部フィールド名の対応
+ * フィールド定義
+ * 新しい項目を追加する場合はここに定義を追加するだけでOK
  */
-export interface ColumnMapping {
-  amount: string | null;  // 金額（必須）
-  date: string | null;    // 日付（必須）
-  memo: string | null;    // メモ（任意）
-  category: string | null; // カテゴリ（任意）
+export interface FieldDefinition {
+  /** 内部で使用するキー名 */
+  key: string;
+  /** 表示名 */
+  label: string;
+  /** 必須かどうか */
+  required: boolean;
+  /** CSVヘッダー自動マッピング用のパターン */
+  patterns: string[];
+  /** 値のパーサー（省略時は文字列としてそのまま使用） */
+  parser?: (value: string) => unknown;
+  /** パース失敗時のエラーメッセージ生成関数 */
+  errorMessage?: (value: string) => string;
 }
 
 /**
- * インポート可能な支出データ
+ * 動的なマッピング設定
+ * キーはFieldDefinitionのkey、値はCSVのヘッダー名
  */
-export interface ImportableExpense {
+export type ColumnMapping = Record<string, string | null>;
+
+/**
+ * インポート可能な支出データ
+ * 動的なフィールドに対応
+ */
+export type ImportableExpense = Record<string, unknown> & {
   amount: number;
   date: string;
-  memo?: string;
-  category?: string;
-}
+};
 
 /**
  * マッピング検証結果
@@ -56,6 +69,41 @@ export interface ImportResult {
 }
 
 /**
+ * デフォルトのフィールド定義
+ * 新しい項目を追加する場合はここに追加
+ */
+export const DEFAULT_FIELD_DEFINITIONS: FieldDefinition[] = [
+  {
+    key: 'amount',
+    label: '金額',
+    required: true,
+    patterns: ['金額', 'amount', '価格', '支出', '出金', '合計'],
+    parser: parseAmount,
+    errorMessage: (v) => `金額が不正です: ${v}`,
+  },
+  {
+    key: 'date',
+    label: '日付',
+    required: true,
+    patterns: ['日付', 'date', '日', '年月日', '取引日'],
+    parser: normalizeDate,
+    errorMessage: (v) => `日付の形式が不正です: ${v}`,
+  },
+  {
+    key: 'memo',
+    label: 'メモ',
+    required: false,
+    patterns: ['メモ', 'memo', '備考', 'note', 'notes', '内容', '摘要', '説明'],
+  },
+  {
+    key: 'category',
+    label: 'カテゴリ',
+    required: false,
+    patterns: ['カテゴリ', 'category', '分類', '種別', '費目'],
+  },
+];
+
+/**
  * CSVテキストをパースする
  */
 export function parseCSV(csvText: string): CSVParseResult {
@@ -66,14 +114,17 @@ export function parseCSV(csvText: string): CSVParseResult {
     return { headers: [], rows: [], errors: ['CSVが空です'] };
   }
 
-  // ヘッダー行をパース
-  const headers = parseCSVLine(lines[0] ?? '');
+  const headerLine = lines[0];
+  if (!headerLine) {
+    return { headers: [], rows: [], errors: ['ヘッダー行が空です'] };
+  }
+
+  const headers = parseCSVLine(headerLine);
 
   if (headers.length === 0) {
     return { headers: [], rows: [], errors: ['ヘッダー行が空です'] };
   }
 
-  // データ行をパース
   const rows: CSVRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
@@ -81,7 +132,6 @@ export function parseCSV(csvText: string): CSVParseResult {
 
     const values = parseCSVLine(line);
 
-    // 行データをオブジェクトに変換
     const row: CSVRow = {};
     headers.forEach((header, index) => {
       row[header] = values[index] ?? '';
@@ -96,7 +146,7 @@ export function parseCSV(csvText: string): CSVParseResult {
 /**
  * CSV行をパースする（ダブルクォート対応）
  */
-function parseCSVLine(line: string): string[] {
+export function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -107,21 +157,17 @@ function parseCSVLine(line: string): string[] {
 
     if (inQuotes) {
       if (char === '"' && nextChar === '"') {
-        // エスケープされたダブルクォート
         current += '"';
         i++;
       } else if (char === '"') {
-        // クォート終了
         inQuotes = false;
       } else {
         current += char;
       }
     } else {
       if (char === '"') {
-        // クォート開始
         inQuotes = true;
       } else if (char === ',') {
-        // フィールド区切り
         result.push(current.trim());
         current = '';
       } else {
@@ -130,7 +176,6 @@ function parseCSVLine(line: string): string[] {
     }
   }
 
-  // 最後のフィールドを追加
   result.push(current.trim());
 
   return result;
@@ -139,40 +184,31 @@ function parseCSVLine(line: string): string[] {
 /**
  * ヘッダーから自動マッピングを推測
  */
-export function suggestMapping(headers: string[]): ColumnMapping {
-  const mapping: ColumnMapping = {
-    amount: null,
-    date: null,
-    memo: null,
-    category: null,
-  };
+export function suggestMapping(
+  headers: string[],
+  fieldDefinitions: FieldDefinition[] = DEFAULT_FIELD_DEFINITIONS
+): ColumnMapping {
+  const mapping: ColumnMapping = {};
 
-  // 金額の候補
-  const amountPatterns = ['金額', 'amount', '価格', '支出', '出金', '合計'];
-  // 日付の候補
-  const datePatterns = ['日付', 'date', '日', '年月日', '取引日'];
-  // メモの候補
-  const memoPatterns = ['メモ', 'memo', '備考', 'note', 'notes', '内容', '摘要', '説明'];
-  // カテゴリの候補
-  const categoryPatterns = ['カテゴリ', 'category', '分類', '種別', '費目'];
+  for (const field of fieldDefinitions) {
+    mapping[field.key] = null;
+  }
 
-  const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+  const normalizedHeaders = headers.map((h) => h.toLowerCase().trim());
 
   for (let i = 0; i < headers.length; i++) {
     const header = headers[i] ?? '';
     const normalized = normalizedHeaders[i] ?? '';
 
-    if (!mapping.amount && amountPatterns.some(p => normalized.includes(p.toLowerCase()))) {
-      mapping.amount = header;
-    }
-    if (!mapping.date && datePatterns.some(p => normalized.includes(p.toLowerCase()))) {
-      mapping.date = header;
-    }
-    if (!mapping.memo && memoPatterns.some(p => normalized.includes(p.toLowerCase()))) {
-      mapping.memo = header;
-    }
-    if (!mapping.category && categoryPatterns.some(p => normalized.includes(p.toLowerCase()))) {
-      mapping.category = header;
+    for (const field of fieldDefinitions) {
+      if (mapping[field.key]) continue;
+
+      const matched = field.patterns.some((p) =>
+        normalized.includes(p.toLowerCase())
+      );
+      if (matched) {
+        mapping[field.key] = header;
+      }
     }
   }
 
@@ -182,14 +218,16 @@ export function suggestMapping(headers: string[]): ColumnMapping {
 /**
  * マッピングの検証
  */
-export function validateMapping(mapping: ColumnMapping): MappingValidationResult {
+export function validateMapping(
+  mapping: ColumnMapping,
+  fieldDefinitions: FieldDefinition[] = DEFAULT_FIELD_DEFINITIONS
+): MappingValidationResult {
   const errors: string[] = [];
 
-  if (!mapping.amount) {
-    errors.push('金額の列を選択してください');
-  }
-  if (!mapping.date) {
-    errors.push('日付の列を選択してください');
+  for (const field of fieldDefinitions) {
+    if (field.required && !mapping[field.key]) {
+      errors.push(`${field.label}の列を選択してください`);
+    }
   }
 
   return {
@@ -202,7 +240,6 @@ export function validateMapping(mapping: ColumnMapping): MappingValidationResult
  * 日付文字列をYYYY-MM-DD形式に正規化
  */
 export function normalizeDate(dateStr: string): string | null {
-  // すでにYYYY-MM-DD形式の場合
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return dateStr;
   }
@@ -245,12 +282,10 @@ export function normalizeDate(dateStr: string): string | null {
  * 金額文字列を数値に変換
  */
 export function parseAmount(amountStr: string): number | null {
-  // 空文字列の場合
   if (!amountStr || amountStr.trim() === '') {
     return null;
   }
 
-  // 通貨記号とカンマを除去
   const cleaned = amountStr
     .replace(/[¥$€,、]/g, '')
     .replace(/円$/g, '')
@@ -262,7 +297,7 @@ export function parseAmount(amountStr: string): number | null {
     return null;
   }
 
-  return Math.round(amount); // 整数に丸める
+  return Math.round(amount);
 }
 
 /**
@@ -270,56 +305,131 @@ export function parseAmount(amountStr: string): number | null {
  */
 export function convertToExpenses(
   rows: CSVRow[],
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
+  fieldDefinitions: FieldDefinition[] = DEFAULT_FIELD_DEFINITIONS
 ): ImportResult {
   const success: ImportableExpense[] = [];
   const errors: { row: number; message: string }[] = [];
 
   rows.forEach((row, index) => {
-    const rowNumber = index + 2; // ヘッダー行を考慮（1始まり）
+    const rowNumber = index + 2;
+    const expense: Record<string, unknown> = {};
+    let hasError = false;
 
-    // 金額の取得
-    const amountStr = mapping.amount ? row[mapping.amount] : undefined;
-    if (!amountStr) {
-      errors.push({ row: rowNumber, message: '金額が空です' });
-      return;
+    for (const field of fieldDefinitions) {
+      const csvColumn = mapping[field.key];
+      const rawValue = csvColumn ? row[csvColumn] : undefined;
+
+      if (field.required && !rawValue) {
+        errors.push({ row: rowNumber, message: `${field.label}が空です` });
+        hasError = true;
+        continue;
+      }
+
+      if (!rawValue) continue;
+
+      if (field.parser) {
+        const parsed = field.parser(rawValue);
+        if (parsed === null) {
+          const message = field.errorMessage
+            ? field.errorMessage(rawValue)
+            : `${field.label}が不正です: ${rawValue}`;
+          errors.push({ row: rowNumber, message });
+          hasError = true;
+        } else {
+          expense[field.key] = parsed;
+        }
+      } else {
+        expense[field.key] = rawValue;
+      }
     }
 
-    const amount = parseAmount(amountStr);
-    if (amount === null) {
-      errors.push({ row: rowNumber, message: `金額が不正です: ${amountStr}` });
-      return;
+    if (!hasError && expense.amount !== undefined && expense.date !== undefined) {
+      success.push(expense as ImportableExpense);
     }
-
-    // 日付の取得
-    const dateStr = mapping.date ? row[mapping.date] : undefined;
-    if (!dateStr) {
-      errors.push({ row: rowNumber, message: '日付が空です' });
-      return;
-    }
-
-    const date = normalizeDate(dateStr);
-    if (date === null) {
-      errors.push({ row: rowNumber, message: `日付の形式が不正です: ${dateStr}` });
-      return;
-    }
-
-    // オプション項目の取得
-    const expense: ImportableExpense = {
-      amount,
-      date,
-    };
-
-    if (mapping.memo && row[mapping.memo]) {
-      expense.memo = row[mapping.memo];
-    }
-
-    if (mapping.category && row[mapping.category]) {
-      expense.category = row[mapping.category];
-    }
-
-    success.push(expense);
   });
 
   return { success, errors };
+}
+
+// ============================================
+// エクスポート機能
+// ============================================
+
+/**
+ * エクスポート用のフィールド設定
+ */
+export interface ExportFieldConfig {
+  key: string;
+  header: string;
+  formatter?: (value: unknown) => string;
+}
+
+/**
+ * デフォルトのエクスポートフィールド設定
+ */
+export const DEFAULT_EXPORT_FIELDS: ExportFieldConfig[] = [
+  { key: 'date', header: '日付' },
+  {
+    key: 'amount',
+    header: '金額',
+    formatter: (v) => String(v),
+  },
+  { key: 'category', header: 'カテゴリ' },
+  { key: 'memo', header: 'メモ' },
+];
+
+/**
+ * 値をCSVセル用にエスケープ
+ */
+export function escapeCSVValue(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/**
+ * データをCSV文字列に変換
+ */
+export function convertToCSV<T extends Record<string, unknown>>(
+  data: T[],
+  fields: ExportFieldConfig[] = DEFAULT_EXPORT_FIELDS
+): string {
+  const headers = fields.map((f) => escapeCSVValue(f.header));
+  const headerLine = headers.join(',');
+
+  const dataLines = data.map((item) => {
+    const values = fields.map((field) => {
+      const rawValue = item[field.key];
+      if (rawValue === undefined || rawValue === null) {
+        return '';
+      }
+      const stringValue = field.formatter
+        ? field.formatter(rawValue)
+        : String(rawValue);
+      return escapeCSVValue(stringValue);
+    });
+    return values.join(',');
+  });
+
+  return [headerLine, ...dataLines].join('\n');
+}
+
+/**
+ * CSVファイルをダウンロード
+ */
+export function downloadCSV(csvContent: string, filename: string): void {
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

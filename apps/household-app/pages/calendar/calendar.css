@@ -498,6 +498,26 @@
   background: #5e35b1;
 }
 
+.csv-export-btn {
+  background: #2e7d32;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.2s;
+}
+
+.csv-export-btn:hover {
+  background: #1b5e20;
+}
+
+.csv-export-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
 .calendar-page header {
   display: flex;
   flex-direction: column;

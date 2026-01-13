@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
   parseCSV,
   suggestMapping,
@@ -7,32 +7,35 @@ import {
   type ColumnMapping,
   type CSVRow,
   type ImportableExpense,
+  type FieldDefinition,
+  DEFAULT_FIELD_DEFINITIONS,
 } from '../lib/csv-parser';
 
 interface CSVImporterProps {
   onImport: (expenses: ImportableExpense[]) => Promise<void>;
   onClose: () => void;
+  /** カスタムフィールド定義（省略時はデフォルト） */
+  fieldDefinitions?: FieldDefinition[];
 }
 
 type ImportStep = 'upload' | 'mapping' | 'preview' | 'result';
 
-export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
+export function CSVImporter({
+  onImport,
+  onClose,
+  fieldDefinitions = DEFAULT_FIELD_DEFINITIONS,
+}: CSVImporterProps) {
   const [step, setStep] = useState<ImportStep>('upload');
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<CSVRow[]>([]);
-  const [mapping, setMapping] = useState<ColumnMapping>({
-    amount: null,
-    date: null,
-    memo: null,
-    category: null,
-  });
+  const [mapping, setMapping] = useState<ColumnMapping>({});
   const [previewData, setPreviewData] = useState<ImportableExpense[]>([]);
   const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
   const [importedCount, setImportedCount] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -49,36 +52,35 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
       setHeaders(result.headers);
       setRows(result.rows);
 
-      // 自動マッピングを推測
-      const suggested = suggestMapping(result.headers);
+      const suggested = suggestMapping(result.headers, fieldDefinitions);
       setMapping(suggested);
 
       setStep('mapping');
     };
     reader.readAsText(file, 'UTF-8');
-  }, []);
+  }
 
-  const handleMappingChange = useCallback((field: keyof ColumnMapping, value: string) => {
-    setMapping(prev => ({
+  function handleMappingChange(fieldKey: string, value: string) {
+    setMapping((prev) => ({
       ...prev,
-      [field]: value || null,
+      [fieldKey]: value || null,
     }));
-  }, []);
+  }
 
-  const handleNextToPreview = useCallback(() => {
-    const validation = validateMapping(mapping);
+  function handleNextToPreview() {
+    const validation = validateMapping(mapping, fieldDefinitions);
     if (!validation.isValid) {
       alert(validation.errors.join('\n'));
       return;
     }
 
-    const result = convertToExpenses(rows, mapping);
+    const result = convertToExpenses(rows, mapping, fieldDefinitions);
     setPreviewData(result.success);
     setImportErrors(result.errors);
     setStep('preview');
-  }, [rows, mapping]);
+  }
 
-  const handleImport = useCallback(async () => {
+  async function handleImport() {
     if (previewData.length === 0) {
       alert('インポートするデータがありません');
       return;
@@ -95,20 +97,20 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
     } finally {
       setIsImporting(false);
     }
-  }, [previewData, onImport]);
+  }
 
-  const handleReset = useCallback(() => {
+  function handleReset() {
     setStep('upload');
     setHeaders([]);
     setRows([]);
-    setMapping({ amount: null, date: null, memo: null, category: null });
+    setMapping({});
     setPreviewData([]);
     setImportErrors([]);
     setImportedCount(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, []);
+  }
 
   return (
     <div className="csv-importer-overlay" onClick={onClose}>
@@ -119,7 +121,6 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
         </div>
 
         <div className="csv-importer-body">
-          {/* ステップ1: ファイルアップロード */}
           {step === 'upload' && (
             <div className="csv-step-upload">
               <p className="csv-step-description">
@@ -139,66 +140,32 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
             </div>
           )}
 
-          {/* ステップ2: マッピング設定 */}
           {step === 'mapping' && (
             <div className="csv-step-mapping">
               <p className="csv-step-description">
                 CSVの各列を対応する項目に割り当ててください。
-                金額と日付は必須です。
               </p>
 
               <div className="csv-mapping-form">
-                <div className="csv-mapping-row">
-                  <label>金額（必須）</label>
-                  <select
-                    value={mapping.amount ?? ''}
-                    onChange={(e) => handleMappingChange('amount', e.target.value)}
-                  >
-                    <option value="">-- 選択 --</option>
-                    {headers.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="csv-mapping-row">
-                  <label>日付（必須）</label>
-                  <select
-                    value={mapping.date ?? ''}
-                    onChange={(e) => handleMappingChange('date', e.target.value)}
-                  >
-                    <option value="">-- 選択 --</option>
-                    {headers.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="csv-mapping-row">
-                  <label>メモ</label>
-                  <select
-                    value={mapping.memo ?? ''}
-                    onChange={(e) => handleMappingChange('memo', e.target.value)}
-                  >
-                    <option value="">-- なし --</option>
-                    {headers.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="csv-mapping-row">
-                  <label>カテゴリ</label>
-                  <select
-                    value={mapping.category ?? ''}
-                    onChange={(e) => handleMappingChange('category', e.target.value)}
-                  >
-                    <option value="">-- なし --</option>
-                    {headers.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
+                {fieldDefinitions.map((field) => (
+                  <div key={field.key} className="csv-mapping-row">
+                    <label>
+                      {field.label}
+                      {field.required && '（必須）'}
+                    </label>
+                    <select
+                      value={mapping[field.key] ?? ''}
+                      onChange={(e) => handleMappingChange(field.key, e.target.value)}
+                    >
+                      <option value="">
+                        {field.required ? '-- 選択 --' : '-- なし --'}
+                      </option>
+                      {headers.map((h) => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
               </div>
 
               <p className="csv-preview-count">
@@ -216,7 +183,6 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
             </div>
           )}
 
-          {/* ステップ3: プレビュー */}
           {step === 'preview' && (
             <div className="csv-step-preview">
               <p className="csv-step-description">
@@ -243,19 +209,21 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
                 <table className="csv-preview-table">
                   <thead>
                     <tr>
-                      <th>日付</th>
-                      <th>金額</th>
-                      <th>メモ</th>
-                      <th>カテゴリ</th>
+                      {fieldDefinitions.map((field) => (
+                        <th key={field.key}>{field.label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {previewData.slice(0, 10).map((item, i) => (
                       <tr key={i}>
-                        <td>{item.date}</td>
-                        <td>¥{item.amount.toLocaleString()}</td>
-                        <td>{item.memo ?? '-'}</td>
-                        <td>{item.category ?? '-'}</td>
+                        {fieldDefinitions.map((field) => (
+                          <td key={field.key}>
+                            {field.key === 'amount'
+                              ? `¥${(item[field.key] as number).toLocaleString()}`
+                              : (item[field.key] as string) ?? '-'}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -286,7 +254,6 @@ export function CSVImporter({ onImport, onClose }: CSVImporterProps) {
             </div>
           )}
 
-          {/* ステップ4: 結果 */}
           {step === 'result' && (
             <div className="csv-step-result">
               <p className="csv-result-message">

@@ -17,6 +17,8 @@ export interface CalendarExpensesResult {
   expensesByDay: Map<string, DayExpenses>;
   totalSpent: number;
   isLoading: boolean;
+  /** 当月の全支出データ（エクスポート用） */
+  allExpenses: ExpenseEntity[];
 }
 
 /**
@@ -93,7 +95,7 @@ export function useCalendarExpenses(
       }
     }
 
-    return { expensesByDay, totalSpent };
+    return { expensesByDay, totalSpent, allExpenses: expenses };
   }, [monthStr, userId]);
 
   if (!expensesData) {
@@ -103,6 +105,7 @@ export function useCalendarExpenses(
       expensesByDay: new Map(),
       totalSpent: 0,
       isLoading: true,
+      allExpenses: [],
     };
   }
 
@@ -112,5 +115,6 @@ export function useCalendarExpenses(
     expensesByDay: expensesData.expensesByDay,
     totalSpent: expensesData.totalSpent,
     isLoading: false,
+    allExpenses: expensesData.allExpenses,
   };
 }

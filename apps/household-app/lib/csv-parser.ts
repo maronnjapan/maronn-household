@@ -29,8 +29,6 @@ export interface FieldDefinition {
   label: string;
   /** 必須かどうか */
   required: boolean;
-  /** CSVヘッダー自動マッピング用のパターン */
-  patterns: string[];
   /** 値のパーサー（省略時は文字列としてそのまま使用） */
   parser?: (value: string) => unknown;
   /** パース失敗時のエラーメッセージ生成関数 */
@@ -77,7 +75,6 @@ export const DEFAULT_FIELD_DEFINITIONS: FieldDefinition[] = [
     key: 'amount',
     label: '金額',
     required: true,
-    patterns: ['金額', 'amount', '価格', '支出', '出金', '合計'],
     parser: parseAmount,
     errorMessage: (v) => `金額が不正です: ${v}`,
   },
@@ -85,7 +82,6 @@ export const DEFAULT_FIELD_DEFINITIONS: FieldDefinition[] = [
     key: 'date',
     label: '日付',
     required: true,
-    patterns: ['日付', 'date', '日', '年月日', '取引日'],
     parser: normalizeDate,
     errorMessage: (v) => `日付の形式が不正です: ${v}`,
   },
@@ -93,13 +89,11 @@ export const DEFAULT_FIELD_DEFINITIONS: FieldDefinition[] = [
     key: 'memo',
     label: 'メモ',
     required: false,
-    patterns: ['メモ', 'memo', '備考', 'note', 'notes', '内容', '摘要', '説明'],
   },
   {
     key: 'category',
     label: 'カテゴリ',
     required: false,
-    patterns: ['カテゴリ', 'category', '分類', '種別', '費目'],
   },
 ];
 
@@ -182,34 +176,15 @@ export function parseCSVLine(line: string): string[] {
 }
 
 /**
- * ヘッダーから自動マッピングを推測
+ * 空のマッピングを初期化
  */
-export function suggestMapping(
-  headers: string[],
+export function initializeMapping(
   fieldDefinitions: FieldDefinition[] = DEFAULT_FIELD_DEFINITIONS
 ): ColumnMapping {
   const mapping: ColumnMapping = {};
 
   for (const field of fieldDefinitions) {
     mapping[field.key] = null;
-  }
-
-  const normalizedHeaders = headers.map((h) => h.toLowerCase().trim());
-
-  for (let i = 0; i < headers.length; i++) {
-    const header = headers[i] ?? '';
-    const normalized = normalizedHeaders[i] ?? '';
-
-    for (const field of fieldDefinitions) {
-      if (mapping[field.key]) continue;
-
-      const matched = field.patterns.some((p) =>
-        normalized.includes(p.toLowerCase())
-      );
-      if (matched) {
-        mapping[field.key] = header;
-      }
-    }
   }
 
   return mapping;

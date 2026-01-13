@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import {
   parseCSV,
-  suggestMapping,
+  initializeMapping,
   validateMapping,
   convertToExpenses,
   type ColumnMapping,
@@ -52,8 +52,8 @@ export function CSVImporter({
       setHeaders(result.headers);
       setRows(result.rows);
 
-      const suggested = suggestMapping(result.headers, fieldDefinitions);
-      setMapping(suggested);
+      const initial = initializeMapping(fieldDefinitions);
+      setMapping(initial);
 
       setStep('mapping');
     };

@@ -4,7 +4,7 @@ import {
   parseCSVLine,
   normalizeDate,
   parseAmount,
-  suggestMapping,
+  initializeMapping,
   validateMapping,
   convertToExpenses,
   escapeCSVValue,
@@ -171,53 +171,26 @@ describe('parseAmount', () => {
   });
 });
 
-describe('suggestMapping', () => {
-  it('日本語ヘッダーから自動マッピングを推測する', () => {
-    const headers = ['日付', '金額', 'メモ', 'カテゴリ'];
-    const mapping = suggestMapping(headers);
+describe('initializeMapping', () => {
+  it('デフォルトのフィールド定義から空のマッピングを初期化する', () => {
+    const mapping = initializeMapping();
 
-    expect(mapping.date).toBe('日付');
-    expect(mapping.amount).toBe('金額');
-    expect(mapping.memo).toBe('メモ');
-    expect(mapping.category).toBe('カテゴリ');
-  });
-
-  it('英語ヘッダーから自動マッピングを推測する', () => {
-    const headers = ['date', 'amount', 'memo', 'category'];
-    const mapping = suggestMapping(headers);
-
-    expect(mapping.date).toBe('date');
-    expect(mapping.amount).toBe('amount');
-    expect(mapping.memo).toBe('memo');
-    expect(mapping.category).toBe('category');
-  });
-
-  it('部分一致でマッピングを推測する', () => {
-    const headers = ['取引日', '支出金額', '備考', '費目'];
-    const mapping = suggestMapping(headers);
-
-    expect(mapping.date).toBe('取引日');
-    expect(mapping.amount).toBe('支出金額');
-    expect(mapping.memo).toBe('備考');
-    expect(mapping.category).toBe('費目');
-  });
-
-  it('マッチしないヘッダーはnullのまま', () => {
-    const headers = ['foo', 'bar', 'baz'];
-    const mapping = suggestMapping(headers);
-
-    expect(mapping.date).toBeNull();
     expect(mapping.amount).toBeNull();
+    expect(mapping.date).toBeNull();
     expect(mapping.memo).toBeNull();
     expect(mapping.category).toBeNull();
   });
 
-  it('大文字小文字を区別せずマッチする', () => {
-    const headers = ['DATE', 'AMOUNT', 'MEMO', 'CATEGORY'];
-    const mapping = suggestMapping(headers);
+  it('カスタムフィールド定義から空のマッピングを初期化する', () => {
+    const customFields = [
+      { key: 'custom1', label: 'カスタム1', required: true },
+      { key: 'custom2', label: 'カスタム2', required: false },
+    ];
+    const mapping = initializeMapping(customFields);
 
-    expect(mapping.date).toBe('DATE');
-    expect(mapping.amount).toBe('AMOUNT');
+    expect(mapping.custom1).toBeNull();
+    expect(mapping.custom2).toBeNull();
+    expect(Object.keys(mapping)).toHaveLength(2);
   });
 });
 

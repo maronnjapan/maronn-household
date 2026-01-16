@@ -719,27 +719,129 @@ footer {
   background: #d35400;
 }
 
+/* アコーディオン */
+.accordion {
+  margin-top: 0.5rem;
+  border: 0.125rem solid #ecf0f1;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.accordion-header {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #f8f9fa;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  color: #2c3e50;
+}
+
+.accordion-header:hover {
+  background: #e9ecef;
+}
+
+.accordion-header:active {
+  transform: scale(0.99);
+}
+
+.accordion-title {
+  flex: 1;
+  text-align: left;
+}
+
+.accordion-icon {
+  font-size: 0.75rem;
+  color: #7f8c8d;
+  transition: transform 0.2s;
+}
+
+.accordion-content {
+  padding: 1rem;
+  background: white;
+  animation: accordion-slide-down 0.2s ease-out;
+}
+
+@keyframes accordion-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 詳細入力セクション */
+.detail-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* カテゴリーセクション */
+.category-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.category-select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-size: 1rem;
+  border: 0.125rem solid #ecf0f1;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
+  min-height: 2.75rem;
+  background: white;
+  cursor: pointer;
+}
+
+.category-select:focus {
+  outline: none;
+  border-color: #3498db;
+  border-width: 0.125rem;
+  box-shadow: 0 0 0 0.125rem rgba(52, 152, 219, 0.1);
+}
+
 /* メモセクション */
 .memo-section {
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .memo-section .memo-input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   font-size: 1rem;
-  border: 2px solid #ecf0f1;
-  border-radius: 8px;
+  border: 0.125rem solid #ecf0f1;
+  border-radius: 0.5rem;
   transition: all 0.2s;
   -webkit-tap-highlight-color: rgba(52, 152, 219, 0.3);
-  min-height: 44px;
+  min-height: 2.75rem;
 }
 
 .memo-section .memo-input:focus {
   outline: none;
   border-color: #3498db;
-  border-width: 2px;
-  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+  border-width: 0.125rem;
+  box-shadow: 0 0 0 0.125rem rgba(52, 152, 219, 0.1);
 }
 
 /* 送信ボタン */
@@ -808,20 +910,46 @@ footer {
     border-radius: 12px;
   }
 
-  .memo-section {
-    margin-top: 8px;
+  .accordion {
+    margin-top: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .accordion-header {
+    padding: 1rem 1.25rem;
+    font-size: 1.1rem;
+  }
+
+  .accordion-content {
+    padding: 1.25rem;
+  }
+
+  .detail-inputs {
+    gap: 1.25rem;
+  }
+
+  .category-select {
+    padding: 1rem 1.25rem;
+    font-size: 1.1rem;
+    min-height: 3.5rem;
+    border-radius: 0.75rem;
+  }
+
+  .category-select:focus {
+    border-width: 0.1875rem;
+    box-shadow: 0 0 0 0.1875rem rgba(52, 152, 219, 0.1);
   }
 
   .memo-section .memo-input {
-    padding: 16px 20px;
+    padding: 1rem 1.25rem;
     font-size: 1.1rem;
-    min-height: 56px;
-    border-radius: 12px;
+    min-height: 3.5rem;
+    border-radius: 0.75rem;
   }
 
   .memo-section .memo-input:focus {
-    border-width: 3px;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-width: 0.1875rem;
+    box-shadow: 0 0 0 0.1875rem rgba(52, 152, 219, 0.1);
   }
 
   .submit-button {

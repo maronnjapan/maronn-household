@@ -134,7 +134,7 @@
     });
   }
 
-  function saveExpense(amount, memo) {
+  function saveExpense(amount, memo, category) {
     return openDB().then(function(db) {
       return new Promise(function(resolve, reject) {
         var now = new Date(), id = ulid();
@@ -144,6 +144,7 @@
           id: id,
           userId: 'anonymous',
           amount: amount,
+          category: category || undefined,
           memo: memo || undefined,
           date: dateStr,
           createdAt: now.toISOString(),
@@ -161,7 +162,7 @@
   }
 
   // === DOM操作 ===
-  var expression = '', memo = '';
+  var expression = '', memo = '', category = '';
 
   function updateDisplay() {
     var exprEl = document.querySelector('.calculator-display .expression');
@@ -185,6 +186,7 @@
     if (calcEl) {
       calcEl.setAttribute('data-expression', expression);
       calcEl.setAttribute('data-memo', memo);
+      calcEl.setAttribute('data-category', category);
     }
   }
 
@@ -213,12 +215,16 @@
     if (!amount || amount <= 0) return;
 
     var memoInput = document.querySelector('.memo-input');
+    var categorySelect = document.querySelector('.category-select');
     var currentMemo = memoInput ? memoInput.value.trim() : '';
+    var currentCategory = categorySelect ? categorySelect.value : '';
 
-    saveExpense(amount, currentMemo || undefined).then(function() {
+    saveExpense(amount, currentMemo || undefined, currentCategory || undefined).then(function() {
       expression = '';
       memo = '';
+      category = '';
       if (memoInput) memoInput.value = '';
+      if (categorySelect) categorySelect.value = '';
       updateDisplay();
 
       var btn = document.querySelector('.submit-button');
@@ -268,6 +274,18 @@
         memo = target.value || '';
         var calcEl = document.querySelector('.expense-input.calculator');
         if (calcEl) calcEl.setAttribute('data-memo', memo);
+      }
+    }, true);
+
+    // カテゴリー選択（イベント委譲）
+    document.addEventListener('change', function(e) {
+      if (isHydrated()) return;
+
+      var target = e.target;
+      if (target && target.classList && target.classList.contains('category-select')) {
+        category = target.value || '';
+        var calcEl = document.querySelector('.expense-input.calculator');
+        if (calcEl) calcEl.setAttribute('data-category', category);
       }
     }, true);
   }

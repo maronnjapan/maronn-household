@@ -12,19 +12,20 @@ interface ExpenseInputProps {
  * Pre-hydration状態を読み取る（初回のみ）
  * pre-hydration-calculator.jsが設定したdata属性から状態を復元
  */
-function getPreHydrationState(): { expression: string; memo: string } {
+function getPreHydrationState(): { expression: string; memo: string; category: string } {
   if (typeof document === 'undefined') {
-    return { expression: '', memo: '' };
+    return { expression: '', memo: '', category: '' };
   }
 
   const el = document.querySelector('.expense-input.calculator');
   if (!el || !el.hasAttribute('data-pre-hydration')) {
-    return { expression: '', memo: '' };
+    return { expression: '', memo: '', category: '' };
   }
 
   return {
     expression: el.getAttribute('data-expression') || '',
     memo: el.getAttribute('data-memo') || '',
+    category: el.getAttribute('data-category') || '',
   };
 }
 
@@ -43,7 +44,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
 
   const [expression, setExpression] = useState(initialState.current.expression);
   const [memo, setMemo] = useState(initialState.current.memo);
-  const [category, setCategory] = useState<string>('');
+  const [category, setCategory] = useState(initialState.current.category);
 
   // 式を評価して金額を取得
   const calculatedAmount = evaluateExpression(expression);

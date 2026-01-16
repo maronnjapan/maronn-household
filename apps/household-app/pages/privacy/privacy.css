@@ -1,0 +1,137 @@
+.privacy-page {
+  max-width: min(50rem, 90vw);
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  line-height: 1.7;
+  color: #333;
+}
+
+.privacy-page header {
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.privacy-page h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 0.75rem;
+}
+
+.privacy-page .last-updated {
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+.privacy-section {
+  margin-bottom: 2.5rem;
+}
+
+.privacy-section h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.privacy-section p {
+  margin-bottom: 1rem;
+  color: #444;
+}
+
+.privacy-section ul {
+  margin: 1rem 0 1rem 1.5rem;
+  padding: 0;
+}
+
+.privacy-section li {
+  margin-bottom: 0.75rem;
+  color: #555;
+  list-style-type: disc;
+}
+
+.privacy-section li strong {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.privacy-section .contact-link {
+  color: #3498db;
+  text-decoration: underline;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.privacy-section .contact-link:hover {
+  color: #2980b9;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 640px) {
+  .privacy-page {
+    padding: 1.5rem 1rem;
+  }
+
+  .privacy-page h1 {
+    font-size: 1.75rem;
+  }
+
+  .privacy-section h2 {
+    font-size: 1.3rem;
+  }
+
+  .privacy-section ul {
+    margin-left: 1rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .privacy-page {
+    color: #e0e0e0;
+  }
+
+  .privacy-page h1 {
+    color: #f0f0f0;
+  }
+
+  .privacy-page .last-updated {
+    color: #999;
+  }
+
+  .privacy-section h2 {
+    color: #64b5f6;
+    border-bottom-color: #424242;
+  }
+
+  .privacy-section p {
+    color: #d0d0d0;
+  }
+
+  .privacy-section li {
+    color: #c0c0c0;
+  }
+
+  .privacy-section li strong {
+    color: #64b5f6;
+  }
+
+  .privacy-section .contact-link {
+    color: #64b5f6;
+  }
+
+  .privacy-section .contact-link:hover {
+    color: #42a5f5;
+  }
+
+  .privacy-page header {
+    border-bottom-color: #424242;
+  }
+
+  .privacy-section {
+    border-bottom-color: #333;
+  }
+}

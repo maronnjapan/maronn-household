@@ -42,3 +42,11 @@ temp/
 
 # Cloudflare
 .dev.vars
+
+# Terraform
+infrastructure/**/.terraform/
+infrastructure/**/*.tfstate
+infrastructure/**/*.tfstate.backup
+infrastructure/**/terraform.tfvars
+!infrastructure/**/terraform.tfvars.example
+infrastructure/**/.terraform.lock.hcl

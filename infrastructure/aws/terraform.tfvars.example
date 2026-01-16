@@ -1,0 +1,12 @@
+# AWS認証設定
+aws_profile    = "household-app"      # setup-aws-sso.sh で設定したプロファイル名
+aws_region     = "ap-northeast-1"     # 東京リージョン
+aws_account_id = "123456789012"       # AWSアカウントID（12桁）
+
+# 環境設定
+environment  = "dev"                  # dev, staging, production
+project_name = "maronn-household"
+
+# SES設定
+ses_email_identity            = "your-email@example.com"      # 送信元メールアドレス
+contact_form_recipient_email  = "your-email@example.com"      # お問い合わせの受信先メールアドレス

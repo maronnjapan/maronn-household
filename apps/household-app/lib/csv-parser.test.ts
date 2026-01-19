@@ -2,14 +2,17 @@ import { describe, it, expect } from 'vitest';
 import {
   parseCSV,
   parseCSVLine,
+  parseCSVLines,
   normalizeDate,
   parseAmount,
   initializeMapping,
   validateMapping,
   convertToExpenses,
+  convertToExpensesByFixedColumns,
   escapeCSVValue,
   convertToCSV,
   DEFAULT_FIELD_DEFINITIONS,
+  FIXED_COLUMN_ORDER,
 } from './csv-parser';
 
 describe('parseCSVLine', () => {
@@ -408,5 +411,120 @@ describe('DEFAULT_FIELD_DEFINITIONS', () => {
   it('dateにはparserが定義されている', () => {
     const dateField = DEFAULT_FIELD_DEFINITIONS.find((f) => f.key === 'date');
     expect(dateField?.parser).toBeDefined();
+  });
+});
+
+describe('parseCSVLines', () => {
+  it('CSVテキストを行ごとの配列としてパースする', () => {
+    const csv = `日付,金額,カテゴリ,メモ
+2024-01-15,1000,食費,ランチ`;
+    const result = parseCSVLines(csv);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual(['日付', '金額', 'カテゴリ', 'メモ']);
+    expect(result[1]).toEqual(['2024-01-15', '1000', '食費', 'ランチ']);
+  });
+
+  it('空行をスキップする', () => {
+    const csv = `日付,金額
+
+2024-01-15,1000`;
+    const result = parseCSVLines(csv);
+
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe('FIXED_COLUMN_ORDER', () => {
+  it('固定列順序は日付、金額、カテゴリ、メモの順', () => {
+    const keys = FIXED_COLUMN_ORDER.map((f) => f.key);
+    expect(keys).toEqual(['date', 'amount', 'category', 'memo']);
+  });
+
+  it('日付と金額が必須', () => {
+    const requiredKeys = FIXED_COLUMN_ORDER.filter((f) => f.required).map((f) => f.key);
+    expect(requiredKeys).toEqual(['date', 'amount']);
+  });
+});
+
+describe('convertToExpensesByFixedColumns', () => {
+  it('固定列順序でデータを変換する（ヘッダー行あり）', () => {
+    const lines = [
+      ['日付', '金額', 'カテゴリ', 'メモ'],
+      ['2024-01-15', '1000', '食費', 'ランチ'],
+      ['2024-01-16', '2000', '交通', '電車'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, true);
+
+    expect(result.success).toHaveLength(2);
+    expect(result.errors).toHaveLength(0);
+    expect(result.success[0]).toEqual({
+      date: '2024-01-15',
+      amount: 1000,
+      category: '食費',
+      memo: 'ランチ',
+    });
+  });
+
+  it('固定列順序でデータを変換する（ヘッダー行なし）', () => {
+    const lines = [
+      ['2024-01-15', '1000', '食費', 'ランチ'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, false);
+
+    expect(result.success).toHaveLength(1);
+    expect(result.success[0]).toEqual({
+      date: '2024-01-15',
+      amount: 1000,
+      category: '食費',
+      memo: 'ランチ',
+    });
+  });
+
+  it('必須項目がない場合はエラーになる', () => {
+    const lines = [
+      ['ヘッダー', 'ヘッダー', 'ヘッダー', 'ヘッダー'],
+      ['2024-01-15', '', '食費', 'ランチ'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, true);
+
+    expect(result.success).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('金額が空です');
+  });
+
+  it('オプション項目がなくても変換できる', () => {
+    const lines = [
+      ['ヘッダー', 'ヘッダー'],
+      ['2024-01-15', '1000'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, true);
+
+    expect(result.success).toHaveLength(1);
+    expect(result.success[0]).toEqual({
+      date: '2024-01-15',
+      amount: 1000,
+    });
+  });
+
+  it('空行をスキップする', () => {
+    const lines = [
+      ['ヘッダー', 'ヘッダー'],
+      ['', ''],
+      ['2024-01-15', '1000'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, true);
+
+    expect(result.success).toHaveLength(1);
+  });
+
+  it('エラー行番号はヘッダー行を考慮する', () => {
+    const lines = [
+      ['ヘッダー', 'ヘッダー'],
+      ['invalid-date', '1000'],
+    ];
+    const result = convertToExpensesByFixedColumns(lines, true);
+
+    expect(result.errors[0]?.row).toBe(2);
   });
 });

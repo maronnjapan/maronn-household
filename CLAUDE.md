@@ -437,6 +437,40 @@ function Component() {
 }
 ```
 
+**useCallback / useMemo は原則使用しない**
+
+React 19 以降、React Compiler による自動メモ化が推奨されるため、手動でのメモ化は原則不要。
+
+**使用禁止のケース**:
+- 単純なイベントハンドラー（`onClick`, `onChange` 等）
+- コンポーネント内で定義する通常の関数
+- 特に理由なく「念のため」使用するケース
+
+**使用が許可されるケース（明確な理由がある場合のみ）**:
+1. **ref として渡す場合**: `useRef` と組み合わせて安定した参照が必要な場合
+2. **計測済みのパフォーマンス問題**: プロファイラで実際に問題を確認した場合
+3. **外部ライブラリの要件**: ライブラリが安定した参照を要求する場合
+
+```typescript
+// ❌ 悪い例: 不要な useCallback
+function Component() {
+  const handleClick = useCallback(() => {
+    console.log('clicked');
+  }, []);
+
+  return <button onClick={handleClick}>Click</button>;
+}
+
+// ✅ 良い例: 通常の関数定義
+function Component() {
+  function handleClick() {
+    console.log('clicked');
+  }
+
+  return <button onClick={handleClick}>Click</button>;
+}
+```
+
 ### エラーハンドリング
 
 **try-catch は最小限に**

@@ -5,6 +5,12 @@ import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-
 import { useExpenseActions } from '../../hooks/use-expense-actions';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import { useGetBudget } from '../../hooks/use-set-budget';
+import { CSVImporter } from '../../components/CSVImporter';
+import {
+  convertToCSV,
+  downloadCSV,
+  type ImportableExpense,
+} from '../../lib/csv-parser';
 import { EXPENSE_CATEGORIES } from '../../constants/categories';
 import './calendar.css';
 import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
@@ -53,9 +59,10 @@ export function Page() {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddingState | null>(null);
+  const [showCSVImporter, setShowCSVImporter] = useState(false);
 
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
-  const { expensesByDay, totalSpent, isLoading } = useCalendarExpenses(year, month);
+  const { expensesByDay, totalSpent, isLoading, allExpenses } = useCalendarExpenses(year, month);
   const { budget } = useGetBudget(monthStr);
   const { handleUpdateExpense, handleDeleteExpense } = useExpenseActions();
   const { addExpense } = useAddExpense();
@@ -67,39 +74,63 @@ export function Page() {
   const monthlyBudget = budget?.amount ?? DEFAULT_BUDGET_AMOUNT;
   const dailyBudget = monthlyBudget / daysInMonth;
 
-  const handlePrevMonth = () => {
+  // CSVインポート処理
+  async function handleCSVImport(expenses: ImportableExpense[]) {
+    for (const expense of expenses) {
+      await addExpense({
+        amount: expense.amount,
+        date: expense.date,
+        memo: expense.memo as string | undefined,
+        category: expense.category as string | undefined,
+      });
+    }
+  }
+
+  // CSVエクスポート処理
+  function handleCSVExport() {
+    if (allExpenses.length === 0) {
+      alert('エクスポートするデータがありません');
+      return;
+    }
+
+    const csvContent = convertToCSV(allExpenses);
+    const filename = `支出_${monthStr}.csv`;
+    downloadCSV(csvContent, filename);
+  }
+
+  function handlePrevMonth() {
     if (month === 1) {
       setYear(year - 1);
       setMonth(12);
     } else {
       setMonth(month - 1);
     }
-  };
+  }
 
-  const handleNextMonth = () => {
+  function handleNextMonth() {
     if (month === 12) {
       setYear(year + 1);
       setMonth(1);
     } else {
       setMonth(month + 1);
     }
-  };
+  }
 
-  const handleDayClick = (date: string, _expenses: DayExpenses | undefined) => {
+  function handleDayClick(date: string, _expenses: DayExpenses | undefined) {
     setSelectedDay({ date });
     setEditing(null);
     setDeletingId(null);
     setAdding(null);
-  };
+  }
 
-  const handleCloseModal = () => {
+  function handleCloseModal() {
     setSelectedDay(null);
     setEditing(null);
     setDeletingId(null);
     setAdding(null);
-  };
+  }
 
-  const handleStartEdit = (expense: ExpenseEntity) => {
+  function handleStartEdit(expense: ExpenseEntity) {
     setEditing({
       id: expense.id,
       amount: String(expense.amount),
@@ -107,13 +138,13 @@ export function Page() {
       category: expense.category ?? '',
     });
     setDeletingId(null);
-  };
+  }
 
-  const handleCancelEdit = () => {
+  function handleCancelEdit() {
     setEditing(null);
-  };
+  }
 
-  const handleSaveEdit = async () => {
+  async function handleSaveEdit() {
     if (!editing) return;
 
     const amount = parseInt(editing.amount, 10);
@@ -129,21 +160,19 @@ export function Page() {
 
     if (success) {
       setEditing(null);
-      // モーダルを閉じて再度開くとデータが更新されている
-      // useLiveQueryが自動で更新を検知するのでそのままでもOK
     }
-  };
+  }
 
-  const handleStartDelete = (id: string) => {
+  function handleStartDelete(id: string) {
     setDeletingId(id);
     setEditing(null);
-  };
+  }
 
-  const handleCancelDelete = () => {
+  function handleCancelDelete() {
     setDeletingId(null);
-  };
+  }
 
-  const handleConfirmDelete = async () => {
+  async function handleConfirmDelete() {
     if (!deletingId) return;
 
     const success = await handleDeleteExpense(deletingId);
@@ -151,19 +180,19 @@ export function Page() {
     if (success) {
       setDeletingId(null);
     }
-  };
+  }
 
   const handleStartAdd = () => {
     setAdding({ amount: '', memo: '', category: '' });
     setEditing(null);
     setDeletingId(null);
-  };
+  }
 
-  const handleCancelAdd = () => {
+  function handleCancelAdd() {
     setAdding(null);
-  };
+  }
 
-  const handleSaveAdd = async () => {
+  async function handleSaveAdd() {
     if (!adding || !selectedDay) return;
 
     const amount = parseInt(adding.amount, 10);
@@ -179,7 +208,7 @@ export function Page() {
     });
 
     setAdding(null);
-  };
+  }
 
   // 現在選択中の日のデータを取得（リアルタイム更新対応）
   const currentDayExpenses = selectedDay
@@ -193,6 +222,21 @@ export function Page() {
         <p className="total-spent">
           月の支出合計: {isLoading ? '読み込み中...' : formatCurrency(totalSpent)}
         </p>
+        <div className="calendar-actions">
+          <button
+            className="csv-import-btn"
+            onClick={() => setShowCSVImporter(true)}
+          >
+            CSVインポート
+          </button>
+          <button
+            className="csv-export-btn"
+            onClick={handleCSVExport}
+            disabled={isLoading || allExpenses.length === 0}
+          >
+            CSVエクスポート
+          </button>
+        </div>
       </header>
 
       <section className="calendar-section">
@@ -345,6 +389,13 @@ export function Page() {
             </div>
           </div>
         </div>
+      )}
+
+      {showCSVImporter && (
+        <CSVImporter
+          onImport={handleCSVImport}
+          onClose={() => setShowCSVImporter(false)}
+        />
       )}
     </main>
   );

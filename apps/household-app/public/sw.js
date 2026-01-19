@@ -6,6 +6,7 @@
  * - ナビゲーション (/household): Stale-While-Revalidate
  * - 静的アセット (/assets/*, public files): Cache-First
  * - API (/api/*, /trpc/*): キャッシュしない
+ * 
  */
 
 'use strict';
@@ -38,14 +39,14 @@ var STATIC_PATTERNS = {
 /**
  * Install イベント: 事前キャッシュ
  */
-self.addEventListener('install', function(event) {
+self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(function(cache) {
+      .then(function (cache) {
         console.info('[SW] Precaching assets');
         return cache.addAll(PRECACHE_ASSETS);
       })
-      .then(function() {
+      .then(function () {
         // 即座にアクティブ化
         return self.skipWaiting();
       })
@@ -55,23 +56,23 @@ self.addEventListener('install', function(event) {
 /**
  * Activate イベント: 古いキャッシュの削除
  */
-self.addEventListener('activate', function(event) {
+self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
-      .then(function(cacheNames) {
+      .then(function (cacheNames) {
         return Promise.all(
           cacheNames
-            .filter(function(name) {
+            .filter(function (name) {
               // household-* で始まるが現在のバージョンではないものを削除
               return (name.startsWith('household-') && name !== CACHE_NAME && name !== STATIC_CACHE_NAME);
             })
-            .map(function(name) {
+            .map(function (name) {
               console.info('[SW] Deleting old cache:', name);
               return caches.delete(name);
             })
         );
       })
-      .then(function() {
+      .then(function () {
         // 即座にクライアントを制御
         return self.clients.claim();
       })
@@ -81,7 +82,7 @@ self.addEventListener('activate', function(event) {
 /**
  * Fetch イベント: リクエストのインターセプト
  */
-self.addEventListener('fetch', function(event) {
+self.addEventListener('fetch', function (event) {
   var request = event.request;
   var url = new URL(request.url);
 
@@ -120,17 +121,17 @@ self.addEventListener('fetch', function(event) {
  * キャッシュを即座に返しつつ、バックグラウンドで更新
  */
 function handleNavigationRequest(request) {
-  return caches.open(CACHE_NAME).then(function(cache) {
-    return cache.match(request).then(function(cachedResponse) {
+  return caches.open(CACHE_NAME).then(function (cache) {
+    return cache.match(request).then(function (cachedResponse) {
       // バックグラウンドで更新（Fire and forget）
       var fetchPromise = fetch(request)
-        .then(function(networkResponse) {
+        .then(function (networkResponse) {
           if (networkResponse.ok) {
             cache.put(request, networkResponse.clone());
           }
           return networkResponse;
         })
-        .catch(function(error) {
+        .catch(function (error) {
           console.warn('[SW] Network request failed:', error);
           return null;
         });
@@ -143,7 +144,7 @@ function handleNavigationRequest(request) {
       }
 
       // キャッシュなし → ネットワークレスポンスを待つ
-      return fetchPromise.then(function(networkResponse) {
+      return fetchPromise.then(function (networkResponse) {
         if (networkResponse) {
           return networkResponse;
         }
@@ -162,14 +163,14 @@ function handleNavigationRequest(request) {
  * ハッシュ付きファイル名は不変なのでキャッシュ優先
  */
 function handleStaticAsset(request) {
-  return caches.open(STATIC_CACHE_NAME).then(function(cache) {
-    return cache.match(request).then(function(cachedResponse) {
+  return caches.open(STATIC_CACHE_NAME).then(function (cache) {
+    return cache.match(request).then(function (cachedResponse) {
       if (cachedResponse) {
         return cachedResponse;
       }
 
       // キャッシュになければネットワークから取得してキャッシュ
-      return fetch(request).then(function(networkResponse) {
+      return fetch(request).then(function (networkResponse) {
         if (networkResponse.ok) {
           cache.put(request, networkResponse.clone());
         }

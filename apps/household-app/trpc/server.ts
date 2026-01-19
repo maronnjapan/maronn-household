@@ -14,7 +14,9 @@ interface Env {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  RESEND_API_KEY: string;
+  AWS_ACCESS_KEY_ID: string;
+  AWS_SECRET_ACCESS_KEY: string;
+  AWS_REGION: string;
   CONTACT_EMAIL_TO: string;
   CONTACT_EMAIL_FROM: string;
 }
@@ -417,10 +419,10 @@ export const appRouter = router({
       const env = opts.ctx.env;
 
       // 環境変数のチェック
-      if (!env?.RESEND_API_KEY) {
+      if (!env?.AWS_ACCESS_KEY_ID || !env?.AWS_SECRET_ACCESS_KEY || !env?.AWS_REGION) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'RESEND_API_KEY is not configured',
+          message: 'AWS credentials are not configured',
         });
       }
 
@@ -431,35 +433,59 @@ export const appRouter = router({
         });
       }
 
-      // Resend SDKを動的にインポート（Cloudflare Workersでは動的インポートを使用）
-      const { Resend } = await import('resend');
-      const resend = new Resend(env.RESEND_API_KEY);
+      // AWS SES SDKを動的にインポート（Cloudflare Workersでは動的インポートを使用）
+      const { SESClient, SendEmailCommand } = await import('@aws-sdk/client-ses');
 
-      // メール送信
-      const { data, error } = await resend.emails.send({
-        from: env.CONTACT_EMAIL_FROM,
-        to: env.CONTACT_EMAIL_TO,
-        subject: `[お問い合わせ] ${subject}`,
-        replyTo: email,
-        html: `
-          <h2>お問い合わせがありました</h2>
-          <p><strong>名前:</strong> ${name}</p>
-          <p><strong>メールアドレス:</strong> ${email}</p>
-          <p><strong>件名:</strong> ${subject}</p>
-          <hr>
-          <h3>お問い合わせ内容:</h3>
-          <p style="white-space: pre-wrap;">${message}</p>
-        `,
+      // SESクライアントを作成
+      const sesClient = new SESClient({
+        region: env.AWS_REGION,
+        credentials: {
+          accessKeyId: env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+        },
       });
 
-      if (error) {
+      // メール送信パラメータ
+      const params = {
+        Source: env.CONTACT_EMAIL_FROM,
+        Destination: {
+          ToAddresses: [env.CONTACT_EMAIL_TO],
+        },
+        Message: {
+          Subject: {
+            Data: `[お問い合わせ] ${subject}`,
+            Charset: 'UTF-8',
+          },
+          Body: {
+            Html: {
+              Data: `
+                <h2>お問い合わせがありました</h2>
+                <p><strong>名前:</strong> ${name}</p>
+                <p><strong>メールアドレス:</strong> ${email}</p>
+                <p><strong>件名:</strong> ${subject}</p>
+                <hr>
+                <h3>お問い合わせ内容:</h3>
+                <p style="white-space: pre-wrap;">${message}</p>
+              `,
+              Charset: 'UTF-8',
+            },
+          },
+        },
+        ReplyToAddresses: [email],
+      };
+
+      // メール送信
+      const command = new SendEmailCommand(params);
+      const response = await sesClient.send(command);
+
+      if (!response.MessageId) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: `Failed to send email: ${error.message}`,
+          message: 'Failed to send email',
         });
       }
 
-      return { success: true, emailId: data?.id };
+      return { success: true, messageId: response.MessageId };
     }),
 });
 

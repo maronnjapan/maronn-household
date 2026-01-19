@@ -11,6 +11,7 @@ import {
   downloadCSV,
   type ImportableExpense,
 } from '../../lib/csv-parser';
+import { EXPENSE_CATEGORIES } from '../../constants/categories';
 import './calendar.css';
 import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
 
@@ -29,15 +30,26 @@ function formatDate(dateStr: string): string {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+/**
+ * カテゴリー値からラベルを取得
+ */
+function getCategoryLabel(categoryValue?: string): string | undefined {
+  if (!categoryValue) return undefined;
+  const category = EXPENSE_CATEGORIES.find((cat) => cat.value === categoryValue);
+  return category?.label;
+}
+
 interface EditingState {
   id: string;
   amount: string;
   memo: string;
+  category: string;
 }
 
 interface AddingState {
   amount: string;
   memo: string;
+  category: string;
 }
 
 export function Page() {
@@ -123,6 +135,7 @@ export function Page() {
       id: expense.id,
       amount: String(expense.amount),
       memo: expense.memo ?? '',
+      category: expense.category ?? '',
     });
     setDeletingId(null);
   }
@@ -142,6 +155,7 @@ export function Page() {
     const success = await handleUpdateExpense(editing.id, {
       amount,
       memo: editing.memo || undefined,
+      category: editing.category || undefined,
     });
 
     if (success) {
@@ -168,8 +182,8 @@ export function Page() {
     }
   }
 
-  function handleStartAdd() {
-    setAdding({ amount: '', memo: '' });
+  const handleStartAdd = () => {
+    setAdding({ amount: '', memo: '', category: '' });
     setEditing(null);
     setDeletingId(null);
   }
@@ -189,6 +203,7 @@ export function Page() {
     await addExpense({
       amount,
       memo: adding.memo || undefined,
+      category: adding.category || undefined,
       date: selectedDay.date,
     });
 
@@ -266,6 +281,18 @@ export function Page() {
                                 placeholder="金額"
                                 className="edit-input amount"
                               />
+                              <select
+                                value={editing.category}
+                                onChange={(e) => setEditing({ ...editing, category: e.target.value })}
+                                className="edit-input category"
+                              >
+                                <option value="">カテゴリー未選択</option>
+                                {EXPENSE_CATEGORIES.map((cat) => (
+                                  <option key={cat.value} value={cat.value}>
+                                    {cat.label}
+                                  </option>
+                                ))}
+                              </select>
                               <input
                                 type="text"
                                 value={editing.memo}
@@ -294,6 +321,9 @@ export function Page() {
                           <>
                             <div className="expense-info">
                               <span className="expense-amount">{formatCurrency(expense.amount)}</span>
+                              {expense.category && (
+                                <span className="expense-category">{getCategoryLabel(expense.category)}</span>
+                              )}
                               {expense.memo && <span className="expense-memo">{expense.memo}</span>}
                             </div>
                             <div className="expense-actions">
@@ -326,6 +356,18 @@ export function Page() {
                       className="add-input amount"
                       autoFocus
                     />
+                    <select
+                      value={adding.category}
+                      onChange={(e) => setAdding({ ...adding, category: e.target.value })}
+                      className="add-input category"
+                    >
+                      <option value="">カテゴリー未選択</option>
+                      {EXPENSE_CATEGORIES.map((cat) => (
+                        <option key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="text"
                       value={adding.memo}

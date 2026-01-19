@@ -245,14 +245,25 @@
 
 .expense-info {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.25rem;
   flex: 1;
 }
 
 .expense-amount {
   font-weight: bold;
   font-size: 1rem;
+}
+
+.expense-category {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: #e3f2fd;
+  color: #1976d2;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  width: fit-content;
 }
 
 .expense-memo {
@@ -300,6 +311,7 @@
 
 .edit-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -315,8 +327,15 @@
   width: 100px;
 }
 
+.edit-input.category {
+  flex: 1;
+  min-width: 120px;
+  cursor: pointer;
+}
+
 .edit-input.memo {
   flex: 1;
+  width: 100%;
 }
 
 .edit-actions {
@@ -436,6 +455,7 @@
 
 .add-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -451,8 +471,15 @@
   width: 120px;
 }
 
+.add-input.category {
+  flex: 1;
+  min-width: 140px;
+  cursor: pointer;
+}
+
 .add-input.memo {
   flex: 1;
+  width: 100%;
 }
 
 .add-input:focus {
@@ -838,11 +865,27 @@
     font-size: 1rem;
   }
 
+  .edit-fields {
+    flex-direction: column;
+  }
+
+  .edit-input.amount {
+    width: 100%;
+  }
+
+  .edit-input.category {
+    width: 100%;
+  }
+
   .add-fields {
     flex-direction: column;
   }
 
   .add-input.amount {
+    width: 100%;
+  }
+
+  .add-input.category {
     width: 100%;
   }
 }

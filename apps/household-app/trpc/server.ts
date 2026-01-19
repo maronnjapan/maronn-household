@@ -1,7 +1,7 @@
 import type { dbD1 } from "../database/drizzle/db";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { expenses, budgets } from '../database/drizzle/schema/household';
 import { z } from 'zod';
 import type { Session, User } from "better-auth/types";
@@ -292,6 +292,7 @@ export const appRouter = router({
     }),
 
   // 予算を取得（認証必須）
+  // 指定月の予算が見つからない場合、最新の過去の予算を引き継ぐ
   getBudget: protectedProcedure
     .input(budgetInputSchema)
     .query(async (opts) => {
@@ -315,7 +316,21 @@ export const appRouter = router({
         )
         .get();
 
-      return { budget: result };
+      // 指定月の予算が見つかった場合はそれを返す
+      if (result) {
+        return { budget: result };
+      }
+
+      // 見つからない場合、最新の過去の予算を取得して引き継ぐ
+      const latestBudget = await database
+        .select()
+        .from(budgets)
+        .where(eq(budgets.userId, userId))
+        .orderBy(desc(budgets.month))
+        .limit(1)
+        .get();
+
+      return { budget: latestBudget };
     }),
 
   // 予算を更新（認証必須）

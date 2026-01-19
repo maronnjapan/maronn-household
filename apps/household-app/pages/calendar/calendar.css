@@ -826,6 +826,72 @@
   background: #43a047;
 }
 
+/* 列の順序ヒント */
+.csv-column-hint {
+  background: #f5f5f5;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.csv-column-hint-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.csv-column-order {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.csv-column-order li {
+  margin-bottom: 0.25rem;
+}
+
+.csv-required {
+  color: #d32f2f;
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+/* ヘッダー行トグル */
+.csv-header-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #666;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.csv-header-toggle input {
+  cursor: pointer;
+}
+
+/* 展開/折りたたみボタン */
+.csv-expand-btn {
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #666;
+  transition: background 0.2s;
+}
+
+.csv-expand-btn:hover {
+  background: #e0e0e0;
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 600px) {
   .calendar-page {

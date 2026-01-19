@@ -98,6 +98,37 @@ export const DEFAULT_FIELD_DEFINITIONS: FieldDefinition[] = [
 ];
 
 /**
+ * 固定列順序の定義
+ * 1列目: 日付, 2列目: 金額, 3列目: カテゴリ, 4列目: メモ
+ */
+export const FIXED_COLUMN_ORDER: FieldDefinition[] = [
+  {
+    key: 'date',
+    label: '日付',
+    required: true,
+    parser: normalizeDate,
+    errorMessage: (v) => `日付の形式が不正です: ${v}`,
+  },
+  {
+    key: 'amount',
+    label: '金額',
+    required: true,
+    parser: parseAmount,
+    errorMessage: (v) => `金額が不正です: ${v}`,
+  },
+  {
+    key: 'category',
+    label: 'カテゴリ',
+    required: false,
+  },
+  {
+    key: 'memo',
+    label: 'メモ',
+    required: false,
+  },
+];
+
+/**
  * CSVテキストをパースする
  */
 export function parseCSV(csvText: string): CSVParseResult {
@@ -325,6 +356,75 @@ export function convertToExpenses(
   });
 
   return { success, errors };
+}
+
+/**
+ * 固定列順序（インデックスベース）でCSVデータを変換
+ * 1列目: 日付, 2列目: 金額, 3列目: カテゴリ, 4列目: メモ
+ */
+export function convertToExpensesByFixedColumns(
+  lines: string[][],
+  skipHeaderRow: boolean = true
+): ImportResult {
+  const success: ImportableExpense[] = [];
+  const errors: { row: number; message: string }[] = [];
+
+  const startIndex = skipHeaderRow ? 1 : 0;
+
+  lines.slice(startIndex).forEach((values, index) => {
+    const rowNumber = index + startIndex + 1;
+
+    // 空行をスキップ
+    if (values.length === 0 || values.every(v => !v || v.trim() === '')) {
+      return;
+    }
+
+    const expense: Record<string, unknown> = {};
+    let hasError = false;
+
+    FIXED_COLUMN_ORDER.forEach((field, colIndex) => {
+      const rawValue = values[colIndex]?.trim() ?? '';
+
+      if (field.required && !rawValue) {
+        errors.push({ row: rowNumber, message: `${field.label}が空です` });
+        hasError = true;
+        return;
+      }
+
+      if (!rawValue) return;
+
+      if (field.parser) {
+        const parsed = field.parser(rawValue);
+        if (parsed === null) {
+          const message = field.errorMessage
+            ? field.errorMessage(rawValue)
+            : `${field.label}が不正です: ${rawValue}`;
+          errors.push({ row: rowNumber, message });
+          hasError = true;
+        } else {
+          expense[field.key] = parsed;
+        }
+      } else {
+        expense[field.key] = rawValue;
+      }
+    });
+
+    if (!hasError && expense.amount !== undefined && expense.date !== undefined) {
+      success.push(expense as ImportableExpense);
+    }
+  });
+
+  return { success, errors };
+}
+
+/**
+ * CSVテキストを行ごとの配列としてパースする（ヘッダー解析なし）
+ */
+export function parseCSVLines(csvText: string): string[][] {
+  const lines = csvText.trim().split(/\r?\n/);
+  return lines
+    .filter(line => line.trim() !== '')
+    .map(line => parseCSVLine(line));
 }
 
 // ============================================

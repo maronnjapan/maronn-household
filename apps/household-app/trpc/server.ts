@@ -2,8 +2,10 @@ import type { dbD1 } from "../database/drizzle/db";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
-import { expenses, budgets } from '../database/drizzle/schema/household';
+import { expenses, budgets, apiTokens, apiUsage } from '../database/drizzle/schema/household';
 import { z } from 'zod';
+import { generateSecureToken, hashToken } from '../lib/api-token';
+import { ulid } from 'ulidx';
 import type { Session, User } from "better-auth/types";
 
 /**
@@ -110,6 +112,14 @@ const budgetInputSchema = z.object({
 const updateBudgetInputSchema = z.object({
   month: z.string(),
   amount: z.number(),
+});
+
+const issueApiTokenInputSchema = z.object({
+  name: z.string().optional(),
+});
+
+const revokeApiTokenInputSchema = z.object({
+  tokenHash: z.string(),
 });
 
 export const appRouter = router({
@@ -388,6 +398,99 @@ export const appRouter = router({
       return { success: true, created: true };
     }),
 
+  // APIトークンを発行（認証必須）
+  issueApiToken: protectedProcedure
+    .input(issueApiTokenInputSchema)
+    .mutation(async (opts) => {
+      const { name } = opts.input;
+      const userId = opts.ctx.user.id;
+      const createdAt = new Date().toISOString();
+
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // 安全なトークンを生成（128文字 = 512ビット）
+      const token = generateSecureToken(128);
+      const tokenHash = await hashToken(token);
+
+      // トークンを保存（ハッシュのみ）
+      await database
+        .insert(apiTokens)
+        .values({
+          tokenHash,
+          userId,
+          name: name || null,
+          createdAt,
+          lastUsedAt: null,
+          isActive: 1,
+        })
+        .run();
+
+      return {
+        token, // 平文トークンは1回だけ返す
+        tokenHash,
+        message: 'このトークンは再表示できません。安全に保管してください。',
+      };
+    }),
+
+  // APIトークン一覧を取得（認証必須）
+  listApiTokens: protectedProcedure
+    .query(async (opts) => {
+      const userId = opts.ctx.user.id;
+
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const tokens = await database
+        .select()
+        .from(apiTokens)
+        .where(eq(apiTokens.userId, userId))
+        .orderBy(desc(apiTokens.createdAt))
+        .all();
+
+      return { tokens };
+    }),
+
+  // APIトークンを無効化（認証必須）
+  revokeApiToken: protectedProcedure
+    .input(revokeApiTokenInputSchema)
+    .mutation(async (opts) => {
+      const { tokenHash } = opts.input;
+      const userId = opts.ctx.user.id;
+
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // トークンの所有者を確認
+      const token = await database
+        .select()
+        .from(apiTokens)
+        .where(and(eq(apiTokens.tokenHash, tokenHash), eq(apiTokens.userId, userId)))
+        .get();
+
+      if (!token) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Token not found',
+        });
+      }
+
+      // 無効化
+      await database
+        .update(apiTokens)
+        .set({ isActive: 0 })
+        .where(eq(apiTokens.tokenHash, tokenHash))
+        .run();
+
+      return { success: true };
+    }),
+
   // アカウントデータ削除（D1のみ、認証必須）
   // PostgreSQLのユーザー削除はBetterAuth経由で行う
   deleteAccountData: protectedProcedure
@@ -409,6 +512,18 @@ export const appRouter = router({
       await database
         .delete(budgets)
         .where(eq(budgets.userId, userId))
+        .run();
+
+      // apiTokensを削除
+      await database
+        .delete(apiTokens)
+        .where(eq(apiTokens.userId, userId))
+        .run();
+
+      // apiUsageを削除
+      await database
+        .delete(apiUsage)
+        .where(eq(apiUsage.userId, userId))
         .run();
 
       return { success: true };

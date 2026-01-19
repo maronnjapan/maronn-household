@@ -1,6 +1,7 @@
 import { useAuth } from "../../hooks/use-auth";
 import { DeleteAccountSection } from "../../components/DeleteAccountSection";
 import { HandPreferenceSection } from "../../components/HandPreferenceSection";
+import { ApiTokenSection } from "../../components/ApiTokenSection";
 import "./settings.css";
 
 /**
@@ -18,7 +19,10 @@ export function Page() {
       {isLoading ? (
         <p>読込中...</p>
       ) : isAuthenticated ? (
-        <DeleteAccountSection />
+        <>
+          <ApiTokenSection />
+          <DeleteAccountSection />
+        </>
       ) : null}
     </main>
   );

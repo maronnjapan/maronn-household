@@ -91,6 +91,211 @@
   color: #2c3e50;
 }
 
+/* API Token Section */
+.api-limit-note {
+  font-size: 0.875rem;
+  color: #e67e22;
+  margin-top: 0.5rem;
+}
+
+.issued-token-alert {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.token-warning {
+  color: #856404;
+  font-weight: 600;
+  margin: 0.5rem 0;
+}
+
+.token-display {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+
+.token-display code {
+  flex: 1;
+  background: white;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  word-break: break-all;
+  border: 1px solid #c3e6cb;
+}
+
+.copy-button {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-button:hover {
+  background: #218838;
+}
+
+.close-button {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.close-button:hover {
+  background: #5a6268;
+}
+
+.issue-token-button {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  margin: 1rem 0;
+}
+
+.issue-token-button:hover {
+  background: #2980b9;
+}
+
+.issue-token-form {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+.issue-token-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.issue-token-form input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.form-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.form-actions button:first-child {
+  background: #3498db;
+  color: white;
+}
+
+.form-actions button:first-child:hover {
+  background: #2980b9;
+}
+
+.cancel-button {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-button:hover {
+  background: #5a6268;
+}
+
+.token-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.token-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.token-list li.revoked {
+  opacity: 0.6;
+  background: #f8f9fa;
+}
+
+.token-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.token-date {
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+.token-status {
+  font-size: 0.75rem;
+  color: #dc3545;
+  font-weight: 600;
+}
+
+.revoke-button {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.revoke-button:hover {
+  background: #c82333;
+}
+
+.api-usage-guide {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.api-usage-guide h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.api-usage-guide pre {
+  background: #2c3e50;
+  color: #ecf0f1;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
 @media (min-width: 640px) {
   .settings-page {
     padding: 1.5rem;

@@ -66,27 +66,32 @@ async function deleteOrphanedData(
 	db: D1Database,
 	orphanedUserIds: Set<string>
 ): Promise<{ expenses: number; budgets: number }> {
-	const BATCH_DELAY_MS = 100;
-
-	let expensesDeleted = 0;
-	let budgetsDeleted = 0;
-
-	for (const userId of orphanedUserIds) {
-		// expenses削除
-		const expResult = await db.prepare('DELETE FROM expenses WHERE user_id = ?').bind(userId).run();
-		expensesDeleted += expResult.meta.changes ?? 0;
-
-		// budgets削除
-		const budResult = await db.prepare('DELETE FROM budgets WHERE user_id = ?').bind(userId).run();
-		budgetsDeleted += budResult.meta.changes ?? 0;
-
-		console.log(
-			`[deleteOrphanedData] Deleted data for user_id: ${userId} (expenses: ${expResult.meta.changes ?? 0}, budgets: ${budResult.meta.changes ?? 0})`
-		);
-
-		// CPU負荷分散のため待機
-		await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+	if (orphanedUserIds.size === 0) {
+		return { expenses: 0, budgets: 0 };
 	}
+
+	// json_eachで配列を展開してIN句を構成し、テーブルごとに1リクエストで削除する
+	const userIdsJson = JSON.stringify(Array.from(orphanedUserIds));
+	const deleteForTable = async (tableName: 'expenses' | 'budgets'): Promise<number> => {
+		const statement = `
+			WITH target_ids AS (
+				SELECT value AS user_id FROM json_each(?1)
+			)
+			DELETE FROM ${tableName}
+			WHERE user_id IN (SELECT user_id FROM target_ids)
+		`;
+		const result = await db.prepare(statement).bind(userIdsJson).run();
+		return result.meta.changes ?? 0;
+	};
+
+	const [expensesDeleted, budgetsDeleted] = await Promise.all([
+		deleteForTable('expenses'),
+		deleteForTable('budgets'),
+	]);
+
+	console.log(
+		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}) in single batches`
+	);
 
 	return { expenses: expensesDeleted, budgets: budgetsDeleted };
 }

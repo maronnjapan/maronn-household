@@ -15,6 +15,9 @@ BETTER_AUTH_URL=http://localhost:5173
 
 PUBLIC_ENV__BETTER_AUTH_URL=http://localhost:5173
 
+# Webhookシークレット暗号化キー（32文字以上のランダム文字列）
+WEBHOOK_SECRET_KEY=your-random-webhook-secret-key
+
 # 本番環境へのデプロイ時は、以下のコマンドでシークレットを設定してください:
 # wrangler secret put BETTER_AUTH_SECRET
 # wrangler secret put BETTER_AUTH_URL

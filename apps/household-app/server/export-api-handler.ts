@@ -17,16 +17,48 @@ interface Env {
 
 const DAILY_API_LIMIT = 50;
 
+const jsonResponse = (data: unknown, status: number, extraHeaders?: Record<string, string>) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+  });
+
+const badRequest = (message: string) => jsonResponse({ error: message }, 400);
+
+async function parseJsonBody(request: Request): Promise<{ body?: Record<string, unknown>; error?: Response }> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return { error: badRequest('Invalid JSON body') };
+  }
+
+  if (!body || typeof body !== 'object') {
+    return { error: badRequest('Request body must be an object') };
+  }
+
+  return { body: body as Record<string, unknown> };
+}
+
+async function updateLastUsedAt(
+  database: ReturnType<typeof drizzle>,
+  tokenHash: string,
+  now = new Date().toISOString(),
+): Promise<void> {
+  await database
+    .update(apiTokens)
+    .set({ lastUsedAt: now })
+    .where(eq(apiTokens.tokenHash, tokenHash))
+    .run();
+}
+
 export const exportApiHandler = ((basePath: string) =>
   enhance(
     async (request, _context, runtime) => {
       const env = (runtime as { runtime: 'workerd'; env?: Env })?.env;
 
       if (!env) {
-        return new Response(JSON.stringify({ error: 'Environment not available' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Environment not available' }, 500);
       }
 
       const url = new URL(request.url);
@@ -34,20 +66,14 @@ export const exportApiHandler = ((basePath: string) =>
 
       // パスの検証
       if (!pathname.startsWith(basePath)) {
-        return new Response(JSON.stringify({ error: 'Not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Not found' }, 404);
       }
 
       // 認証ヘッダーの検証
       const authHeader = request.headers.get('Authorization');
 
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return new Response(JSON.stringify({ error: 'Authorization header missing or invalid' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Authorization header missing or invalid' }, 401);
       }
 
       const token = authHeader.replace('Bearer ', '');
@@ -62,17 +88,11 @@ export const exportApiHandler = ((basePath: string) =>
         .get();
 
       if (!tokenData) {
-        return new Response(JSON.stringify({ error: 'Invalid token' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Invalid token' }, 401);
       }
 
       if (tokenData.isActive !== 1) {
-        return new Response(JSON.stringify({ error: 'Token is revoked' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Token is revoked' }, 401);
       }
 
       const userId = tokenData.userId;
@@ -92,10 +112,7 @@ export const exportApiHandler = ((basePath: string) =>
         return handleUpdateBudget(request, database, userId, tokenHash);
       }
 
-      return new Response(JSON.stringify({ error: 'Not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Not found' }, 404);
     },
     {
       name: 'household-app:export-api-handler',
@@ -145,20 +162,15 @@ async function checkAndIncrementDailyUsage(
       const retryAfter = tomorrow.toISOString();
 
       return {
-        error: new Response(
-          JSON.stringify({
+        error: jsonResponse(
+          {
             error: 'Daily API usage limit exceeded',
             limit: DAILY_API_LIMIT,
             currentUsage: usage.count,
             retryAfter,
-          }),
-          {
-            status: 429,
-            headers: {
-              'Content-Type': 'application/json',
-              'Retry-After': retryAfter,
-            },
           },
+          429,
+          { 'Retry-After': retryAfter },
         ),
       };
     }
@@ -190,13 +202,7 @@ async function handleMonthlyExport(
 
   // monthパラメータのバリデーション
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid month parameter. Expected format: YYYY-MM' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
+    return badRequest('Invalid month parameter. Expected format: YYYY-MM');
   }
 
   // 実行回数制限チェック（1日50回）
@@ -207,11 +213,7 @@ async function handleMonthlyExport(
   const usage = checkResult.usage!;
 
   // lastUsedAtを更新
-  await database
-    .update(apiTokens)
-    .set({ lastUsedAt: new Date().toISOString() })
-    .where(eq(apiTokens.tokenHash, tokenHash))
-    .run();
+  await updateLastUsedAt(database, tokenHash);
 
   // 予算を取得
   const budget = await database
@@ -237,8 +239,8 @@ async function handleMonthlyExport(
   const budgetAmount = budget?.amount || 0;
   const remaining = budgetAmount - totalExpenses;
 
-  return new Response(
-    JSON.stringify({
+  return jsonResponse(
+    {
       month,
       budget: budget
         ? {
@@ -264,11 +266,8 @@ async function handleMonthlyExport(
         limit: DAILY_API_LIMIT,
         remaining: DAILY_API_LIMIT - usage.count,
       },
-    }),
-    {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
     },
+    200,
   );
 }
 
@@ -282,23 +281,11 @@ async function handleAddExpense(
   tokenHash: string,
 ): Promise<Response> {
   // リクエストボディの取得
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const parsedBody = await parseJsonBody(request);
+  if (parsedBody.error) {
+    return parsedBody.error;
   }
-
-  // バリデーション
-  if (!body || typeof body !== 'object') {
-    return new Response(JSON.stringify({ error: 'Request body must be an object' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  const body = parsedBody.body!;
 
   const { amount, category, memo, date, deviceId } = body as {
     amount?: unknown;
@@ -310,45 +297,24 @@ async function handleAddExpense(
 
   // 必須フィールドのチェック
   if (typeof amount !== 'number' || amount <= 0) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid amount. Must be a positive number' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
+    return badRequest('Invalid amount. Must be a positive number');
   }
 
   // オプションフィールドの検証
   if (category !== undefined && typeof category !== 'string') {
-    return new Response(JSON.stringify({ error: 'category must be a string' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return badRequest('category must be a string');
   }
 
   if (memo !== undefined && typeof memo !== 'string') {
-    return new Response(JSON.stringify({ error: 'memo must be a string' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return badRequest('memo must be a string');
   }
 
   if (date !== undefined && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
-    return new Response(
-      JSON.stringify({ error: 'date must be in YYYY-MM-DD format' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
+    return badRequest('date must be in YYYY-MM-DD format');
   }
 
   if (deviceId !== undefined && typeof deviceId !== 'string') {
-    return new Response(JSON.stringify({ error: 'deviceId must be a string' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return badRequest('deviceId must be a string');
   }
 
   // レート制限チェック
@@ -380,16 +346,12 @@ async function handleAddExpense(
       .run();
 
     // lastUsedAtを更新
-    await database
-      .update(apiTokens)
-      .set({ lastUsedAt: now })
-      .where(eq(apiTokens.tokenHash, tokenHash))
-      .run();
+    await updateLastUsedAt(database, tokenHash, now);
 
     const usage = checkResult.usage!;
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: true,
         expense: {
           id: expenseId,
@@ -404,18 +366,12 @@ async function handleAddExpense(
           limit: DAILY_API_LIMIT,
           remaining: DAILY_API_LIMIT - usage.count,
         },
-      }),
-      {
-        status: 201,
-        headers: { 'Content-Type': 'application/json' },
       },
+      201,
     );
   } catch (error) {
     console.error('Failed to insert expense:', error);
-    return new Response(JSON.stringify({ error: 'Failed to create expense' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Failed to create expense' }, 500);
   }
 }
 
@@ -429,23 +385,11 @@ async function handleUpdateBudget(
   tokenHash: string,
 ): Promise<Response> {
   // リクエストボディの取得
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const parsedBody = await parseJsonBody(request);
+  if (parsedBody.error) {
+    return parsedBody.error;
   }
-
-  // バリデーション
-  if (!body || typeof body !== 'object') {
-    return new Response(JSON.stringify({ error: 'Request body must be an object' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  const body = parsedBody.body!;
 
   const { month, amount } = body as {
     month?: unknown;
@@ -454,23 +398,11 @@ async function handleUpdateBudget(
 
   // 必須フィールドのチェック
   if (typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid month. Expected format: YYYY-MM' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
+    return badRequest('Invalid month. Expected format: YYYY-MM');
   }
 
   if (typeof amount !== 'number' || amount < 0) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid amount. Must be a non-negative number' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
+    return badRequest('Invalid amount. Must be a non-negative number');
   }
 
   // レート制限チェック
@@ -515,16 +447,12 @@ async function handleUpdateBudget(
     }
 
     // lastUsedAtを更新
-    await database
-      .update(apiTokens)
-      .set({ lastUsedAt: now })
-      .where(eq(apiTokens.tokenHash, tokenHash))
-      .run();
+    await updateLastUsedAt(database, tokenHash, now);
 
     const usage = checkResult.usage!;
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: true,
         budget: {
           month,
@@ -536,17 +464,11 @@ async function handleUpdateBudget(
           limit: DAILY_API_LIMIT,
           remaining: DAILY_API_LIMIT - usage.count,
         },
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
       },
+      200,
     );
   } catch (error) {
     console.error('Failed to update budget:', error);
-    return new Response(JSON.stringify({ error: 'Failed to update budget' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Failed to update budget' }, 500);
   }
 }

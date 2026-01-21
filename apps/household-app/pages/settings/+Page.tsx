@@ -1,8 +1,9 @@
-import { useAuth } from "../../hooks/use-auth";
-import { DeleteAccountSection } from "../../components/DeleteAccountSection";
-import { HandPreferenceSection } from "../../components/HandPreferenceSection";
-import { ApiTokenSection } from "../../components/ApiTokenSection";
-import "./settings.css";
+import { useAuth } from '../../hooks/use-auth';
+import { DeleteAccountSection } from '../../components/DeleteAccountSection';
+import { HandPreferenceSection } from '../../components/HandPreferenceSection';
+import { ApiTokenSection } from '../../components/ApiTokenSection';
+import { WebhookSection } from '../../components/WebhookSection';
+import './settings.css';
 
 /**
  * 設定ページ
@@ -21,6 +22,7 @@ export function Page() {
       ) : isAuthenticated ? (
         <>
           <ApiTokenSection />
+          <WebhookSection />
           <DeleteAccountSection />
         </>
       ) : null}

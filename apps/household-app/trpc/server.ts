@@ -1,12 +1,23 @@
-import type { dbD1 } from "../database/drizzle/db";
-import { initTRPC, TRPCError } from "@trpc/server";
+import type { dbD1 } from '../database/drizzle/db';
+import { initTRPC, TRPCError } from '@trpc/server';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
-import { expenses, budgets, apiTokens, apiUsage } from '../database/drizzle/schema/household';
+import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import {
+  expenses,
+  budgets,
+  apiTokens,
+  apiUsage,
+  webhooks,
+} from '../database/drizzle/schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
+import {
+  encryptWebhookSecret,
+  decryptWebhookSecret,
+} from '../lib/webhook-secret';
+import { createWebhookSignature } from '../lib/webhook-signature';
 import { ulid } from 'ulidx';
-import type { Session, User } from "better-auth/types";
+import type { Session, User } from 'better-auth/types';
 
 /**
  * Cloudflare Workers環境変数の型定義
@@ -16,6 +27,7 @@ interface Env {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  WEBHOOK_SECRET_KEY: string;
 }
 
 /**
@@ -122,10 +134,101 @@ const revokeApiTokenInputSchema = z.object({
   tokenHash: z.string(),
 });
 
+const createWebhookInputSchema = z.object({
+  url: z.string().url(),
+  secret: z.string().optional(),
+});
+
+const deleteWebhookInputSchema = z.object({
+  id: z.string(),
+});
+
+async function deliverExpenseWebhooks(params: {
+  database: ReturnType<typeof drizzle>;
+  env?: Env;
+  userId: string;
+  expense: {
+    id: string;
+    amount: number;
+    category?: string;
+    memo?: string;
+    date: string;
+    createdAt: string;
+    updatedAt: string;
+    deviceId: string;
+  };
+  event: 'expense.created' | 'expense.updated';
+}) {
+  const { database, env, userId, expense, event } = params;
+  const targets = await database
+    .select()
+    .from(webhooks)
+    .where(eq(webhooks.userId, userId))
+    .all();
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  const payload = JSON.stringify({
+    event,
+    occurredAt: new Date().toISOString(),
+    userId,
+    expense: {
+      id: expense.id,
+      amount: expense.amount,
+      category: expense.category ?? null,
+      memo: expense.memo ?? null,
+      date: expense.date,
+      createdAt: expense.createdAt,
+      updatedAt: expense.updatedAt,
+      deviceId: expense.deviceId,
+    },
+  });
+
+  await Promise.allSettled(
+    targets.map(async (target) => {
+      const headers = new Headers({
+        'Content-Type': 'application/json',
+        'X-Household-Webhook-Event': event,
+        'X-Household-Webhook-Id': target.id,
+      });
+
+      if (target.secretEncrypted && target.secretIv) {
+        if (!env?.WEBHOOK_SECRET_KEY) {
+          console.error('[Webhook] Missing WEBHOOK_SECRET_KEY for signing');
+          return;
+        }
+        const secret = await decryptWebhookSecret(
+          target.secretEncrypted,
+          target.secretIv,
+          env.WEBHOOK_SECRET_KEY
+        );
+        const signature = await createWebhookSignature(secret, payload);
+        headers.set('X-Household-Webhook-Signature', signature);
+      }
+
+      const response = await fetch(target.url, {
+        method: 'POST',
+        headers,
+        body: payload,
+      });
+
+      if (!response.ok) {
+        console.error('[Webhook] Delivery failed', {
+          url: target.url,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+    })
+  );
+}
+
 export const appRouter = router({
   // デモエンドポイント（認証不要）
   demo: publicProcedure.query(async () => {
-    return { demo: true, message: "Household app tRPC is working!" };
+    return { demo: true, message: 'Household app tRPC is working!' };
   }),
 
   // セッション情報取得（認証不要）
@@ -140,7 +243,16 @@ export const appRouter = router({
   createExpense: protectedProcedure
     .input(expenseInputSchema)
     .mutation(async (opts) => {
-      const { id, amount, category, memo, date, createdAt, updatedAt, deviceId } = opts.input;
+      const {
+        id,
+        amount,
+        category,
+        memo,
+        date,
+        createdAt,
+        updatedAt,
+        deviceId,
+      } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
       // DBを取得（D1を使用）
@@ -171,6 +283,18 @@ export const appRouter = router({
             .where(eq(expenses.id, id))
             .run();
 
+          try {
+            await deliverExpenseWebhooks({
+              database,
+              env: opts.ctx.env,
+              userId,
+              expense: opts.input,
+              event: 'expense.updated',
+            });
+          } catch (error) {
+            console.error('[Webhook] Failed to deliver expense.updated', error);
+          }
+
           return { success: true, updated: true };
         }
 
@@ -192,6 +316,18 @@ export const appRouter = router({
           deviceId,
         })
         .run();
+
+      try {
+        await deliverExpenseWebhooks({
+          database,
+          env: opts.ctx.env,
+          userId,
+          expense: opts.input,
+          event: 'expense.created',
+        });
+      } catch (error) {
+        console.error('[Webhook] Failed to deliver expense.created', error);
+      }
 
       return { success: true, created: true };
     }),
@@ -239,7 +375,8 @@ export const appRouter = router({
   updateExpense: protectedProcedure
     .input(updateExpenseInputSchema)
     .mutation(async (opts) => {
-      const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
+      const { id, amount, category, memo, date, updatedAt, deviceId } =
+        opts.input;
       const userId = opts.ctx.user.id;
 
       const database = opts.ctx.env?.DB
@@ -269,8 +406,9 @@ export const appRouter = router({
         .update(expenses)
         .set({
           amount: amount ?? existing.amount,
-          category: category !== undefined ? (category || null) : existing.category,
-          memo: memo !== undefined ? (memo || null) : existing.memo,
+          category:
+            category !== undefined ? category || null : existing.category,
+          memo: memo !== undefined ? memo || null : existing.memo,
           date: date ?? existing.date,
           updatedAt,
           deviceId,
@@ -303,45 +441,36 @@ export const appRouter = router({
 
   // 予算を取得（認証必須）
   // 指定月の予算が見つからない場合、最新の過去の予算を引き継ぐ
-  getBudget: protectedProcedure
-    .input(budgetInputSchema)
-    .query(async (opts) => {
-      const { month } = opts.input;
-      const userId = opts.ctx.user.id;
+  getBudget: protectedProcedure.input(budgetInputSchema).query(async (opts) => {
+    const { month } = opts.input;
+    const userId = opts.ctx.user.id;
 
-      // DBを取得（D1を使用）
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
-      // 指定月の予算を取得
-      const result = await database
-        .select()
-        .from(budgets)
-        .where(
-          and(
-            eq(budgets.userId, userId),
-            eq(budgets.month, month)
-          )
-        )
-        .get();
+    // 指定月の予算を取得
+    const result = await database
+      .select()
+      .from(budgets)
+      .where(and(eq(budgets.userId, userId), eq(budgets.month, month)))
+      .get();
 
-      // 指定月の予算が見つかった場合はそれを返す
-      if (result) {
-        return { budget: result };
-      }
+    // 指定月の予算が見つかった場合はそれを返す
+    if (result) {
+      return { budget: result };
+    }
 
-      // 見つからない場合、最新の過去の予算を取得して引き継ぐ
-      const latestBudget = await database
-        .select()
-        .from(budgets)
-        .where(eq(budgets.userId, userId))
-        .orderBy(desc(budgets.month))
-        .limit(1)
-        .get();
+    // 見つからない場合、最新の過去の予算を取得して引き継ぐ
+    const latestBudget = await database
+      .select()
+      .from(budgets)
+      .where(eq(budgets.userId, userId))
+      .orderBy(desc(budgets.month))
+      .limit(1)
+      .get();
 
-      return { budget: latestBudget };
-    }),
+    return { budget: latestBudget };
+  }),
 
   // 予算を更新（認証必須）
   updateBudget: protectedProcedure
@@ -360,12 +489,7 @@ export const appRouter = router({
       const existing = await database
         .select()
         .from(budgets)
-        .where(
-          and(
-            eq(budgets.userId, userId),
-            eq(budgets.month, month)
-          )
-        )
+        .where(and(eq(budgets.userId, userId), eq(budgets.month, month)))
         .get();
 
       if (existing) {
@@ -436,24 +560,21 @@ export const appRouter = router({
     }),
 
   // APIトークン一覧を取得（認証必須）
-  listApiTokens: protectedProcedure
-    .query(async (opts) => {
-      const userId = opts.ctx.user.id;
+  listApiTokens: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
 
-      // DBを取得（D1を使用）
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
-      const tokens = await database
-        .select()
-        .from(apiTokens)
-        .where(eq(apiTokens.userId, userId))
-        .orderBy(desc(apiTokens.createdAt))
-        .all();
+    const tokens = await database
+      .select()
+      .from(apiTokens)
+      .where(eq(apiTokens.userId, userId))
+      .orderBy(desc(apiTokens.createdAt))
+      .all();
 
-      return { tokens };
-    }),
+    return { tokens };
+  }),
 
   // APIトークンを無効化（認証必須）
   revokeApiToken: protectedProcedure
@@ -471,7 +592,9 @@ export const appRouter = router({
       const token = await database
         .select()
         .from(apiTokens)
-        .where(and(eq(apiTokens.tokenHash, tokenHash), eq(apiTokens.userId, userId)))
+        .where(
+          and(eq(apiTokens.tokenHash, tokenHash), eq(apiTokens.userId, userId))
+        )
         .get();
 
       if (!token) {
@@ -491,43 +614,149 @@ export const appRouter = router({
       return { success: true };
     }),
 
-  // アカウントデータ削除（D1のみ、認証必須）
-  // PostgreSQLのユーザー削除はBetterAuth経由で行う
-  deleteAccountData: protectedProcedure
+  // Webhook一覧を取得（認証必須）
+  listWebhooks: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const targets = await database
+      .select()
+      .from(webhooks)
+      .where(eq(webhooks.userId, userId))
+      .orderBy(desc(webhooks.createdAt))
+      .all();
+
+    return {
+      webhooks: targets.map((target) => ({
+        id: target.id,
+        url: target.url,
+        createdAt: target.createdAt,
+        updatedAt: target.updatedAt,
+        hasSecret: Boolean(target.secretEncrypted),
+      })),
+    };
+  }),
+
+  // Webhookを追加（認証必須）
+  createWebhook: protectedProcedure
+    .input(createWebhookInputSchema)
     .mutation(async (opts) => {
       const userId = opts.ctx.user.id;
+      const { url, secret } = opts.input;
+      const createdAt = new Date().toISOString();
 
-      // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
 
-      // expensesを削除
+      const existingCount = await database
+        .select({ count: sql<number>`count(*)` })
+        .from(webhooks)
+        .where(eq(webhooks.userId, userId))
+        .get();
+
+      if ((existingCount?.count ?? 0) >= 5) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Webhookは最大5件まで登録できます。',
+        });
+      }
+
+      let secretEncrypted: string | null = null;
+      let secretIv: string | null = null;
+
+      if (secret) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+
+        const encrypted = await encryptWebhookSecret(
+          secret,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        secretEncrypted = encrypted.encrypted;
+        secretIv = encrypted.iv;
+      }
+
+      const id = ulid();
       await database
-        .delete(expenses)
-        .where(eq(expenses.userId, userId))
+        .insert(webhooks)
+        .values({
+          id,
+          userId,
+          url,
+          secretEncrypted,
+          secretIv,
+          createdAt,
+          updatedAt: createdAt,
+        })
         .run();
 
-      // budgetsを削除
-      await database
-        .delete(budgets)
-        .where(eq(budgets.userId, userId))
-        .run();
+      return {
+        id,
+        url,
+        createdAt,
+      };
+    }),
 
-      // apiTokensを削除
-      await database
-        .delete(apiTokens)
-        .where(eq(apiTokens.userId, userId))
-        .run();
+  // Webhookを削除（認証必須）
+  deleteWebhook: protectedProcedure
+    .input(deleteWebhookInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id } = opts.input;
 
-      // apiUsageを削除
-      await database
-        .delete(apiUsage)
-        .where(eq(apiUsage.userId, userId))
-        .run();
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(webhooks)
+        .where(and(eq(webhooks.id, id), eq(webhooks.userId, userId)))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Webhook not found',
+        });
+      }
+
+      await database.delete(webhooks).where(eq(webhooks.id, id)).run();
 
       return { success: true };
     }),
+
+  // アカウントデータ削除（D1のみ、認証必須）
+  // PostgreSQLのユーザー削除はBetterAuth経由で行う
+  deleteAccountData: protectedProcedure.mutation(async (opts) => {
+    const userId = opts.ctx.user.id;
+
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    // expensesを削除
+    await database.delete(expenses).where(eq(expenses.userId, userId)).run();
+
+    // budgetsを削除
+    await database.delete(budgets).where(eq(budgets.userId, userId)).run();
+
+    // apiTokensを削除
+    await database.delete(apiTokens).where(eq(apiTokens.userId, userId)).run();
+
+    // apiUsageを削除
+    await database.delete(apiUsage).where(eq(apiUsage.userId, userId)).run();
+
+    // webhooksを削除
+    await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
+
+    return { success: true };
+  }),
 });
 
 export type AppRouter = typeof appRouter;

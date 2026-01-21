@@ -6,6 +6,7 @@ import { EXPENSE_CATEGORIES } from '../constants/categories';
 
 interface ExpenseInputProps {
   onAdd: (params: CreateExpenseParams) => void | Promise<void>;
+  initialAmount?: number;
 }
 
 /**
@@ -38,11 +39,16 @@ function getPreHydrationState(): { expression: string; memo: string; category: s
  * - hydration時にdata属性から状態を引き継ぎ
  * - Reactが引き継いだ後はReactのイベントハンドラーで動作
  */
-export function ExpenseInput({ onAdd }: ExpenseInputProps) {
+export function ExpenseInput({ onAdd, initialAmount }: ExpenseInputProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialState = useRef(getPreHydrationState());
 
-  const [expression, setExpression] = useState(initialState.current.expression);
+  // initialAmount が指定されていればそれを優先、なければ pre-hydration state を使用
+  const initialExpression = initialAmount !== undefined
+    ? initialAmount.toString()
+    : initialState.current.expression;
+
+  const [expression, setExpression] = useState(initialExpression);
   const [memo, setMemo] = useState(initialState.current.memo);
   const [category, setCategory] = useState(initialState.current.category);
 

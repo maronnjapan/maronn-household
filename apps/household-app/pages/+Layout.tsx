@@ -45,6 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/household/budget">Budget</Link>
           <Link href="/calendar">Calendar</Link>
           <Link href="/settings">Settings</Link>
+          <Link href="/guide">Guide</Link>
         </Sidebar>
         <Content>{children}</Content>
         <ClientOnly fallback={null}>

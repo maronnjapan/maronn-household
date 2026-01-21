@@ -1,10 +1,23 @@
-import type { dbD1 } from "../database/drizzle/db";
-import { initTRPC, TRPCError } from "@trpc/server";
+import type { dbD1 } from '../database/drizzle/db';
+import { initTRPC, TRPCError } from '@trpc/server';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, gte, lte } from 'drizzle-orm';
-import { expenses, budgets } from '../database/drizzle/schema/household';
+import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import {
+  expenses,
+  budgets,
+  apiTokens,
+  apiUsage,
+  webhooks,
+} from '../database/drizzle/schema/household';
 import { z } from 'zod';
-import type { Session, User } from "better-auth/types";
+import { generateSecureToken, hashToken } from '../lib/api-token';
+import {
+  encryptWebhookSecret,
+  decryptWebhookSecret,
+} from '../lib/webhook-secret';
+import { createWebhookSignature } from '../lib/webhook-signature';
+import { ulid } from 'ulidx';
+import type { Session, User } from 'better-auth/types';
 
 /**
  * Cloudflare Workers環境変数の型定義
@@ -14,9 +27,9 @@ interface Env {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  RESEND_API_KEY: string;
   CONTACT_EMAIL_TO: string;
   CONTACT_EMAIL_FROM: string;
+  WEBHOOK_SECRET_KEY: string;
 }
 
 /**
@@ -122,10 +135,109 @@ const contactEmailInputSchema = z.object({
   message: z.string().min(1, 'Message is required'),
 });
 
+const issueApiTokenInputSchema = z.object({
+  name: z.string().optional(),
+});
+
+const revokeApiTokenInputSchema = z.object({
+  tokenHash: z.string(),
+});
+
+const createWebhookInputSchema = z.object({
+  url: z.string().url(),
+  secret: z.string().optional(),
+});
+
+const deleteWebhookInputSchema = z.object({
+  id: z.string(),
+});
+
+async function deliverExpenseWebhooks(params: {
+  database: ReturnType<typeof drizzle>;
+  env?: Env;
+  userId: string;
+  expense: {
+    id: string;
+    amount: number;
+    category?: string;
+    memo?: string;
+    date: string;
+    createdAt: string;
+    updatedAt: string;
+    deviceId: string;
+  };
+  event: 'expense.created' | 'expense.updated';
+}) {
+  const { database, env, userId, expense, event } = params;
+  const targets = await database
+    .select()
+    .from(webhooks)
+    .where(eq(webhooks.userId, userId))
+    .all();
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  const payload = JSON.stringify({
+    event,
+    occurredAt: new Date().toISOString(),
+    userId,
+    expense: {
+      id: expense.id,
+      amount: expense.amount,
+      category: expense.category ?? null,
+      memo: expense.memo ?? null,
+      date: expense.date,
+      createdAt: expense.createdAt,
+      updatedAt: expense.updatedAt,
+      deviceId: expense.deviceId,
+    },
+  });
+
+  await Promise.allSettled(
+    targets.map(async (target) => {
+      const headers = new Headers({
+        'Content-Type': 'application/json',
+        'X-Household-Webhook-Event': event,
+        'X-Household-Webhook-Id': target.id,
+      });
+
+      if (target.secretEncrypted && target.secretIv) {
+        if (!env?.WEBHOOK_SECRET_KEY) {
+          console.error('[Webhook] Missing WEBHOOK_SECRET_KEY for signing');
+          return;
+        }
+        const secret = await decryptWebhookSecret(
+          target.secretEncrypted,
+          target.secretIv,
+          env.WEBHOOK_SECRET_KEY
+        );
+        const signature = await createWebhookSignature(secret, payload);
+        headers.set('X-Household-Webhook-Signature', signature);
+      }
+
+      const response = await fetch(target.url, {
+        method: 'POST',
+        headers,
+        body: payload,
+      });
+
+      if (!response.ok) {
+        console.error('[Webhook] Delivery failed', {
+          url: target.url,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+    })
+  );
+}
+
 export const appRouter = router({
   // デモエンドポイント（認証不要）
   demo: publicProcedure.query(async () => {
-    return { demo: true, message: "Household app tRPC is working!" };
+    return { demo: true, message: 'Household app tRPC is working!' };
   }),
 
   // セッション情報取得（認証不要）
@@ -140,7 +252,16 @@ export const appRouter = router({
   createExpense: protectedProcedure
     .input(expenseInputSchema)
     .mutation(async (opts) => {
-      const { id, amount, category, memo, date, createdAt, updatedAt, deviceId } = opts.input;
+      const {
+        id,
+        amount,
+        category,
+        memo,
+        date,
+        createdAt,
+        updatedAt,
+        deviceId,
+      } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
       // DBを取得（D1を使用）
@@ -171,6 +292,18 @@ export const appRouter = router({
             .where(eq(expenses.id, id))
             .run();
 
+          try {
+            await deliverExpenseWebhooks({
+              database,
+              env: opts.ctx.env,
+              userId,
+              expense: opts.input,
+              event: 'expense.updated',
+            });
+          } catch (error) {
+            console.error('[Webhook] Failed to deliver expense.updated', error);
+          }
+
           return { success: true, updated: true };
         }
 
@@ -192,6 +325,18 @@ export const appRouter = router({
           deviceId,
         })
         .run();
+
+      try {
+        await deliverExpenseWebhooks({
+          database,
+          env: opts.ctx.env,
+          userId,
+          expense: opts.input,
+          event: 'expense.created',
+        });
+      } catch (error) {
+        console.error('[Webhook] Failed to deliver expense.created', error);
+      }
 
       return { success: true, created: true };
     }),
@@ -239,7 +384,8 @@ export const appRouter = router({
   updateExpense: protectedProcedure
     .input(updateExpenseInputSchema)
     .mutation(async (opts) => {
-      const { id, amount, category, memo, date, updatedAt, deviceId } = opts.input;
+      const { id, amount, category, memo, date, updatedAt, deviceId } =
+        opts.input;
       const userId = opts.ctx.user.id;
 
       const database = opts.ctx.env?.DB
@@ -269,8 +415,9 @@ export const appRouter = router({
         .update(expenses)
         .set({
           amount: amount ?? existing.amount,
-          category: category !== undefined ? (category || null) : existing.category,
-          memo: memo !== undefined ? (memo || null) : existing.memo,
+          category:
+            category !== undefined ? category || null : existing.category,
+          memo: memo !== undefined ? memo || null : existing.memo,
           date: date ?? existing.date,
           updatedAt,
           deviceId,
@@ -302,31 +449,37 @@ export const appRouter = router({
     }),
 
   // 予算を取得（認証必須）
-  getBudget: protectedProcedure
-    .input(budgetInputSchema)
-    .query(async (opts) => {
-      const { month } = opts.input;
-      const userId = opts.ctx.user.id;
+  // 指定月の予算が見つからない場合、最新の過去の予算を引き継ぐ
+  getBudget: protectedProcedure.input(budgetInputSchema).query(async (opts) => {
+    const { month } = opts.input;
+    const userId = opts.ctx.user.id;
 
-      // DBを取得（D1を使用）
-      const database = opts.ctx.env?.DB
-        ? drizzle(opts.ctx.env.DB)
-        : opts.ctx.db;
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
-      // 指定月の予算を取得
-      const result = await database
-        .select()
-        .from(budgets)
-        .where(
-          and(
-            eq(budgets.userId, userId),
-            eq(budgets.month, month)
-          )
-        )
-        .get();
+    // 指定月の予算を取得
+    const result = await database
+      .select()
+      .from(budgets)
+      .where(and(eq(budgets.userId, userId), eq(budgets.month, month)))
+      .get();
 
+    // 指定月の予算が見つかった場合はそれを返す
+    if (result) {
       return { budget: result };
-    }),
+    }
+
+    // 見つからない場合、最新の過去の予算を取得して引き継ぐ
+    const latestBudget = await database
+      .select()
+      .from(budgets)
+      .where(eq(budgets.userId, userId))
+      .orderBy(desc(budgets.month))
+      .limit(1)
+      .get();
+
+    return { budget: latestBudget };
+  }),
 
   // 予算を更新（認証必須）
   updateBudget: protectedProcedure
@@ -345,12 +498,7 @@ export const appRouter = router({
       const existing = await database
         .select()
         .from(budgets)
-        .where(
-          and(
-            eq(budgets.userId, userId),
-            eq(budgets.month, month)
-          )
-        )
+        .where(and(eq(budgets.userId, userId), eq(budgets.month, month)))
         .get();
 
       if (existing) {
@@ -383,10 +531,65 @@ export const appRouter = router({
       return { success: true, created: true };
     }),
 
-  // アカウントデータ削除（D1のみ、認証必須）
-  // PostgreSQLのユーザー削除はBetterAuth経由で行う
-  deleteAccountData: protectedProcedure
+  // APIトークンを発行（認証必須）
+  issueApiToken: protectedProcedure
+    .input(issueApiTokenInputSchema)
     .mutation(async (opts) => {
+      const { name } = opts.input;
+      const userId = opts.ctx.user.id;
+      const createdAt = new Date().toISOString();
+
+      // DBを取得（D1を使用）
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // 安全なトークンを生成（128文字 = 512ビット）
+      const token = generateSecureToken(128);
+      const tokenHash = await hashToken(token);
+
+      // トークンを保存（ハッシュのみ）
+      await database
+        .insert(apiTokens)
+        .values({
+          tokenHash,
+          userId,
+          name: name || null,
+          createdAt,
+          lastUsedAt: null,
+          isActive: 1,
+        })
+        .run();
+
+      return {
+        token, // 平文トークンは1回だけ返す
+        tokenHash,
+        message: 'このトークンは再表示できません。安全に保管してください。',
+      };
+    }),
+
+  // APIトークン一覧を取得（認証必須）
+  listApiTokens: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const tokens = await database
+      .select()
+      .from(apiTokens)
+      .where(eq(apiTokens.userId, userId))
+      .orderBy(desc(apiTokens.createdAt))
+      .all();
+
+    return { tokens };
+  }),
+
+  // APIトークンを無効化（認証必須）
+  revokeApiToken: protectedProcedure
+    .input(revokeApiTokenInputSchema)
+    .mutation(async (opts) => {
+      const { tokenHash } = opts.input;
       const userId = opts.ctx.user.id;
 
       // DBを取得（D1を使用）
@@ -394,16 +597,27 @@ export const appRouter = router({
         ? drizzle(opts.ctx.env.DB)
         : opts.ctx.db;
 
-      // expensesを削除
-      await database
-        .delete(expenses)
-        .where(eq(expenses.userId, userId))
-        .run();
+      // トークンの所有者を確認
+      const token = await database
+        .select()
+        .from(apiTokens)
+        .where(
+          and(eq(apiTokens.tokenHash, tokenHash), eq(apiTokens.userId, userId))
+        )
+        .get();
 
-      // budgetsを削除
+      if (!token) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Token not found',
+        });
+      }
+
+      // 無効化
       await database
-        .delete(budgets)
-        .where(eq(budgets.userId, userId))
+        .update(apiTokens)
+        .set({ isActive: 0 })
+        .where(eq(apiTokens.tokenHash, tokenHash))
         .run();
 
       return { success: true };
@@ -416,13 +630,6 @@ export const appRouter = router({
       const { name, email, subject, message } = opts.input;
       const env = opts.ctx.env;
 
-      // 環境変数のチェック
-      if (!env?.RESEND_API_KEY) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'RESEND_API_KEY is not configured',
-        });
-      }
 
       if (!env?.CONTACT_EMAIL_TO || !env?.CONTACT_EMAIL_FROM) {
         throw new TRPCError({
@@ -431,36 +638,152 @@ export const appRouter = router({
         });
       }
 
-      // Resend SDKを動的にインポート（Cloudflare Workersでは動的インポートを使用）
-      const { Resend } = await import('resend');
-      const resend = new Resend(env.RESEND_API_KEY);
 
-      // メール送信
-      const { data, error } = await resend.emails.send({
-        from: env.CONTACT_EMAIL_FROM,
-        to: env.CONTACT_EMAIL_TO,
-        subject: `[お問い合わせ] ${subject}`,
-        replyTo: email,
-        html: `
-          <h2>お問い合わせがありました</h2>
-          <p><strong>名前:</strong> ${name}</p>
-          <p><strong>メールアドレス:</strong> ${email}</p>
-          <p><strong>件名:</strong> ${subject}</p>
-          <hr>
-          <h3>お問い合わせ内容:</h3>
-          <p style="white-space: pre-wrap;">${message}</p>
-        `,
-      });
+      return { success: true, emailId: 'id' };
+    }),
+  // Webhook一覧を取得（認証必須）
+  listWebhooks: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
 
-      if (error) {
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const targets = await database
+      .select()
+      .from(webhooks)
+      .where(eq(webhooks.userId, userId))
+      .orderBy(desc(webhooks.createdAt))
+      .all();
+
+    return {
+      webhooks: targets.map((target) => ({
+        id: target.id,
+        url: target.url,
+        createdAt: target.createdAt,
+        updatedAt: target.updatedAt,
+        hasSecret: Boolean(target.secretEncrypted),
+      })),
+    };
+  }),
+
+  // Webhookを追加（認証必須）
+  createWebhook: protectedProcedure
+    .input(createWebhookInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { url, secret } = opts.input;
+      const createdAt = new Date().toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existingCount = await database
+        .select({ count: sql<number>`count(*)` })
+        .from(webhooks)
+        .where(eq(webhooks.userId, userId))
+        .get();
+
+      if ((existingCount?.count ?? 0) >= 5) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `Failed to send email: ${error.message}`,
+          code: 'BAD_REQUEST',
+          message: 'Webhookは最大5件まで登録できます。',
         });
       }
 
-      return { success: true, emailId: data?.id };
+      let secretEncrypted: string | null = null;
+      let secretIv: string | null = null;
+
+      if (secret) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+
+        const encrypted = await encryptWebhookSecret(
+          secret,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        secretEncrypted = encrypted.encrypted;
+        secretIv = encrypted.iv;
+      }
+
+      const id = ulid();
+      await database
+        .insert(webhooks)
+        .values({
+          id,
+          userId,
+          url,
+          secretEncrypted,
+          secretIv,
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .run();
+
+      return {
+        id,
+        url,
+        createdAt,
+      };
     }),
+
+  // Webhookを削除（認証必須）
+  deleteWebhook: protectedProcedure
+    .input(deleteWebhookInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id } = opts.input;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(webhooks)
+        .where(and(eq(webhooks.id, id), eq(webhooks.userId, userId)))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Webhook not found',
+        });
+      }
+
+      await database.delete(webhooks).where(eq(webhooks.id, id)).run();
+
+      return { success: true };
+    }),
+
+  // アカウントデータ削除（D1のみ、認証必須）
+  // PostgreSQLのユーザー削除はBetterAuth経由で行う
+  deleteAccountData: protectedProcedure.mutation(async (opts) => {
+    const userId = opts.ctx.user.id;
+
+    // DBを取得（D1を使用）
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    // expensesを削除
+    await database.delete(expenses).where(eq(expenses.userId, userId)).run();
+
+    // budgetsを削除
+    await database.delete(budgets).where(eq(budgets.userId, userId)).run();
+
+    // apiTokensを削除
+    await database.delete(apiTokens).where(eq(apiTokens.userId, userId)).run();
+
+    // apiUsageを削除
+    await database.delete(apiUsage).where(eq(apiUsage.userId, userId)).run();
+
+    // webhooksを削除
+    await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
+
+    return { success: true };
+  }),
 });
 
 export type AppRouter = typeof appRouter;

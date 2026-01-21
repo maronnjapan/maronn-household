@@ -11,8 +11,6 @@ interface Env {
  * @returns 削除されたセッションの総数
  */
 async function deleteExpiredSessions(databaseUrl: string): Promise<number> {
-	const BATCH_SIZE = 100;
-	const BATCH_DELAY_MS = 100; // 各バッチ間の待機時間（ミリ秒）
 	const EXPIRY_DAYS = 3; // 期限切れとみなす日数
 
 	// PostgreSQL接続を確立
@@ -34,37 +32,18 @@ async function deleteExpiredSessions(databaseUrl: string): Promise<number> {
 
 		console.log(`[deleteExpiredSessions] Starting deletion process. Threshold: ${thresholdDate.toISOString()}`);
 
-		// バッチ処理でセッションを削除
-		while (true) {
-			// 期限切れセッションを最大BATCH_SIZE件削除（生SQL使用）
-			const result = await sql`
+		// 単一クエリで削除し、一度のサブリクエストに抑える
+		const result = await sql<{ count: string }[]>`
+			WITH deleted AS (
 				DELETE FROM session
-				WHERE id IN (
-					SELECT id FROM session
-					WHERE expires_at < ${thresholdDate}
-					LIMIT ${BATCH_SIZE}
-				)
-				RETURNING id
-			`;
+				WHERE expires_at < ${thresholdDate}
+				RETURNING 1
+			)
+			SELECT COALESCE(COUNT(*), 0)::text AS count FROM deleted
+		`;
 
-			const deletedCount = result.length;
-			totalDeleted += deletedCount;
-
-			console.log(`[deleteExpiredSessions] Batch deleted ${deletedCount} sessions (total: ${totalDeleted})`);
-
-			// 削除件数が0になったら終了
-			if (deletedCount === 0) {
-				break;
-			}
-
-			// 削除件数がバッチサイズ未満なら、これが最後のバッチ
-			if (deletedCount < BATCH_SIZE) {
-				break;
-			}
-
-			// CPU負荷分散のため、次のバッチまで待機
-			await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
-		}
+		const deletedCount = Number(result?.[0]?.count ?? 0);
+		totalDeleted += deletedCount;
 
 		console.log(`[deleteExpiredSessions] Deletion completed. Total deleted: ${totalDeleted}`);
 

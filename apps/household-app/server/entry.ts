@@ -1,6 +1,7 @@
 import { dbMiddleware } from "./db-middleware";
 import { trpcHandler } from "./trpc-handler";
 import { authHandler } from "./auth-handler";
+import { exportApiHandler } from "./export-api-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -34,6 +35,9 @@ function startApp() {
 
     // tRPC route. See https://trpc.io/docs/server/adapters
     trpcHandler("/api/trpc"),
+
+    // Export API endpoints (token-based authentication)
+    exportApiHandler("/api/v1/export"),
   ]);
 
   // グローバルエラーハンドラー

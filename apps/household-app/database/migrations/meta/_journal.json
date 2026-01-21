@@ -15,6 +15,20 @@
       "when": 1767749190086,
       "tag": "0001_black_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1768836912672,
+      "tag": "0002_even_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1768924247738,
+      "tag": "0003_webhook_targets",
+      "breakpoints": true
     }
   ]
 }

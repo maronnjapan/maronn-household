@@ -27,6 +27,7 @@ export function WebhookSection() {
   const [showExample, setShowExample] = useState(false);
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.listWebhooks.useQuery();
@@ -35,7 +36,11 @@ export function WebhookSection() {
       setUrl('');
       setSecret('');
       setShowForm(false);
+      setErrorMessage('');
       utils.listWebhooks.invalidate();
+    },
+    onError: (error) => {
+      setErrorMessage(error.message || '保存に失敗しました');
     },
   });
   const deleteWebhookMutation = trpc.deleteWebhook.useMutation({
@@ -122,12 +127,17 @@ export function WebhookSection() {
           <label>
             シークレット（任意）:
             <input
-              type="password"
+              type="text"
               value={secret}
               onChange={(event) => setSecret(event.target.value)}
               placeholder="署名に使うシークレット"
             />
           </label>
+          {errorMessage && (
+            <p className="error-message" style={{ color: 'red' }}>
+              {errorMessage}
+            </p>
+          )}
           <div className="form-actions">
             <button
               type="button"
@@ -142,6 +152,7 @@ export function WebhookSection() {
                 setShowForm(false);
                 setUrl('');
                 setSecret('');
+                setErrorMessage('');
               }}
               className="cancel-button"
             >

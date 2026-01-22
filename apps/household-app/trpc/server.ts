@@ -16,6 +16,11 @@ import {
   decryptWebhookSecret,
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
+import {
+  createSESClient,
+  sendEmail,
+  buildContactEmailTemplate,
+} from '../lib/email';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
 
@@ -155,143 +160,6 @@ const sendContactMessageInputSchema = z.object({
   subject: z.string().min(1, '件名を入力してください'),
   message: z.string().min(10, 'お問い合わせ内容は10文字以上で入力してください'),
 });
-
-/**
- * AWS SES APIを使用してメールを送信する
- * AWS SDK v3を使用せず、直接REST APIを呼び出す（Cloudflare Workers互換）
- */
-async function sendEmailViaSES(params: {
-  env: Env;
-  to: string;
-  from: string;
-  subject: string;
-  bodyText: string;
-  replyTo?: string;
-}): Promise<void> {
-  const { env, to, from, subject, bodyText, replyTo } = params;
-
-  const region = env.AWS_REGION || 'ap-northeast-1';
-  const accessKeyId = env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
-
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error('AWS credentials are not configured');
-  }
-
-  const endpoint = `https://email.${region}.amazonaws.com`;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-
-  // リクエストボディを構築
-  const requestBody = new URLSearchParams();
-  requestBody.append('Action', 'SendEmail');
-  requestBody.append('Version', '2010-12-01');
-  requestBody.append('Source', from);
-  requestBody.append('Destination.ToAddresses.member.1', to);
-  requestBody.append('Message.Subject.Data', subject);
-  requestBody.append('Message.Subject.Charset', 'UTF-8');
-  requestBody.append('Message.Body.Text.Data', bodyText);
-  requestBody.append('Message.Body.Text.Charset', 'UTF-8');
-  if (replyTo) {
-    requestBody.append('ReplyToAddresses.member.1', replyTo);
-  }
-
-  const body = requestBody.toString();
-  const host = `email.${region}.amazonaws.com`;
-
-  // AWS Signature Version 4
-  const canonicalUri = '/';
-  const canonicalQueryString = '';
-  const contentType = 'application/x-www-form-urlencoded';
-
-  // ペイロードのハッシュを計算
-  const payloadHashBuffer = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(body)
-  );
-  const payloadHash = Array.from(new Uint8Array(payloadHashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  const canonicalHeaders =
-    `content-type:${contentType}\n` +
-    `host:${host}\n` +
-    `x-amz-date:${amzDate}\n`;
-  const signedHeaders = 'content-type;host;x-amz-date';
-
-  const canonicalRequest =
-    `POST\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-
-  // 署名用文字列を作成
-  const algorithm = 'AWS4-HMAC-SHA256';
-  const credentialScope = `${dateStamp}/${region}/ses/aws4_request`;
-  const canonicalRequestHashBuffer = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(canonicalRequest)
-  );
-  const canonicalRequestHash = Array.from(
-    new Uint8Array(canonicalRequestHashBuffer)
-  )
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
-
-  // 署名キーを生成
-  async function hmacSha256(
-    key: BufferSource,
-    message: string
-  ): Promise<ArrayBuffer> {
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      key,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    return crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message));
-  }
-
-  const encoder = new TextEncoder();
-  const kDate = await hmacSha256(
-    encoder.encode('AWS4' + secretAccessKey),
-    dateStamp
-  );
-  const kRegion = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, 'ses');
-  const kSigning = await hmacSha256(kService, 'aws4_request');
-
-  // 署名を計算
-  const signatureBuffer = await hmacSha256(kSigning, stringToSign);
-  const signature = Array.from(new Uint8Array(signatureBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  const authorizationHeader =
-    `${algorithm} ` +
-    `Credential=${accessKeyId}/${credentialScope}, ` +
-    `SignedHeaders=${signedHeaders}, ` +
-    `Signature=${signature}`;
-
-  // リクエストを送信
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': contentType,
-      'X-Amz-Date': amzDate,
-      Authorization: authorizationHeader,
-      Host: host,
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[SES] Email send failed:', response.status, errorText);
-    throw new Error(`Failed to send email: ${response.status}`);
-  }
-}
 
 async function deliverExpenseWebhooks(params: {
   database: ReturnType<typeof drizzle>;
@@ -909,6 +777,7 @@ export const appRouter = router({
   }),
 
   // お問い合わせメール送信（認証不要）
+  // お問い合わせメール送信（認証不要）
   sendContactMessage: publicProcedure
     .input(sendContactMessageInputSchema)
     .mutation(async (opts) => {
@@ -924,6 +793,9 @@ export const appRouter = router({
 
       const fromEmail = env.CONTACT_EMAIL_FROM;
       const toEmail = env.CONTACT_EMAIL_TO;
+      const region = env.AWS_REGION || 'ap-northeast-1';
+      const accessKeyId = env.AWS_ACCESS_KEY_ID;
+      const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
 
       if (!fromEmail || !toEmail) {
         throw new TRPCError({
@@ -932,33 +804,35 @@ export const appRouter = router({
         });
       }
 
-      // メール本文を構築
-      const emailBody = `
-【お問い合わせ】
+      if (!accessKeyId || !secretAccessKey) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'AWS credentials are not configured',
+        });
+      }
 
-■ お名前
-${name}
+      // メールテンプレートを構築
+      const emailTemplate = buildContactEmailTemplate({
+        name,
+        email,
+        subject,
+        message,
+      });
 
-■ メールアドレス
-${email}
-
-■ 件名
-${subject}
-
-■ お問い合わせ内容
-${message}
-
----
-送信日時: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-      `.trim();
+      // SESクライアントを作成
+      const sesClient = createSESClient({
+        region,
+        accessKeyId,
+        secretAccessKey,
+      });
 
       // AWS SES経由でメール送信
-      await sendEmailViaSES({
-        env,
+      await sendEmail(sesClient, {
         to: toEmail,
         from: fromEmail,
-        subject: `【お問い合わせ】${subject}`,
-        bodyText: emailBody,
+        subject: emailTemplate.subject,
+        bodyText: emailTemplate.bodyText,
+        bodyHtml: emailTemplate.bodyHtml,
         replyTo: email,
       });
 

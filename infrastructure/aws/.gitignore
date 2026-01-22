@@ -1,0 +1,28 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# 変数ファイル（シークレットを含む可能性があるため）
+terraform.tfvars
+*.auto.tfvars
+
+# クラッシュログ
+crash.log
+crash.*.log
+
+# プランファイル
+*.tfplan
+plan.out
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc

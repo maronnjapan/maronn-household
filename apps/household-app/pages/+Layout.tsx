@@ -46,6 +46,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/calendar">Calendar</Link>
           <Link href="/settings">Settings</Link>
           <Link href="/guide">Guide</Link>
+          <Link href="/contact">Contact</Link>
         </Sidebar>
         <Content>{children}</Content>
         <ClientOnly fallback={null}>

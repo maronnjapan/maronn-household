@@ -1,0 +1,28 @@
+# ==============================================================================
+# Terraform変数設定ファイル（サンプル）
+# ==============================================================================
+#
+# このファイルをコピーして terraform.tfvars を作成し、値を設定してください:
+# cp terraform.tfvars.example terraform.tfvars
+#
+# ==============================================================================
+
+# AWS SSO設定（setup-aws-sso.sh で自動設定されます）
+aws_profile    = "household-app"
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-1"
+
+# 環境名
+environment = "prod"
+
+# SES設定（必須）
+domain_name        = "example.com"           # あなたのドメイン名
+contact_email_from = "noreply@example.com"   # 送信元メールアドレス
+contact_email_to   = "admin@example.com"     # お問い合わせ受信アドレス
+
+# IAMユーザー設定
+create_iam_user = true
+iam_user_name   = "household-app-ses-sender"
+
+# メール受信機能（通常はfalse）
+enable_email_receiving = false

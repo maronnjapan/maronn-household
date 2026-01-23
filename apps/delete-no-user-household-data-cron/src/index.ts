@@ -1,29 +1,34 @@
-import postgres from 'postgres';
-
 // Env型定義
 interface Env {
-	DATABASE_URL: string; // Supabase PostgreSQL接続URL
+	SUPABASE_URL: string; // Supabase REST API URL
+	SUPABASE_SERVICE_KEY: string; // Supabase Service Role Key
 	DB: D1Database; // Cloudflare D1
 }
 
 /**
- * Supabaseから全ユーザーIDを取得
+ * Supabase REST APIから全ユーザーIDを取得
+ * postgres.jsの代わりにREST APIを使用することで、subrequest数を最小化
  */
-async function getAllUserIds(databaseUrl: string): Promise<Set<string>> {
-	const sql = postgres(databaseUrl, {
-		prepare: false,
-		ssl: 'require',
-		connection: {
-			application_name: 'delete-no-user-household-data-cron',
+async function getAllUserIds(supabaseUrl: string, serviceKey: string): Promise<Set<string>> {
+	// Supabase REST APIでユーザーIDを取得（単一のfetch = 1 subrequest）
+	const response = await fetch(`${supabaseUrl}/rest/v1/user?select=id`, {
+		method: 'GET',
+		headers: {
+			apikey: serviceKey,
+			Authorization: `Bearer ${serviceKey}`,
+			'Content-Type': 'application/json',
 		},
 	});
 
-	try {
-		const result = await sql`SELECT id FROM "user"`;
-		return new Set(result.map((row) => row.id));
-	} finally {
-		await sql.end();
+	if (!response.ok) {
+		const errorText = await response.text();
+		throw new Error(
+			`Supabase REST API error: ${response.status} ${response.statusText} - ${errorText}`
+		);
 	}
+
+	const users = (await response.json()) as Array<{ id: string }>;
+	return new Set(users.map((user) => user.id));
 }
 
 /**
@@ -108,13 +113,14 @@ async function deleteOrphanedData(
  * メイン処理: Supabaseに存在しないユーザーの家計簿データを削除
  */
 async function deleteNoUserHouseholdData(
-	databaseUrl: string,
+	supabaseUrl: string,
+	serviceKey: string,
 	db: D1Database
 ): Promise<{ expenses: number; budgets: number; orphanedUserCount: number }> {
 	console.log('[deleteNoUserHouseholdData] Starting deletion process');
 
-	// 1. Supabaseから全ユーザーIDを取得
-	const validUserIds = await getAllUserIds(databaseUrl);
+	// 1. Supabase REST APIから全ユーザーIDを取得
+	const validUserIds = await getAllUserIds(supabaseUrl, serviceKey);
 	console.log(`[deleteNoUserHouseholdData] Found ${validUserIds.size} valid users in Supabase`);
 
 	// 2. D1から孤立user_idを特定
@@ -152,14 +158,25 @@ export default {
 		);
 	},
 
-	async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+	async scheduled(
+		controller: ScheduledController,
+		env: Env,
+		_ctx: ExecutionContext
+	): Promise<void> {
 		console.log(
 			`[scheduled] Cron triggered at ${controller.cron} (scheduled time: ${new Date(controller.scheduledTime).toISOString()})`
 		);
 
-		if (!env.DATABASE_URL) {
+		if (!env.SUPABASE_URL) {
 			console.error(
-				'[scheduled] DATABASE_URL is not set. Please set it using: wrangler secret put DATABASE_URL'
+				'[scheduled] SUPABASE_URL is not set. Please set it using: wrangler secret put SUPABASE_URL'
+			);
+			return;
+		}
+
+		if (!env.SUPABASE_SERVICE_KEY) {
+			console.error(
+				'[scheduled] SUPABASE_SERVICE_KEY is not set. Please set it using: wrangler secret put SUPABASE_SERVICE_KEY'
 			);
 			return;
 		}
@@ -170,7 +187,11 @@ export default {
 		}
 
 		try {
-			const result = await deleteNoUserHouseholdData(env.DATABASE_URL, env.DB);
+			const result = await deleteNoUserHouseholdData(
+				env.SUPABASE_URL,
+				env.SUPABASE_SERVICE_KEY,
+				env.DB
+			);
 			console.log(
 				`[scheduled] Successfully deleted ${result.expenses} expenses and ${result.budgets} budgets from ${result.orphanedUserCount} orphaned users`
 			);

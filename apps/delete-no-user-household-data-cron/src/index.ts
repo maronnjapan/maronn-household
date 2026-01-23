@@ -33,10 +33,11 @@ async function getOrphanedUserIds(
 	db: D1Database,
 	validUserIds: Set<string>
 ): Promise<Set<string>> {
-	// expenses と budgets から DISTINCT user_id を取得
-	const [expenseUsers, budgetUsers] = await Promise.all([
-		db.prepare('SELECT DISTINCT user_id FROM expenses').all<{ user_id: string }>(),
-		db.prepare('SELECT DISTINCT user_id FROM budgets').all<{ user_id: string }>(),
+	// db.batch()を使用して複数クエリを1つのsubrequestで実行
+	// これにより「Too Many Subrequests」エラーを防ぐ
+	const [expenseUsers, budgetUsers] = await db.batch<{ user_id: string }>([
+		db.prepare('SELECT DISTINCT user_id FROM expenses'),
+		db.prepare('SELECT DISTINCT user_id FROM budgets'),
 	]);
 
 	const allD1UserIds = new Set([
@@ -70,24 +71,31 @@ async function deleteOrphanedData(
 		return { expenses: 0, budgets: 0 };
 	}
 
-	// json_eachで配列を展開してIN句を構成し、テーブルごとに1リクエストで削除する
+	// db.batch()を使用して複数の削除クエリを1つのsubrequestで実行
+	// これにより「Too Many Subrequests」エラーを防ぐ
 	const userIdsJson = JSON.stringify(Array.from(orphanedUserIds));
-	const deleteForTable = async (tableName: 'expenses' | 'budgets'): Promise<number> => {
-		const statement = `
-			WITH target_ids AS (
-				SELECT value AS user_id FROM json_each(?1)
-			)
-			DELETE FROM ${tableName}
-			WHERE user_id IN (SELECT user_id FROM target_ids)
-		`;
-		const result = await db.prepare(statement).bind(userIdsJson).run();
-		return result.meta.changes ?? 0;
-	};
+	const deleteExpensesStatement = `
+		WITH target_ids AS (
+			SELECT value AS user_id FROM json_each(?1)
+		)
+		DELETE FROM expenses
+		WHERE user_id IN (SELECT user_id FROM target_ids)
+	`;
+	const deleteBudgetsStatement = `
+		WITH target_ids AS (
+			SELECT value AS user_id FROM json_each(?1)
+		)
+		DELETE FROM budgets
+		WHERE user_id IN (SELECT user_id FROM target_ids)
+	`;
 
-	const [expensesDeleted, budgetsDeleted] = await Promise.all([
-		deleteForTable('expenses'),
-		deleteForTable('budgets'),
+	const [expensesResult, budgetsResult] = await db.batch([
+		db.prepare(deleteExpensesStatement).bind(userIdsJson),
+		db.prepare(deleteBudgetsStatement).bind(userIdsJson),
 	]);
+
+	const expensesDeleted = expensesResult.meta.changes ?? 0;
+	const budgetsDeleted = budgetsResult.meta.changes ?? 0;
 
 	console.log(
 		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}) in single batches`

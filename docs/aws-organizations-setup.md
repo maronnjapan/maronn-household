@@ -46,6 +46,8 @@ AWS Organizationsを使用することで、以下のメリットがあります
 ### 1. AWS Organizations の有効化
 
 管理アカウント（ルートアカウント）でOrganizationsを有効化します。
+ルートアカウントのログインはaws cliのバージョンが2.32.0以上であれば`aws login  --profile プロファイル名`コマンドを使用してSSOログインできます。
+参考：https://aws.amazon.com/jp/blogs/news/simplified-developer-access-to-aws-with-aws-login/
 
 ```bash
 # AWS CLIで確認
@@ -62,6 +64,7 @@ aws organizations describe-organization
 環境ごとにOUを作成してアカウントを整理します。
 
 ```bash
+
 # ルートIDを取得
 ROOT_ID=$(aws organizations list-roots --query 'Roots[0].Id' --output text)
 
@@ -94,6 +97,7 @@ aws organizations create-account \
 
 **注意**: メールアドレスはAWSアカウント作成ごとに一意である必要があります。
 Gmail の場合は `+` を使用したエイリアスが便利です。
+例えばtest000@gmail.comをすでに使用している場合、`test000+household@gmail.com`とすれば同じメールアドレスを使用できます。(+の後ろの文字列は何でもいいです。)
 
 ### 4. アカウントをOUに移動
 

@@ -9,19 +9,24 @@
 # SES送信ポリシー
 # ------------------------------------------------------------------------------
 
+locals {
+  ses_send_actions = [
+    "ses:SendEmail",
+    "ses:SendRawEmail",
+  ]
+}
+
 data "aws_iam_policy_document" "ses_sender" {
   statement {
     sid    = "AllowSendEmail"
     effect = "Allow"
 
-    actions = [
-      "ses:SendEmail",
-      "ses:SendRawEmail",
-    ]
+    actions = local.ses_send_actions
 
     resources = [
       aws_ses_domain_identity.main.arn,
       "arn:aws:ses:${var.aws_region}:${var.aws_account_id}:identity/${var.contact_email_from}",
+      "arn:aws:ses:${var.aws_region}:${var.aws_account_id}:identity/${var.contact_email_to}",
     ]
 
     # 送信元アドレスを制限
@@ -36,14 +41,19 @@ data "aws_iam_policy_document" "ses_sender" {
     sid    = "AllowSendEmailWithConfigSet"
     effect = "Allow"
 
-    actions = [
-      "ses:SendEmail",
-      "ses:SendRawEmail",
-    ]
+    actions = local.ses_send_actions
 
     resources = [
-      aws_ses_configuration_set.main.arn,
+      aws_ses_domain_identity.main.arn,
+      "arn:aws:ses:${var.aws_region}:${var.aws_account_id}:identity/${var.contact_email_from}",
+      "arn:aws:ses:${var.aws_region}:${var.aws_account_id}:identity/${var.contact_email_to}",
     ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ses:ConfigurationSetName"
+      values   = [aws_ses_configuration_set.main.name]
+    }
   }
 }
 

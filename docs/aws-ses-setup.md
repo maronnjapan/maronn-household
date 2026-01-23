@@ -59,10 +59,28 @@ terraform plan
 # 適用
 terraform apply
 ```
+最初の`terraform apply` では`aws_ses_domain_identity_verification`が完了しないので、エラーになります。  
+もしくはずっとapplyが終わらないです。  
+エラーになったら、表示されるoutputにしたがってやればいいのですが、applyが終わらない場合は以下のapplyコマンドを行いoutputを取得します。
 
-### 4. DNS レコードの設定
+```bash
+terraform apply -target=aws_ses_domain_identity.main
+terraform apply -target=aws_ses_domain_dkim.main 
+terraform apply -target=aws_ses_domain_mail_from.main
+```
 
-`terraform apply` の出力に表示されるDNSレコードをドメインのDNS設定に追加します。
+### 4. DNS レコードの設定（Cloudflare）
+
+`terraform apply` の出力に表示されるDNSレコードを、Cloudflareダッシュボードの DNS タブで追加します。
+
+1. Cloudflareにログインし、対象ドメインを開く
+2. 「DNS」タブ → 「Add record」をクリック
+3. `terraform output dns_records_to_add` の内容を以下のルールで入力
+   - **Type**: Terraformのテーブルに記載されたタイプを選択（TXT/CNAME/MX）
+   - **Name**: `_amazonses` や `xxxx._domainkey` などホスト名部分のみを入力（Cloudflareが自動でドメイン名を付与）
+   - **Content**: Terraformで出力された値をそのまま貼り付け
+   - **TTL**: 「Auto」でOK
+   - **Proxy status**: すべて「DNS only」に切り替え（オレンジ雲をグレーに）
 
 ```bash
 terraform output dns_records_to_add
@@ -70,12 +88,14 @@ terraform output dns_records_to_add
 
 追加するレコード：
 
-| タイプ | ホスト名 | 値 |
+| タイプ | 名前 | 値 |
 |--------|----------|-----|
-| TXT | `_amazonses.yourdomain.com` | 検証トークン |
-| CNAME | `xxxx._domainkey.yourdomain.com` | DKIM値（3つ） |
-| MX | `mail.yourdomain.com` | `10 feedback-smtp.ap-northeast-1.amazonses.com` |
-| TXT | `mail.yourdomain.com` | `v=spf1 include:amazonses.com ~all` |
+| TXT | `_amazonses` | 検証トークン |
+| CNAME | `xxxx._domainkey` | DKIM値（3つ） |
+| MX | `mail` | `10 feedback-smtp.ap-northeast-1.amazonses.com` |
+| TXT | `mail` | `v=spf1 include:amazonses.com ~all` |
+
+> **補足**: Cloudflareは入力したホスト名に自動でドメイン名を追加するため、`yourdomain.com` まで手動入力しないよう注意してください。
 
 ### 5. ドメイン検証の確認
 

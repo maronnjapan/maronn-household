@@ -181,28 +181,3 @@
     font-size: 0.95rem;
   }
 }
-
-/* Scroll behavior for long content */
-.privacy-container {
-  max-height: calc(100vh - 8rem);
-  overflow-y: auto;
-}
-
-/* Custom scrollbar styling */
-.privacy-container::-webkit-scrollbar {
-  width: 0.5rem;
-}
-
-.privacy-container::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 0.625rem;
-}
-
-.privacy-container::-webkit-scrollbar-thumb {
-  background: #bdc3c7;
-  border-radius: 0.625rem;
-}
-
-.privacy-container::-webkit-scrollbar-thumb:hover {
-  background: #95a5a6;
-}

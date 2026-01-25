@@ -1,0 +1,208 @@
+/* Privacy Policy Page Styles */
+.privacy-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1rem;
+  padding-bottom: 4rem;
+}
+
+@media (min-width: 640px) {
+  .privacy-page {
+    padding: 1.25rem;
+    padding-bottom: 4rem;
+  }
+}
+
+.privacy-container {
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+@media (min-width: 640px) {
+  .privacy-container {
+    padding: 2rem;
+  }
+}
+
+/* Markdown Content Styles */
+.markdown-content {
+  color: #2c3e50;
+  line-height: 1.8;
+}
+
+.markdown-content h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 0.1875rem solid #3498db;
+}
+
+.markdown-content h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 0.125rem solid #ecf0f1;
+}
+
+.markdown-content h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #34495e;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content p {
+  margin-bottom: 1rem;
+  line-height: 1.8;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.markdown-content li {
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.markdown-content em {
+  font-style: italic;
+  color: #7f8c8d;
+}
+
+.markdown-content code {
+  background: #f8f9fa;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+  color: #e74c3c;
+}
+
+.markdown-content pre {
+  background: #2c3e50;
+  color: #ecf0f1;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+  color: #ecf0f1;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 0.125rem solid #ecf0f1;
+  margin: 2rem 0;
+}
+
+.markdown-content blockquote {
+  border-left: 0.25rem solid #3498db;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+.markdown-content a {
+  color: #3498db;
+  text-decoration: underline;
+}
+
+.markdown-content a:hover {
+  color: #2980b9;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+  border: 1px solid #ecf0f1;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.markdown-content table th {
+  background: #f8f9fa;
+  font-weight: 600;
+}
+
+/* First h1 (title) special styling */
+.markdown-content h1:first-child {
+  font-size: 2.25rem;
+  margin-top: 0;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .markdown-content h1:first-child {
+    font-size: 2.5rem;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 639px) {
+  .markdown-content h1 {
+    font-size: 1.75rem;
+  }
+
+  .markdown-content h2 {
+    font-size: 1.35rem;
+  }
+
+  .markdown-content h3 {
+    font-size: 1.1rem;
+  }
+
+  .markdown-content {
+    font-size: 0.95rem;
+  }
+}
+
+/* Scroll behavior for long content */
+.privacy-container {
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+
+/* Custom scrollbar styling */
+.privacy-container::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.privacy-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 0.625rem;
+}
+
+.privacy-container::-webkit-scrollbar-thumb {
+  background: #bdc3c7;
+  border-radius: 0.625rem;
+}
+
+.privacy-container::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
+}

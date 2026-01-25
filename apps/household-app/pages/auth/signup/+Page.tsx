@@ -21,7 +21,7 @@ export function Page() {
     }
 
     if (!agreedToPrivacy) {
-      setError("プライバシーポリシーに同意してください");
+      setError("利用規約とプライバシーポリシーに同意してください");
       return;
     }
 
@@ -91,6 +91,10 @@ export function Page() {
               required
             />
             <span>
+              <a href="/terms" target="_blank" rel="noopener noreferrer">
+                利用規約
+              </a>
+              と
               <a href="/privacy" target="_blank" rel="noopener noreferrer">
                 プライバシーポリシー
               </a>

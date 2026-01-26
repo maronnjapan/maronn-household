@@ -207,3 +207,68 @@ export function calculateBudgetPaceComparison(
 
   return expectedSpent - actualSpent;
 }
+
+/**
+ * 前月の月（YYYY-MM形式）を取得する
+ * @param currentDate 現在日時（テスト用、省略時は現在日時）
+ * @returns 前月（YYYY-MM形式）
+ */
+export function getPreviousMonth(currentDate: Date = new Date()): string {
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth(); // 0-indexed
+
+  if (month === 0) {
+    // 1月の場合は前年の12月
+    return `${year - 1}-12`;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+/**
+ * 今日が月初日（1日）かどうかを判定する
+ * @param currentDate 現在日時（テスト用、省略時は現在日時）
+ * @returns 月初日ならtrue
+ */
+export function isFirstDayOfMonth(currentDate: Date = new Date()): boolean {
+  return currentDate.getDate() === 1;
+}
+
+/**
+ * 予算内に収まったかどうかを判定する
+ * @param budget 月の予算
+ * @param expenses 支出のリスト
+ * @returns 予算内ならtrue（残額が0以上）
+ */
+export function isWithinBudget(
+  budget: number,
+  expenses: readonly Expense[]
+): boolean {
+  const remaining = calculateRemaining(budget, expenses);
+  return remaining >= 0;
+}
+
+/**
+ * 月初祝福を表示すべきかどうかを判定する
+ * 条件:
+ * - 今日が月初日（1日）である
+ * - 前月の支出が予算内に収まっている
+ *
+ * @param previousMonthBudget 前月の予算
+ * @param previousMonthExpenses 前月の支出リスト
+ * @param currentDate 現在日時（テスト用、省略時は現在日時）
+ * @returns 祝福を表示すべきならtrue
+ */
+export function shouldShowCelebration(
+  previousMonthBudget: number,
+  previousMonthExpenses: readonly Expense[],
+  currentDate: Date = new Date()
+): boolean {
+  // 月初日でなければ表示しない
+  if (!isFirstDayOfMonth(currentDate)) {
+    return false;
+  }
+
+  // 前月が予算内でなければ表示しない
+  return isWithinBudget(previousMonthBudget, previousMonthExpenses);
+}

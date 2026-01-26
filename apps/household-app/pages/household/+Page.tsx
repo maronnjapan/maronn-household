@@ -1,7 +1,9 @@
 import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
+import { CelebrationModal } from '../../components/CelebrationModal';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
+import { useCelebration } from '../../hooks/use-celebration';
 import type { CreateExpenseParams } from '@maronn/domain';
 import './household.css';
 
@@ -20,6 +22,9 @@ export function Page() {
   // 支出追加フック
   const { addExpense } = useAddExpense();
 
+  // 月初祝福フック
+  const celebration = useCelebration();
+
   const handleAdd = async (params: CreateExpenseParams) => {
     await addExpense(params);
     // useLiveQuery が自動検知して RemainingDisplay が即座に更新される
@@ -27,6 +32,17 @@ export function Page() {
 
   return (
     <main className="home-page">
+      {/* 月初祝福モーダル */}
+      {celebration.showCelebration && (
+        <CelebrationModal
+          targetMonth={celebration.targetMonth}
+          budget={celebration.previousBudget}
+          spent={celebration.previousSpent}
+          remaining={celebration.previousRemaining}
+          onClose={celebration.dismissCelebration}
+        />
+      )}
+
       <header>
         <p className="month">{month}</p>
       </header>
@@ -51,7 +67,7 @@ export function Page() {
 
       <footer>
         <p className="performance-note">
-          ⚡ ローカルファースト - オフラインでも爆速動作
+          ローカルファースト - オフラインでも爆速動作
         </p>
       </footer>
     </main>

@@ -34,12 +34,23 @@ export interface SyncMeta {
 }
 
 /**
+ * 月初祝福の表示済み記録
+ * 月の予算内達成時に翌月初日に一回だけ祝福を表示するため
+ */
+export interface CelebrationShown {
+  id: string; // 対象月 'YYYY-MM' (予算内で終了した月)
+  shownAt: string; // 祝福を表示した日時（ISO 8601）
+  userId: string; // ユーザーID
+}
+
+/**
  * IndexedDB データベース
  */
 export class HouseholdDB extends Dexie {
   expenses!: Table<LocalExpenseEntity>;
   budgets!: Table<BudgetEntity>;
   syncMeta!: Table<SyncMeta>;
+  celebrations!: Table<CelebrationShown>;
 
   constructor() {
     super('maronn-household');
@@ -58,6 +69,14 @@ export class HouseholdDB extends Dexie {
       expenses: 'id, date, syncStatus, createdAt, userId, [userId+date]', // userIdと複合インデックスを追加
       budgets: 'id, month, updatedAt',
       syncMeta: 'id',
+    });
+
+    // Version 3: 月初祝福の表示済み記録を追加
+    this.version(3).stores({
+      expenses: 'id, date, syncStatus, createdAt, userId, [userId+date]',
+      budgets: 'id, month, updatedAt',
+      syncMeta: 'id',
+      celebrations: 'id, userId, [userId+id]', // Primary: id (達成月), Indexes: userId, 複合インデックス
     });
   }
 }
@@ -306,6 +325,40 @@ export async function clearAllLocalData(): Promise<void> {
   await db.expenses.clear();
   await db.budgets.clear();
   await db.syncMeta.clear();
+  await db.celebrations.clear();
+}
+
+/**
+ * 指定月の祝福が表示済みかどうかを確認
+ * @param month 対象月（YYYY-MM形式）
+ * @param userId ユーザーID
+ * @returns 表示済みならtrue
+ */
+export async function isCelebrationShown(
+  month: string,
+  userId: string = ANONYMOUS_USER_ID
+): Promise<boolean> {
+  const record = await db.celebrations
+    .where('[userId+id]')
+    .equals([userId, month])
+    .first();
+  return !!record;
+}
+
+/**
+ * 祝福を表示済みとして記録
+ * @param month 対象月（YYYY-MM形式）
+ * @param userId ユーザーID
+ */
+export async function markCelebrationShown(
+  month: string,
+  userId: string = ANONYMOUS_USER_ID
+): Promise<void> {
+  await db.celebrations.put({
+    id: month,
+    userId,
+    shownAt: new Date().toISOString(),
+  });
 }
 
 /**

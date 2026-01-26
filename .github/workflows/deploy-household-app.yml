@@ -7,6 +7,7 @@ on:
     paths:
       - 'apps/household-app/**'
       - 'packages/**'
+      - pnpm-lock.yaml
 
   workflow_dispatch:
 

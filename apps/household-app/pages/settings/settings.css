@@ -267,11 +267,6 @@
   font-weight: 600;
 }
 
-.token-list li.revoked {
-  opacity: 0.6;
-  background: #f8f9fa;
-}
-
 .token-info {
   display: flex;
   flex-direction: column;
@@ -281,12 +276,6 @@
 .token-date {
   font-size: 0.75rem;
   color: #6c757d;
-}
-
-.token-status {
-  font-size: 0.75rem;
-  color: #dc3545;
-  font-weight: 600;
 }
 
 .revoke-button {

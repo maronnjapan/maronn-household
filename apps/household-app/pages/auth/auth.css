@@ -97,8 +97,8 @@
 }
 
 .checkbox-label input[type="checkbox"] {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1rem;
+  height: 1rem;
   margin-top: 0.125rem;
   cursor: pointer;
   flex-shrink: 0;

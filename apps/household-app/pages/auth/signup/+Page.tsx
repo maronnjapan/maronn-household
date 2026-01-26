@@ -4,7 +4,6 @@ import { signUp } from "../../../auth/client";
 import "../auth.css";
 
 export function Page() {
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
@@ -28,7 +27,7 @@ export function Page() {
     setIsLoading(true);
 
     try {
-      const result = await signUp(email, password, name);
+      const result = await signUp(email, password);
 
       if (result.error) {
         setError(result.error.message ?? "登録に失敗しました");
@@ -48,17 +47,6 @@ export function Page() {
     <div className="auth-container">
       <h1>新規登録</h1>
       <form onSubmit={handleSubmit} className="auth-form">
-        <div className="form-group">
-          <label htmlFor="name">名前</label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            autoComplete="name"
-          />
-        </div>
         <div className="form-group">
           <label htmlFor="email">メールアドレス</label>
           <input

@@ -36,12 +36,13 @@ export const authClient = createAuthClient();
 
 /**
  * メール/パスワードでサインアップ
+ * 名前にはメールアドレスを使用
  */
-export const signUp = async (email: string, password: string, name: string) => {
+export const signUp = async (email: string, password: string) => {
   return await authClient.signUp.email({
     email,
     password,
-    name,
+    name: email,
   });
 };
 

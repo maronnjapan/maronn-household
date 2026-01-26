@@ -65,3 +65,19 @@ variable "iam_user_name" {
   type        = string
   default     = "household-app-ses-sender"
 }
+
+# ==============================================================================
+# SNS関連変数（SESバウンス・コンプレイント通知）
+# ==============================================================================
+
+variable "ses_bounce_webhook_url" {
+  description = "SESバウンス通知を受け取るWebhook URL（例: https://your-app.workers.dev/api/webhooks/ses/bounce）"
+  type        = string
+  default     = ""
+}
+
+variable "ses_complaint_webhook_url" {
+  description = "SESコンプレイント通知を受け取るWebhook URL（例: https://your-app.workers.dev/api/webhooks/ses/complaint）"
+  type        = string
+  default     = ""
+}

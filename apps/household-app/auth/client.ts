@@ -101,3 +101,24 @@ export const deleteAccount = async () => {
     },
   });
 };
+
+/**
+ * パスワードリセットメールを送信
+ * メールアドレスを入力すると、リセット用のリンクがメールで送られる
+ */
+export const forgetPassword = async (email: string, redirectTo?: string) => {
+  return await authClient.requestPasswordReset({
+    email,
+    redirectTo: redirectTo ?? "/auth/reset-password",
+  });
+};
+
+/**
+ * 新しいパスワードを設定
+ * リセットトークンと新しいパスワードで認証情報を更新
+ */
+export const resetPassword = async (newPassword: string) => {
+  return await authClient.resetPassword({
+    newPassword,
+  });
+};

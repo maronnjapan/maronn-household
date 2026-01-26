@@ -57,6 +57,9 @@ export function Page() {
         </button>
       </form>
       <p className="auth-link">
+        <a href="/auth/forgot-password">パスワードをお忘れですか？</a>
+      </p>
+      <p className="auth-link">
         アカウントをお持ちでない方は<a href="/auth/signup">新規登録</a>
       </p>
     </div>

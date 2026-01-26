@@ -1,5 +1,22 @@
 import { relations } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, customType } from "drizzle-orm/sqlite-core";
+
+/**
+ * Better Auth用のカスタム日付型
+ * DateオブジェクトをISO 8601形式の文字列に変換してD1に保存
+ * D1（SQLite）はDate.toString()形式を正しく処理できないため必要
+ */
+const dateText = customType<{ data: Date; driverData: string }>({
+  dataType() {
+    return "text";
+  },
+  toDriver(value: Date): string {
+    return value.toISOString();
+  },
+  fromDriver(value: string): Date {
+    return new Date(value);
+  },
+});
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -7,18 +24,18 @@ export const user = sqliteTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
   image: text("image"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
+  createdAt: dateText("created_at").notNull(),
+  updatedAt: dateText("updated_at").notNull(),
 });
 
 export const session = sqliteTable(
   "session",
   {
     id: text("id").primaryKey(),
-    expiresAt: text("expires_at").notNull(),
+    expiresAt: dateText("expires_at").notNull(),
     token: text("token").notNull().unique(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
+    createdAt: dateText("created_at").notNull(),
+    updatedAt: dateText("updated_at").notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     userId: text("user_id")
@@ -40,12 +57,12 @@ export const account = sqliteTable(
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
-    accessTokenExpiresAt: text("access_token_expires_at"),
-    refreshTokenExpiresAt: text("refresh_token_expires_at"),
+    accessTokenExpiresAt: dateText("access_token_expires_at"),
+    refreshTokenExpiresAt: dateText("refresh_token_expires_at"),
     scope: text("scope"),
     password: text("password"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
+    createdAt: dateText("created_at").notNull(),
+    updatedAt: dateText("updated_at").notNull(),
   },
   (table) => [index("account_userId_idx").on(table.userId)],
 );
@@ -56,9 +73,9 @@ export const verification = sqliteTable(
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
-    expiresAt: text("expires_at").notNull(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
+    expiresAt: dateText("expires_at").notNull(),
+    createdAt: dateText("created_at").notNull(),
+    updatedAt: dateText("updated_at").notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );

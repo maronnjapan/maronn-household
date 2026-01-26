@@ -29,7 +29,6 @@ import type { Session, User } from 'better-auth/types';
  */
 interface Env {
   DB: D1Database;
-  DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   WEBHOOK_SECRET_KEY: string;
@@ -750,8 +749,8 @@ export const appRouter = router({
       return { success: true };
     }),
 
-  // アカウントデータ削除（D1のみ、認証必須）
-  // PostgreSQLのユーザー削除はBetterAuth経由で行う
+  // アカウントデータ削除（D1の家計データのみ、認証必須）
+  // 認証データ（user, session, account）の削除はBetterAuth経由で行う
   deleteAccountData: protectedProcedure.mutation(async (opts) => {
     const userId = opts.ctx.user.id;
 

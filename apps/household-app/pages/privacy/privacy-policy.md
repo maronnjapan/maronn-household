@@ -50,12 +50,11 @@
 
 | データの種類 | 保存先 |
 |------------|--------|
-| ユーザーアカウント情報 | Supabase |
+| ユーザーアカウント情報 | Cloudflare D1 |
 | 家計簿データ(収支記録など) | Cloudflare D1 |
 
 各サービスのセキュリティおよびプライバシーに関する詳細は、以下をご確認ください。
 
-- [Supabase プライバシーポリシー](https://supabase.com/privacy)
 - [Cloudflare プライバシーポリシー](https://www.cloudflare.com/privacypolicy/)
 
 ## 6. 第三者への情報提供

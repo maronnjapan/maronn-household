@@ -1,60 +1,34 @@
-import postgres from 'postgres';
-
-// Env型定義（DATABASE_URLシークレットを含む）
+// Env型定義（D1データベースバインディング）
 interface Env {
-	DATABASE_URL: string;
+	DB: D1Database;
 }
 
 /**
  * 期限切れセッションを削除する関数
- * @param databaseUrl - データベース接続URL
+ * @param db - D1データベース
  * @returns 削除されたセッションの総数
  */
-async function deleteExpiredSessions(databaseUrl: string): Promise<number> {
+async function deleteExpiredSessions(db: D1Database): Promise<number> {
 	const EXPIRY_DAYS = 3; // 期限切れとみなす日数
 
-	// PostgreSQL接続を確立
-	const sql = postgres(databaseUrl, {
-		prepare: false,
-		// Cloudflare Workers環境での接続設定
-		ssl: 'require',
-		connection: {
-			application_name: 'delete-expired-session-cron',
-		},
-	});
+	// UTC基準で3日前の日時を計算（ISO 8601形式）
+	const thresholdDate = new Date();
+	thresholdDate.setUTCDate(thresholdDate.getUTCDate() - EXPIRY_DAYS);
+	const thresholdDateStr = thresholdDate.toISOString();
 
-	let totalDeleted = 0;
+	console.log(`[deleteExpiredSessions] Starting deletion process. Threshold: ${thresholdDateStr}`);
 
-	try {
-		// UTC基準で3日前の日時を計算
-		const thresholdDate = new Date();
-		thresholdDate.setUTCDate(thresholdDate.getUTCDate() - EXPIRY_DAYS);
+	// D1で期限切れセッションを削除
+	const result = await db
+		.prepare('DELETE FROM session WHERE expires_at < ?')
+		.bind(thresholdDateStr)
+		.run();
 
-		console.log(`[deleteExpiredSessions] Starting deletion process. Threshold: ${thresholdDate.toISOString()}`);
+	const deletedCount = result.meta.changes ?? 0;
 
-		// 単一クエリで削除し、一度のサブリクエストに抑える
-		const result = await sql<{ count: string }[]>`
-			WITH deleted AS (
-				DELETE FROM session
-				WHERE expires_at < ${thresholdDate}
-				RETURNING 1
-			)
-			SELECT COALESCE(COUNT(*), 0)::text AS count FROM deleted
-		`;
+	console.log(`[deleteExpiredSessions] Deletion completed. Total deleted: ${deletedCount}`);
 
-		const deletedCount = Number(result?.[0]?.count ?? 0);
-		totalDeleted += deletedCount;
-
-		console.log(`[deleteExpiredSessions] Deletion completed. Total deleted: ${totalDeleted}`);
-
-		return totalDeleted;
-	} catch (error) {
-		console.error('[deleteExpiredSessions] Error during deletion:', error);
-		throw error;
-	} finally {
-		// PostgreSQL接続をクローズ
-		await sql.end();
-	}
+	return deletedCount;
 }
 
 export default {
@@ -72,13 +46,13 @@ export default {
 	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
 		console.log(`[scheduled] Cron triggered at ${controller.cron} (scheduled time: ${new Date(controller.scheduledTime).toISOString()})`);
 
-		if (!env.DATABASE_URL) {
-			console.error('[scheduled] DATABASE_URL is not set. Please set it using: wrangler secret put DATABASE_URL');
+		if (!env.DB) {
+			console.error('[scheduled] D1 database binding (DB) is not configured');
 			return;
 		}
 
 		try {
-			const deletedCount = await deleteExpiredSessions(env.DATABASE_URL);
+			const deletedCount = await deleteExpiredSessions(env.DB);
 			console.log(`[scheduled] Successfully deleted ${deletedCount} expired sessions`);
 		} catch (error) {
 			console.error('[scheduled] Failed to delete expired sessions:', error);

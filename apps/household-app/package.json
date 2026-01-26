@@ -14,15 +14,7 @@
     "drizzle:studio": "drizzle-kit studio",
     "deploy": "vike build && wrangler deploy",
     "deploy:ci": "vike build && wrangler deploy",
-    "generate-types": "wrangler types",
-    "supabase:login": "supabase login",
-    "supabase:init": "supabase init",
-    "supabase:link": "supabase link",
-    "supabase:start": "supabase start",
-    "supabase:stop": "supabase stop",
-    "supabase:projects:list": "supabase projects list",
-    "supabase:projects:create": "supabase projects create maronn-household-db ",
-    "supabase:db:push": "supabase db push"
+    "generate-types": "wrangler types"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.750.0",
@@ -40,7 +32,6 @@
     "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.1",
-    "postgres": "^3.4.7",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-markdown": "^9.0.3",
@@ -51,12 +42,13 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "better-sqlite3": "^11.5.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.19.25",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@universal-middleware/core": "^0.4.13",
     "@vitejs/plugin-react": "^5.1.2",
-    "supabase": "^2.70.5",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "wrangler": "^4.54.0"

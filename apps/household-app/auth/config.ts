@@ -1,7 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/d1";
 import * as authSchema from "../database/drizzle/schema/auth";
 import { createSESClient, sendEmail } from "../lib/email/ses-client";
 import { buildPasswordResetEmailTemplate } from "../lib/email/password-reset-template";
@@ -15,12 +14,11 @@ export type Auth = ReturnType<typeof betterAuth>;
 /**
  * Better Auth設定
  * メール/パスワード認証
- * 本番環境: Hyperdrive経由でPostgreSQLに接続
- * ローカル開発: DATABASE_URL環境変数で直接接続
+ * Cloudflare D1を使用（SQLite）
  */
 
 interface Env {
-  DATABASE_URL: string;
+  DB: D1Database;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   // SES設定（パスワードリセットメール送信用）
@@ -35,7 +33,6 @@ interface Env {
  */
 function validateEnv(env: Env): void {
   const requiredVars = [
-    'DATABASE_URL',
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
   ] as const;
@@ -49,13 +46,13 @@ function validateEnv(env: Env): void {
     );
   }
 
+  if (!env.DB) {
+    throw new Error(
+      'D1 database binding (DB) is not configured. ' +
+      'Please check your wrangler.jsonc configuration.'
+    );
+  }
 }
-
-/**
- * 環境に応じてデータベース接続文字列を取得
- * 本番環境: Hyperdrive経由
- * ローカル開発: DATABASE_URL直接
- */
 
 /**
  * Better Authインスタンスを取得
@@ -68,21 +65,12 @@ export function createAuth(env: Env): Auth {
   // 環境変数の検証
   validateEnv(env);
 
-  // Cloudflare WorkersではI/Oオブジェクトをリクエスト間で共有できないため
-  // （"Cannot perform I/O on behalf of a different request" エラー回避）、
-  // リクエストごとにコネクション/Better Authインスタンスを生成する。
-  const connectionString = env.DATABASE_URL
-  const client = postgres(connectionString, {
-    max: 5,
-    fetch_types: false,
-    prepare: false
-  });
-
-  const db = drizzle(client, { schema: authSchema });
+  // D1データベースに接続
+  const db = drizzle(env.DB, { schema: authSchema });
 
   const auth = betterAuth({
     database: drizzleAdapter(db, {
-      provider: "pg",
+      provider: "sqlite",
       schema: authSchema,
     }),
     secret: env.BETTER_AUTH_SECRET,

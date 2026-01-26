@@ -75,7 +75,10 @@ export function Page() {
             <input
               type="checkbox"
               checked={agreedToPrivacy}
-              onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+              onChange={(e) => {
+                console.log(e.target.checked);
+                setAgreedToPrivacy(e.target.checked);
+              }}
               required
             />
 

@@ -20,6 +20,8 @@ import {
   createSESClient,
   sendEmail,
   buildContactEmailTemplate,
+  checkEmailBounce,
+  EmailBounceError,
 } from '../lib/email';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
@@ -776,7 +778,7 @@ export const appRouter = router({
   }),
 
   // お問い合わせメール送信（認証不要）
-  // お問い合わせメール送信（認証不要）
+  // バウンスチェック機能付き
   sendContactMessage: publicProcedure
     .input(sendContactMessageInputSchema)
     .mutation(async (opts) => {
@@ -807,6 +809,19 @@ export const appRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'AWS credentials are not configured',
+        });
+      }
+
+      // 送信先アドレスのバウンスチェック
+      const bounceCheck = await checkEmailBounce(env.DB, toEmail);
+      if (!bounceCheck.shouldSend) {
+        console.error(
+          `[Email] Blocked sending to bounced address: ${toEmail}`,
+          bounceCheck
+        );
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Unable to send email to this address',
         });
       }
 

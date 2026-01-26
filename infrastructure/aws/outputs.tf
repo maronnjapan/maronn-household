@@ -140,3 +140,42 @@ output "account_id" {
   description = "AWSアカウントID"
   value       = data.aws_caller_identity.current.account_id
 }
+
+# ------------------------------------------------------------------------------
+# SNS関連出力（SESバウンス・コンプレイント通知）
+# ------------------------------------------------------------------------------
+
+output "sns_bounce_topic_arn" {
+  description = "SESバウンス通知用SNSトピックのARN"
+  value       = aws_sns_topic.ses_bounces.arn
+}
+
+output "sns_complaint_topic_arn" {
+  description = "SESコンプレイント通知用SNSトピックのARN"
+  value       = aws_sns_topic.ses_complaints.arn
+}
+
+output "ses_bounce_notification_setup" {
+  description = "SESバウンス通知の設定手順"
+  value       = <<-EOT
+
+================================================================================
+SESバウンス・コンプレイント通知の設定手順
+================================================================================
+
+1. アプリケーションにWebhookエンドポイントをデプロイ
+   - バウンス: /api/webhooks/ses/bounce
+   - コンプレイント: /api/webhooks/ses/complaint
+
+2. terraform.tfvarsに以下を追加:
+   ses_bounce_webhook_url    = "https://your-app.workers.dev/api/webhooks/ses/bounce"
+   ses_complaint_webhook_url = "https://your-app.workers.dev/api/webhooks/ses/complaint"
+
+3. terraform apply を実行
+
+4. SNSからの確認リクエスト（SubscriptionConfirmation）に応答
+   - アプリケーションのWebhookエンドポイントで自動処理されます
+
+================================================================================
+EOT
+}

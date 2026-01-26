@@ -47,3 +47,20 @@ export const webhooks = sqliteTable('webhooks', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+/**
+ * バウンス・コンプレイントメールアドレス記録テーブル
+ * SESからのバウンス・コンプレイント通知を受信した際に記録
+ * メール送信前にこのテーブルをチェックして送信を抑制する
+ */
+export const emailBounces = sqliteTable('email_bounces', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  bounceType: text('bounce_type').notNull(), // 'bounce' or 'complaint'
+  bounceSubType: text('bounce_sub_type'), // 'Permanent', 'Transient', 'Undetermined' for bounce
+  sourceEmail: text('source_email'), // 送信元メールアドレス
+  feedbackId: text('feedback_id'), // AWS SESのFeedback ID
+  rawMessage: text('raw_message'), // 元のSNSメッセージ（JSON）
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

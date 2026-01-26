@@ -9,3 +9,6 @@ export type { SESConfig, SendEmailParams } from './ses-client';
 
 export { buildContactEmailTemplate } from './templates';
 export type { ContactFormData } from './templates';
+
+export { checkEmailBounce, EmailBounceError } from './bounce-check';
+export type { BounceCheckResult } from './bounce-check';

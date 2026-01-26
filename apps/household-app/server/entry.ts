@@ -2,6 +2,7 @@ import { dbMiddleware } from "./db-middleware";
 import { trpcHandler } from "./trpc-handler";
 import { authHandler } from "./auth-handler";
 import { exportApiHandler } from "./export-api-handler";
+import { sesWebhookHandler } from "./ses-webhook-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -38,6 +39,9 @@ function startApp() {
 
     // Export API endpoints (token-based authentication)
     exportApiHandler("/api/v1/export"),
+
+    // SES Webhook endpoints (bounce/complaint notifications from AWS SNS)
+    sesWebhookHandler("/api/webhooks/ses"),
   ]);
 
   // グローバルエラーハンドラー

@@ -117,8 +117,9 @@ export const forgetPassword = async (email: string, redirectTo?: string) => {
  * 新しいパスワードを設定
  * リセットトークンと新しいパスワードで認証情報を更新
  */
-export const resetPassword = async (newPassword: string) => {
+export const resetPassword = async (newPassword: string, token: string) => {
   return await authClient.resetPassword({
     newPassword,
+    token,
   });
 };

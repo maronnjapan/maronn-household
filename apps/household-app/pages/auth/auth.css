@@ -26,14 +26,18 @@
   font-weight: 500;
 }
 
-.form-group input {
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
   padding: 0.75rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 1rem;
 }
 
-.form-group input:focus {
+.form-group input[type="text"]:focus,
+.form-group input[type="email"]:focus,
+.form-group input[type="password"]:focus {
   outline: none;
   border-color: #0070f3;
   box-shadow: 0 0 0 2px rgba(0, 112, 243, 0.2);
@@ -93,10 +97,14 @@
 }
 
 .checkbox-label input[type="checkbox"] {
-  width: auto;
+  width: 1rem;
+  height: 1rem;
   margin-top: 0.25rem;
   cursor: pointer;
   flex-shrink: 0;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
 .checkbox-label span {

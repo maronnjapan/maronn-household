@@ -1,33 +1,21 @@
-import postgres from 'postgres';
-
 // Env型定義
 interface Env {
-	DATABASE_URL: string; // Supabase PostgreSQL接続URL
-	DB: D1Database; // Cloudflare D1
+	DB: D1Database; // Cloudflare D1（認証・家計データ両方）
 }
 
 /**
- * Supabaseから全ユーザーIDを取得
+ * D1のuserテーブルから全ユーザーIDを取得
  */
-async function getAllUserIds(databaseUrl: string): Promise<Set<string>> {
-	const sql = postgres(databaseUrl, {
-		prepare: false,
-		ssl: 'require',
-		connection: {
-			application_name: 'delete-no-user-household-data-cron',
-		},
-	});
+async function getAllUserIds(db: D1Database): Promise<Set<string>> {
+	const result = await db
+		.prepare('SELECT id FROM user')
+		.all<{ id: string }>();
 
-	try {
-		const result = await sql`SELECT id FROM "user"`;
-		return new Set(result.map((row) => row.id));
-	} finally {
-		await sql.end();
-	}
+	return new Set(result.results.map((row) => row.id));
 }
 
 /**
- * D1からSupabaseに存在しない孤立user_idを特定
+ * D1からuserテーブルに存在しない孤立user_idを特定
  */
 async function getOrphanedUserIds(
 	db: D1Database,
@@ -39,21 +27,21 @@ async function getOrphanedUserIds(
 		db.prepare('SELECT DISTINCT user_id FROM budgets').all<{ user_id: string }>(),
 	]);
 
-	const allD1UserIds = new Set([
+	const allHouseholdUserIds = new Set([
 		...expenseUsers.results.map((r) => r.user_id),
 		...budgetUsers.results.map((r) => r.user_id),
 	]);
 
-	// Supabaseに存在しないuser_idを返す
+	// userテーブルに存在しないuser_idを返す
 	const orphanedIds = new Set<string>();
-	for (const userId of allD1UserIds) {
+	for (const userId of allHouseholdUserIds) {
 		if (!validUserIds.has(userId)) {
 			orphanedIds.add(userId);
 		}
 	}
 
 	console.log(
-		`[getOrphanedUserIds] Found ${orphanedIds.size} orphaned user IDs out of ${allD1UserIds.size} total in D1`
+		`[getOrphanedUserIds] Found ${orphanedIds.size} orphaned user IDs out of ${allHouseholdUserIds.size} total in household tables`
 	);
 
 	return orphanedIds;
@@ -97,19 +85,18 @@ async function deleteOrphanedData(
 }
 
 /**
- * メイン処理: Supabaseに存在しないユーザーの家計簿データを削除
+ * メイン処理: userテーブルに存在しないユーザーの家計簿データを削除
  */
 async function deleteNoUserHouseholdData(
-	databaseUrl: string,
 	db: D1Database
 ): Promise<{ expenses: number; budgets: number; orphanedUserCount: number }> {
 	console.log('[deleteNoUserHouseholdData] Starting deletion process');
 
-	// 1. Supabaseから全ユーザーIDを取得
-	const validUserIds = await getAllUserIds(databaseUrl);
-	console.log(`[deleteNoUserHouseholdData] Found ${validUserIds.size} valid users in Supabase`);
+	// 1. D1のuserテーブルから全ユーザーIDを取得
+	const validUserIds = await getAllUserIds(db);
+	console.log(`[deleteNoUserHouseholdData] Found ${validUserIds.size} valid users in D1 user table`);
 
-	// 2. D1から孤立user_idを特定
+	// 2. 孤立user_idを特定（expensesやbudgetsにはあるがuserテーブルにないもの）
 	const orphanedUserIds = await getOrphanedUserIds(db, validUserIds);
 
 	if (orphanedUserIds.size === 0) {
@@ -138,7 +125,7 @@ export default {
 		url.searchParams.append('cron', '0 20 * * *');
 		return new Response(
 			`This is a scheduled worker that runs at 20:00 UTC daily.\n` +
-				`It deletes household data (expenses, budgets) for users that no longer exist in Supabase.\n` +
+				`It deletes household data (expenses, budgets) for users that no longer exist in the user table.\n` +
 				`To test the scheduled handler locally, run:\n` +
 				`curl "${url.href}"`
 		);
@@ -149,20 +136,13 @@ export default {
 			`[scheduled] Cron triggered at ${controller.cron} (scheduled time: ${new Date(controller.scheduledTime).toISOString()})`
 		);
 
-		if (!env.DATABASE_URL) {
-			console.error(
-				'[scheduled] DATABASE_URL is not set. Please set it using: wrangler secret put DATABASE_URL'
-			);
-			return;
-		}
-
 		if (!env.DB) {
 			console.error('[scheduled] D1 database binding (DB) is not configured');
 			return;
 		}
 
 		try {
-			const result = await deleteNoUserHouseholdData(env.DATABASE_URL, env.DB);
+			const result = await deleteNoUserHouseholdData(env.DB);
 			console.log(
 				`[scheduled] Successfully deleted ${result.expenses} expenses and ${result.budgets} budgets from ${result.orphanedUserCount} orphaned users`
 			);

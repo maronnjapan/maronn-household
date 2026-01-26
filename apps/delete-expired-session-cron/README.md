@@ -4,17 +4,15 @@
 
 ## 概要
 
-このWorkerは、外部データベース（Supabase）の`session`テーブルから、`expires_at`が現在時刻（UTC）から3日以上経過したセッションを削除します。
+このWorkerは、D1データベースの`session`テーブルから、`expires_at`が現在時刻（UTC）から3日以上経過したセッションを削除します。
 
 ### 実装アプローチ
 
-このCronジョブは、生のSQLクエリ（`postgres`パッケージ）を使用してセッションを削除します。これにより:
+このCronジョブは、D1のネイティブAPIを使用してセッションを削除します。これにより:
 
-- ORM（Drizzle）の依存関係競合を回避
 - シンプルで理解しやすいコード
-- PostgreSQLの最適化されたバッチ削除を活用
-
-セッションテーブルのスキーマは`@maronn-household/db-schema`パッケージで一元管理されており、複数のアプリケーション間で共有されています。
+- エッジでの高速な処理
+- 効率的なバッチ削除
 
 ## 実行スケジュール
 
@@ -24,8 +22,7 @@
 ## 主な機能
 
 - UTC基準で期限切れから3日経過したセッションを削除
-- バッチ処理（100件ずつ）でCPUレートリミットを回避
-- 各バッチ間に100msの待機時間を設けて負荷を分散
+- 単一クエリで効率的に削除
 - 詳細なログ出力で削除状況を追跡
 
 ## セットアップ
@@ -37,16 +34,18 @@ cd apps/delete-expired-session-cron
 pnpm install
 ```
 
-### 2. DATABASE_URLシークレットの設定
+### 2. D1バインディングの確認
 
-Supabaseの接続URLをシークレットとして設定します：
+`wrangler.jsonc` でD1データベースバインディングが設定されていることを確認:
 
-```bash
-# 本番環境
-wrangler secret put DATABASE_URL
-
-# プロンプトが表示されたら、Supabaseの接続URLを入力
-# 例: postgresql://user:password@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+```jsonc
+"d1_databases": [
+  {
+    "binding": "DB",
+    "database_name": "household-db",
+    "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+  }
+]
 ```
 
 ### 3. 型定義の生成（オプション）
@@ -89,8 +88,6 @@ pnpm run deploy
 `src/index.ts` の以下の定数を変更することで動作をカスタマイズできます：
 
 ```typescript
-const BATCH_SIZE = 100;        // 1回のバッチで削除する最大件数
-const BATCH_DELAY_MS = 100;    // バッチ間の待機時間（ミリ秒）
 const EXPIRY_DAYS = 3;         // 期限切れとみなす日数
 ```
 
@@ -106,37 +103,25 @@ const EXPIRY_DAYS = 3;         // 期限切れとみなす日数
 
 ## トラブルシューティング
 
-### DATABASE_URLが設定されていない
+### D1バインディングが設定されていない
 
 ログに以下のエラーが表示される場合：
 
 ```
-DATABASE_URL is not set. Please set it using: wrangler secret put DATABASE_URL
+D1 database binding (DB) is not configured
 ```
 
-解決方法：
+解決方法：`wrangler.jsonc` でD1バインディングが正しく設定されているか確認してください。
+
+### sessionテーブルが存在しない
+
+認証テーブルのマイグレーションが適用されていない可能性があります：
 
 ```bash
-wrangler secret put DATABASE_URL
+pnpm --filter household-app drizzle:migrate:remote
 ```
-
-### 接続エラー
-
-データベース接続に失敗する場合：
-
-1. DATABASE_URLが正しいことを確認
-2. SupabaseのIPホワイトリストにCloudflare Workersが含まれているか確認
-3. SSL接続が有効になっているか確認
-
-### CPU時間超過
-
-大量のセッションを削除する際にCPU時間制限に達する場合：
-
-- `BATCH_SIZE` を小さくする（例: 50）
-- `BATCH_DELAY_MS` を大きくする（例: 200）
 
 ## 参考リンク
 
 - [Cloudflare Workers Cron Triggers](https://developers.cloudflare.com/workers/platform/triggers/cron-triggers/)
-- [Wrangler Configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)
-- [Drizzle ORM PostgreSQL](https://orm.drizzle.team/docs/get-started-postgresql)
+- [Cloudflare D1](https://developers.cloudflare.com/d1/)

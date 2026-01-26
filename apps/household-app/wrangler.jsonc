@@ -11,24 +11,13 @@
       "enabled": true
     }
   },
-  // D1データベース（支出・予算データ用）
+  // D1データベース（支出・予算・認証データ用）
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "household-db",
       "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34",
       "migrations_dir": "database/migrations"
-    }
-  ],
-  // PostgreSQL接続用のHyperdrive（認証データ用）
-  // Hyperdriveの設定方法:
-  // 1. wrangler hyperdrive create household-auth --connection-string="postgresql://user:pass@host:5432/db"
-  // 2. 作成されたHyperdrive IDを下記の "id" に設定
-  // 3. AUTH_SETUP.mdを参照してSupabase接続文字列を取得
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "ed74cd74710040dc876c23eba9e21714"
     }
   ],
   // 環境変数（シークレット）の設定方法:

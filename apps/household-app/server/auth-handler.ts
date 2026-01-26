@@ -14,7 +14,7 @@ export const authHandler = ((endpoint) =>
         return new Response("Environment not available", { status: 500 });
       }
 
-      // Better Authインスタンスを作成（Hyperdrive経由でSupabaseに接続）
+      // Better Authインスタンスを作成（D1を使用）
       const auth = createAuth(env);
 
       // Better Authのハンドラーを呼び出し

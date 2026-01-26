@@ -1,17 +1,21 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import * as authSchema from "./database/drizzle/schema/auth";
 
-const { DATABASE_URL } = process.env;
-if (!DATABASE_URL) {
-    throw new Error("DATABASE_URL is not defined in environment variables.");
-}
+/**
+ * Better Auth CLI用の設定ファイル
+ * 型生成などCLI操作で使用
+ *
+ * 注意: 本番環境ではauth/config.tsのcreateAuth()を使用すること
+ * このファイルはローカル開発でのCLI操作（型生成等）専用
+ */
 
-const client = postgres(DATABASE_URL);
-
-const db = drizzle(client);
+// ローカル開発用のSQLiteデータベースを使用
+const sqlite = new Database(":memory:");
+const db = drizzle(sqlite, { schema: authSchema });
 
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
-    database: drizzleAdapter(db, { provider: 'pg' }),
+    database: drizzleAdapter(db, { provider: 'sqlite', schema: authSchema }),
 });

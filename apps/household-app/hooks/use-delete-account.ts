@@ -14,8 +14,8 @@ interface DeleteAccountState {
  * アカウント削除処理を管理するカスタムフック
  *
  * 削除順序:
- * 1. D1データ削除（tRPC経由）
- * 2. PostgreSQLユーザー削除（BetterAuth経由）
+ * 1. 認証データ削除（BetterAuth経由、D1のuser/session/accountテーブル）
+ * 2. 家計データ削除（tRPC経由、D1のexpenses/budgets等）
  * 3. IndexedDBクリア
  * 4. トップページへリダイレクト
  */
@@ -36,7 +36,7 @@ export function useDeleteAccount() {
 
     setState({ isDeleting: true, error: null });
 
-    // Step 1: PostgreSQLユーザー削除（BetterAuth経由）
+    // Step 1: 認証データ削除（BetterAuth経由）
     const authResult = await deleteAccount();
     if (authResult.error) {
       setState({

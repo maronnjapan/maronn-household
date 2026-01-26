@@ -15,6 +15,7 @@
 		]
 	},
 	// D1データベース（household-appと同じDB）
+	// 認証データと家計データの両方が同じD1に格納されている
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -22,6 +23,4 @@
 			"database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
 		}
 	]
-	// DATABASE_URL はシークレットとして設定（Supabase接続用）
-	// wrangler secret put DATABASE_URL
 }

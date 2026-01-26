@@ -119,3 +119,42 @@
 .checkbox-label a:hover {
   color: #0060df;
 }
+
+.auth-description {
+  text-align: center;
+  color: #4b5563;
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.auth-message {
+  text-align: center;
+  color: #059669;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.auth-note {
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #0070f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.auth-button:hover {
+  background-color: #0060df;
+}

@@ -44,7 +44,7 @@ export function ApiTokenSection() {
     <section className="settings-section">
       <h2>APIトークン</h2>
       <p>月次家計簿データをJSON形式でエクスポートするためのAPIトークンを管理します。</p>
-      <p className="api-limit-note">※月3回まで利用可能です</p>
+      <p className="api-limit-note">※一日50回まで利用可能です</p>
 
       {issuedToken && (
         <div className="issued-token-alert">
@@ -120,25 +120,23 @@ export function ApiTokenSection() {
       <h3>発行済みトークン</h3>
       {isLoading ? (
         <p>読込中...</p>
-      ) : tokensData?.tokens && tokensData.tokens.length > 0 ? (
+      ) : tokensData?.tokens && tokensData.tokens.filter((token) => token.isActive === 1).length > 0 ? (
         <ul className="token-list">
-          {tokensData.tokens.map((token) => (
-            <li key={token.tokenHash} className={token.isActive === 0 ? 'revoked' : ''}>
-              <div className="token-info">
-                <strong>{token.name || '（名前なし）'}</strong>
-                <span className="token-date">
-                  作成: {new Date(token.createdAt).toLocaleDateString('ja-JP')}
-                </span>
-                {token.lastUsedAt && (
+          {tokensData.tokens
+            .filter((token) => token.isActive === 1)
+            .map((token) => (
+              <li key={token.tokenHash}>
+                <div className="token-info">
+                  <strong>{token.name || '（名前なし）'}</strong>
                   <span className="token-date">
-                    最終使用: {new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}
+                    作成: {new Date(token.createdAt).toLocaleDateString('ja-JP')}
                   </span>
-                )}
-                {token.isActive === 0 && (
-                  <span className="token-status">無効化済み</span>
-                )}
-              </div>
-              {token.isActive === 1 && (
+                  {token.lastUsedAt && (
+                    <span className="token-date">
+                      最終使用: {new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => handleRevokeToken(token.tokenHash)}
@@ -147,9 +145,8 @@ export function ApiTokenSection() {
                 >
                   無効化
                 </button>
-              )}
-            </li>
-          ))}
+              </li>
+            ))}
         </ul>
       ) : (
         <p>トークンが発行されていません。</p>

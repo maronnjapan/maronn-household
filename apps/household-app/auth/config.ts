@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as authSchema from "../database/drizzle/schema/auth";
 import { createSESClient, sendEmail } from "../lib/email/ses-client";
 import { buildPasswordResetEmailTemplate } from "../lib/email/password-reset-template";
+import { hashPassword, verifyPassword } from "./password-hash";
 
 /**
  * Better Authインスタンスの型
@@ -79,6 +80,13 @@ export function createAuth(env: Env): Auth {
     trustedOrigins: [env.BETTER_AUTH_URL],
     emailAndPassword: {
       enabled: true,
+      // Cloudflare Workers の CPU 制限対策:
+      // デフォルトの scrypt は CPU 負荷が高くタイムアウトするため、
+      // Web Crypto API の PBKDF2 を使用
+      password: {
+        hash: hashPassword,
+        verify: verifyPassword,
+      },
       sendResetPassword: async ({ user, url }) => {
         // SES環境変数が設定されていない場合はログに出力して終了
         if (!env.AWS_SES_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !env.EMAIL_FROM) {

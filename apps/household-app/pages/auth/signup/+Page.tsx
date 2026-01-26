@@ -79,11 +79,21 @@ export function Page() {
               required
             />
             <span>
-              <a href="/terms" target="_blank" rel="noopener noreferrer">
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
                 利用規約
               </a>
               と
-              <a href="/privacy" target="_blank" rel="noopener noreferrer">
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
                 プライバシーポリシー
               </a>
               に同意します

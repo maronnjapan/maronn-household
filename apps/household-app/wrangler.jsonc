@@ -21,7 +21,7 @@
     }
   ],
   "limits": {
-    "cpu_ms": 300000, // default is 30000 (30 seconds)
+    "cpu_ms": 60000, // default is 30000 (30 seconds)
   },
   // 環境変数（シークレット）の設定方法:
   // ローカル開発: .dev.vars.example をコピーして .dev.vars を作成

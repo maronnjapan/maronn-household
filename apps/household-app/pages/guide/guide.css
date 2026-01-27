@@ -158,6 +158,16 @@
   color: #3498db;
 }
 
+/* Image styles */
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem auto;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
 /* Mobile responsiveness */
 @media (max-width: 639px) {
   .markdown-content h1 {

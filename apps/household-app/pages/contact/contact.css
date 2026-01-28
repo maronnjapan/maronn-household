@@ -15,6 +15,23 @@
   margin-bottom: 2rem;
 }
 
+.contact-form-link {
+  text-align: center;
+  padding: 2rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+}
+
+.contact-form-link p {
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+.contact-form-link .contact-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .contact-form {
   display: flex;
   flex-direction: column;

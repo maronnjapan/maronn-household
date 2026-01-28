@@ -15,14 +15,8 @@ WEBHOOK_SECRET_KEY=your-webhook-secret-key-min-32-chars
 # Node環境
 NODE_ENV=development
 
-# AWS SES設定（お問い合わせメール送信用）
-# Terraformで作成されたIAMユーザーのアクセスキーを設定
-# 詳細は docs/aws-ses-setup.md を参照
-AWS_ACCESS_KEY_ID=your-aws-access-key-id
-AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
-AWS_REGION=ap-northeast-1
-
-# お問い合わせメール設定
-# SESで検証済みのドメインのメールアドレスを指定
-CONTACT_EMAIL_FROM=noreply@yourdomain.com
-CONTACT_EMAIL_TO=admin@yourdomain.com
+# メール送信設定（Resend）
+# https://resend.com/ のダッシュボードでAPIキーを発行
+RESEND_API_KEY=your-resend-api-key
+# パスワードリセットメールの送信元アドレス
+EMAIL_FROM=noreply@yourdomain.com

@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import * as authSchema from "../database/drizzle/schema/auth";
-import { createSESClient, sendEmail } from "../lib/email/ses-client";
+import { sendEmail, isEmailConfigured } from "../lib/email";
 import { buildPasswordResetEmailTemplate } from "../lib/email/password-reset-template";
 
 /**
@@ -21,11 +21,13 @@ interface Env {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  // SES設定（パスワードリセットメール送信用）
-  AWS_SES_REGION?: string;
-  AWS_ACCESS_KEY_ID?: string;
-  AWS_SECRET_ACCESS_KEY?: string;
+  // Resend設定（パスワードリセットメール送信用）
+  RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  // AWS SES設定（将来の切り替え用に残す）
+  // AWS_SES_REGION?: string;
+  // AWS_ACCESS_KEY_ID?: string;
+  // AWS_SECRET_ACCESS_KEY?: string;
 }
 
 /**
@@ -80,28 +82,25 @@ export function createAuth(env: Env): Auth {
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {
-        // SES環境変数が設定されていない場合はログに出力して終了
-        if (!env.AWS_SES_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !env.EMAIL_FROM) {
-          console.warn("SES environment variables not configured. Password reset email not sent.");
+        // Resend環境変数が設定されていない場合はログに出力して終了
+        if (!isEmailConfigured({ RESEND_API_KEY: env.RESEND_API_KEY }) || !env.EMAIL_FROM) {
+          console.warn("Resend environment variables not configured. Password reset email not sent.");
           console.log(`Password reset URL for ${user.email}: ${url}`);
           return;
         }
 
-        const sesClient = createSESClient({
-          region: env.AWS_SES_REGION,
-          accessKeyId: env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-        });
-
         const template = buildPasswordResetEmailTemplate({ url });
 
-        await sendEmail(sesClient, {
-          to: user.email,
-          from: env.EMAIL_FROM,
-          subject: "【家計簿アプリ】パスワードリセットのご案内",
-          bodyText: template.text,
-          bodyHtml: template.html,
-        });
+        await sendEmail(
+          { RESEND_API_KEY: env.RESEND_API_KEY! },
+          {
+            to: user.email,
+            from: env.EMAIL_FROM,
+            subject: "【家計簿アプリ】パスワードリセットのご案内",
+            bodyText: template.text,
+            bodyHtml: template.html,
+          }
+        );
       },
     },
     user: {

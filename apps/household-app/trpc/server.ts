@@ -17,7 +17,6 @@ import {
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
 import {
-  createSESClient,
   sendEmail,
   buildContactEmailTemplate,
 } from '../lib/email';
@@ -32,12 +31,14 @@ interface Env {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   WEBHOOK_SECRET_KEY: string;
-  // AWS SES設定
-  AWS_ACCESS_KEY_ID?: string;
-  AWS_SECRET_ACCESS_KEY?: string;
-  AWS_REGION?: string;
+  // SendGrid設定
+  SENDGRID_API_KEY?: string;
   CONTACT_EMAIL_FROM?: string;
   CONTACT_EMAIL_TO?: string;
+  // AWS SES設定（将来の切り替え用に残す）
+  // AWS_ACCESS_KEY_ID?: string;
+  // AWS_SECRET_ACCESS_KEY?: string;
+  // AWS_REGION?: string;
 }
 
 /**
@@ -776,7 +777,6 @@ export const appRouter = router({
   }),
 
   // お問い合わせメール送信（認証不要）
-  // お問い合わせメール送信（認証不要）
   sendContactMessage: publicProcedure
     .input(sendContactMessageInputSchema)
     .mutation(async (opts) => {
@@ -792,9 +792,7 @@ export const appRouter = router({
 
       const fromEmail = env.CONTACT_EMAIL_FROM;
       const toEmail = env.CONTACT_EMAIL_TO;
-      const region = env.AWS_REGION || 'ap-northeast-1';
-      const accessKeyId = env.AWS_ACCESS_KEY_ID;
-      const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
+      const sendGridApiKey = env.SENDGRID_API_KEY;
 
       if (!fromEmail || !toEmail) {
         throw new TRPCError({
@@ -803,10 +801,10 @@ export const appRouter = router({
         });
       }
 
-      if (!accessKeyId || !secretAccessKey) {
+      if (!sendGridApiKey) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'AWS credentials are not configured',
+          message: 'SendGrid API key is not configured',
         });
       }
 
@@ -818,22 +816,18 @@ export const appRouter = router({
         message,
       });
 
-      // SESクライアントを作成
-      const sesClient = createSESClient({
-        region,
-        accessKeyId,
-        secretAccessKey,
-      });
-
-      // AWS SES経由でメール送信
-      await sendEmail(sesClient, {
-        to: toEmail,
-        from: fromEmail,
-        subject: emailTemplate.subject,
-        bodyText: emailTemplate.bodyText,
-        bodyHtml: emailTemplate.bodyHtml,
-        replyTo: email,
-      });
+      // SendGrid経由でメール送信
+      await sendEmail(
+        { SENDGRID_API_KEY: sendGridApiKey },
+        {
+          to: toEmail,
+          from: fromEmail,
+          subject: emailTemplate.subject,
+          bodyText: emailTemplate.bodyText,
+          bodyHtml: emailTemplate.bodyHtml,
+          replyTo: email,
+        }
+      );
 
       return { success: true };
     }),

@@ -1,8 +1,9 @@
+import { Resend } from 'resend';
+
 /**
  * Resend API クライアント
  *
- * ResendのHTTP APIを使ってメールを送信する。
- * Cloudflare Workersのfetch APIで動作するようシンプルなラッパーを提供。
+ * Resend公式のnpmパッケージを使ってメールを送信する。
  */
 
 export interface ResendConfig {
@@ -18,15 +19,6 @@ export interface ResendEmailParams {
   replyTo?: string;
 }
 
-interface ResendMailRequest {
-  from: string;
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-  reply_to?: string;
-}
-
 /**
  * Resend経由でメールを送信する。
  */
@@ -34,36 +26,24 @@ export async function sendEmailWithResend(
   config: ResendConfig,
   params: ResendEmailParams
 ): Promise<void> {
+  const resend = new Resend(config.apiKey);
   const { to, from, subject, bodyText, bodyHtml, replyTo } = params;
 
-  const requestBody: ResendMailRequest = {
+  const payload = {
     from,
     to,
     subject,
     text: bodyText,
+    ...(bodyHtml ? { html: bodyHtml } : {}),
+    ...(replyTo ? { replyTo } : {}),
   };
 
-  if (bodyHtml) {
-    requestBody.html = bodyHtml;
-  }
+  const { error } = await resend.emails.send(payload);
 
-  if (replyTo) {
-    requestBody.reply_to = replyTo;
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
+  if (error) {
+    const { name, statusCode, message } = error;
     throw new Error(
-      `Resend API error: ${response.status} ${response.statusText} - ${errorBody}`
+      `Resend API error: ${name ?? 'unknown'} (${statusCode ?? 'no-status'}) - ${message}`
     );
   }
 }

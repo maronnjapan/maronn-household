@@ -16,10 +16,6 @@ import {
   decryptWebhookSecret,
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
-import {
-  sendEmail,
-  buildContactEmailTemplate,
-} from '../lib/email';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
 
@@ -31,10 +27,6 @@ interface Env {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   WEBHOOK_SECRET_KEY: string;
-  // SendGrid設定
-  SENDGRID_API_KEY?: string;
-  CONTACT_EMAIL_FROM?: string;
-  CONTACT_EMAIL_TO?: string;
   // AWS SES設定（将来の切り替え用に残す）
   // AWS_ACCESS_KEY_ID?: string;
   // AWS_SECRET_ACCESS_KEY?: string;
@@ -152,13 +144,6 @@ const createWebhookInputSchema = z.object({
 
 const deleteWebhookInputSchema = z.object({
   id: z.string(),
-});
-
-const sendContactMessageInputSchema = z.object({
-  name: z.string().min(1, 'お名前を入力してください'),
-  email: z.string().email('有効なメールアドレスを入力してください'),
-  subject: z.string().min(1, '件名を入力してください'),
-  message: z.string().min(10, 'お問い合わせ内容は10文字以上で入力してください'),
 });
 
 async function deliverExpenseWebhooks(params: {
@@ -776,61 +761,6 @@ export const appRouter = router({
     return { success: true };
   }),
 
-  // お問い合わせメール送信（認証不要）
-  sendContactMessage: publicProcedure
-    .input(sendContactMessageInputSchema)
-    .mutation(async (opts) => {
-      const { name, email, subject, message } = opts.input;
-      const env = opts.ctx.env;
-
-      if (!env) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Server configuration error',
-        });
-      }
-
-      const fromEmail = env.CONTACT_EMAIL_FROM;
-      const toEmail = env.CONTACT_EMAIL_TO;
-      const sendGridApiKey = env.SENDGRID_API_KEY;
-
-      if (!fromEmail || !toEmail) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Email configuration is not set',
-        });
-      }
-
-      if (!sendGridApiKey) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'SendGrid API key is not configured',
-        });
-      }
-
-      // メールテンプレートを構築
-      const emailTemplate = buildContactEmailTemplate({
-        name,
-        email,
-        subject,
-        message,
-      });
-
-      // SendGrid経由でメール送信
-      await sendEmail(
-        { SENDGRID_API_KEY: sendGridApiKey },
-        {
-          to: toEmail,
-          from: fromEmail,
-          subject: emailTemplate.subject,
-          bodyText: emailTemplate.bodyText,
-          bodyHtml: emailTemplate.bodyHtml,
-          replyTo: email,
-        }
-      );
-
-      return { success: true };
-    }),
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,12 +1,12 @@
 /**
  * メール送信の共通インターフェース
  *
- * SendGridとAWS SESを切り替え可能にするための抽象化層
- * 現在はSendGridをデフォルトで使用
+ * ResendとAWS SESを切り替え可能にするための抽象化層
+ * 現在はResendをデフォルトで使用
  */
 
-import { sendEmailWithSendGrid } from './sendgrid-client';
-import type { SendGridConfig, SendGridEmailParams } from './sendgrid-client';
+import { sendEmailWithResend } from './resend-client';
+import type { ResendConfig, ResendEmailParams } from './resend-client';
 
 // AWS SESのインポート（将来の切り替え用に残す）
 // import { createSESClient, sendEmail as sendEmailWithSES } from './ses-client';
@@ -21,8 +21,8 @@ export interface EmailParams {
   replyTo?: string;
 }
 
-export interface SendGridEnvConfig {
-  SENDGRID_API_KEY: string;
+export interface ResendEnvConfig {
+  RESEND_API_KEY: string;
 }
 
 // AWS SES用の設定（将来の切り替え用）
@@ -33,17 +33,17 @@ export interface SendGridEnvConfig {
 // }
 
 /**
- * SendGridでメールを送信
+ * Resendでメールを送信
  */
 export async function sendEmail(
-  config: SendGridEnvConfig,
+  config: ResendEnvConfig,
   params: EmailParams
 ): Promise<void> {
-  const sendGridConfig: SendGridConfig = {
-    apiKey: config.SENDGRID_API_KEY,
+  const resendConfig: ResendConfig = {
+    apiKey: config.RESEND_API_KEY,
   };
 
-  const sendGridParams: SendGridEmailParams = {
+  const resendParams: ResendEmailParams = {
     to: params.to,
     from: params.from,
     subject: params.subject,
@@ -52,14 +52,14 @@ export async function sendEmail(
     replyTo: params.replyTo,
   };
 
-  await sendEmailWithSendGrid(sendGridConfig, sendGridParams);
+  await sendEmailWithResend(resendConfig, resendParams);
 }
 
 /**
- * SendGrid設定が有効かどうかをチェック
+ * Resend設定が有効かどうかをチェック
  */
-export function isEmailConfigured(config: Partial<SendGridEnvConfig>): boolean {
-  return Boolean(config.SENDGRID_API_KEY);
+export function isEmailConfigured(config: Partial<ResendEnvConfig>): boolean {
+  return Boolean(config.RESEND_API_KEY);
 }
 
 // AWS SESを使用する場合のコード（将来の切り替え用に残す）

@@ -21,8 +21,8 @@ interface Env {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  // SendGrid設定（パスワードリセットメール送信用）
-  SENDGRID_API_KEY?: string;
+  // Resend設定（パスワードリセットメール送信用）
+  RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   // AWS SES設定（将来の切り替え用に残す）
   // AWS_SES_REGION?: string;
@@ -82,9 +82,9 @@ export function createAuth(env: Env): Auth {
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {
-        // SendGrid環境変数が設定されていない場合はログに出力して終了
-        if (!isEmailConfigured({ SENDGRID_API_KEY: env.SENDGRID_API_KEY }) || !env.EMAIL_FROM) {
-          console.warn("SendGrid environment variables not configured. Password reset email not sent.");
+        // Resend環境変数が設定されていない場合はログに出力して終了
+        if (!isEmailConfigured({ RESEND_API_KEY: env.RESEND_API_KEY }) || !env.EMAIL_FROM) {
+          console.warn("Resend environment variables not configured. Password reset email not sent.");
           console.log(`Password reset URL for ${user.email}: ${url}`);
           return;
         }
@@ -92,7 +92,7 @@ export function createAuth(env: Env): Auth {
         const template = buildPasswordResetEmailTemplate({ url });
 
         await sendEmail(
-          { SENDGRID_API_KEY: env.SENDGRID_API_KEY! },
+          { RESEND_API_KEY: env.RESEND_API_KEY! },
           {
             to: user.email,
             from: env.EMAIL_FROM,

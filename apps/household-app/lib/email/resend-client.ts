@@ -26,6 +26,9 @@ export async function sendEmailWithResend(
   config: ResendConfig,
   params: ResendEmailParams
 ): Promise<void> {
+  if (!config.apiKey) {
+    throw new Error("Resend API key is missing. Check RESEND_API_KEY.");
+  }
   const resend = new Resend(config.apiKey);
   const { to, from, subject, bodyText, bodyHtml, replyTo } = params;
 
@@ -38,7 +41,8 @@ export async function sendEmailWithResend(
     ...(replyTo ? { replyTo } : {}),
   };
 
-  const { error } = await resend.emails.send(payload);
+  console.info(`Resend send attempt. to=${to} from=${from} subject=${subject}`);
+  const { data, error } = await resend.emails.send(payload);
 
   if (error) {
     const { name, statusCode, message } = error;
@@ -46,4 +50,13 @@ export async function sendEmailWithResend(
       `Resend API error: ${name ?? 'unknown'} (${statusCode ?? 'no-status'}) - ${message}`
     );
   }
+
+  if (!data?.id) {
+    console.warn(
+      "Resend API response did not include an email id. Check the dashboard for delivery status."
+    );
+    return;
+  }
+
+  console.info(`Resend email accepted. id=${data.id} to=${to}`);
 }

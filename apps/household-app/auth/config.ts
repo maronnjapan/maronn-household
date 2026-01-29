@@ -84,13 +84,22 @@ export function createAuth(env: Env): Auth {
       sendResetPassword: async ({ user, url }) => {
         // Resend環境変数が設定されていない場合はログに出力して終了
         if (!isEmailConfigured({ RESEND_API_KEY: env.RESEND_API_KEY }) || !env.EMAIL_FROM) {
-          console.warn("Resend environment variables not configured. Password reset email not sent.");
+          console.warn(
+            "Resend environment variables not configured. Password reset email not sent.",
+            {
+              hasResendKey: Boolean(env.RESEND_API_KEY),
+              hasEmailFrom: Boolean(env.EMAIL_FROM),
+            }
+          );
           console.log(`Password reset URL for ${user.email}: ${url}`);
           return;
         }
 
         const template = buildPasswordResetEmailTemplate({ url });
 
+        console.info(
+          `Sending password reset email via Resend. to=${user.email} from=${env.EMAIL_FROM}`
+        );
         await sendEmail(
           { RESEND_API_KEY: env.RESEND_API_KEY! },
           {

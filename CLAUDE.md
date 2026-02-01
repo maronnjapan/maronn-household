@@ -56,13 +56,87 @@
 | Cloudflare Durable Objects | デバイス間リアルタイム同期、競合解決 |
 | WebSocket | 他デバイスへの変更プッシュ |
 
-### 認証（将来実装）
+### 認証
 
-認証方式は未定。将来的に不特定多数のユーザーを想定するため、以下を候補として検討:
+**Google OAuth のみ対応**
 
-- Better Auth（セルフホスト、Hono統合）
-- Cloudflare Access（Zero Trust）
-- Auth.js（OAuth連携が必要な場合）
+Better Auth + Google OAuth を使用。メール/パスワード認証は非対応。
+
+#### 必要な環境変数
+
+```bash
+BETTER_AUTH_SECRET=<ランダムな秘密鍵（32文字以上推奨）>
+BETTER_AUTH_URL=<アプリのベースURL（例: https://example.com）>
+GOOGLE_CLIENT_ID=<Google Cloud Consoleで取得>
+GOOGLE_CLIENT_SECRET=<Google Cloud Consoleで取得>
+```
+
+#### Google Cloud Console での OAuth 設定手順
+
+1. **Google Cloud Console にアクセス**
+   - https://console.cloud.google.com/ にアクセス
+   - プロジェクトを選択（または新規作成）
+
+2. **OAuth 同意画面の設定**
+   - 左メニュー「APIとサービス」→「OAuth 同意画面」
+   - User Type: 「外部」を選択（内部は Google Workspace 組織のみ）
+   - アプリ情報を入力:
+     - アプリ名: 家計簿アプリ
+     - ユーザーサポートメール: 自分のメールアドレス
+     - デベロッパーの連絡先情報: 自分のメールアドレス
+   - スコープ: `email`, `profile`, `openid` を追加
+   - テストユーザー: 開発中は自分のGoogleアカウントを追加
+
+3. **OAuth 2.0 クライアント ID の作成**
+   - 左メニュー「APIとサービス」→「認証情報」
+   - 「認証情報を作成」→「OAuth クライアント ID」
+   - アプリケーションの種類: 「ウェブ アプリケーション」
+   - 名前: 任意（例: 家計簿アプリ - 本番）
+   - **承認済みの JavaScript 生成元**:
+     ```
+     http://localhost:5173          # ローカル開発
+     https://your-domain.com        # 本番環境
+     ```
+   - **承認済みのリダイレクト URI**:
+     ```
+     http://localhost:5173/api/auth/callback/google    # ローカル開発
+     https://your-domain.com/api/auth/callback/google  # 本番環境
+     ```
+   - 「作成」をクリック
+
+4. **クライアント ID とシークレットを取得**
+   - 作成後に表示されるダイアログから:
+     - クライアント ID → `GOOGLE_CLIENT_ID`
+     - クライアント シークレット → `GOOGLE_CLIENT_SECRET`
+
+5. **Cloudflare Workers への環境変数設定**
+   ```bash
+   # wrangler secret で設定（本番環境）
+   wrangler secret put GOOGLE_CLIENT_ID
+   wrangler secret put GOOGLE_CLIENT_SECRET
+   wrangler secret put BETTER_AUTH_SECRET
+   ```
+
+#### 本番公開時の注意
+
+- OAuth 同意画面が「テスト」モードの場合、テストユーザーのみログイン可能
+- 一般公開するには「本番環境に公開」が必要（Google の審査あり）
+- 審査では、プライバシーポリシーと利用規約のURLが必要
+
+#### ファイル構成
+
+```
+apps/household-app/
+├── auth/
+│   ├── config.ts       # Better Auth サーバー設定（Googleプロバイダー）
+│   └── client.ts       # クライアント用関数（signInWithGoogle, signOut）
+├── pages/
+│   └── auth/
+│       └── login/
+│           └── +Page.tsx   # Googleログインボタンのみ
+└── hooks/
+    └── use-auth.ts     # 認証状態フック
+```
 
 ### テスト
 
@@ -743,8 +817,7 @@ apps/household-app/
 
 ## 今後の拡張予定
 
-1. **認証機能**: ユーザー登録・ログイン（Better Auth 候補）
-2. **カテゴリ管理**: 支出のカテゴリ分類・集計
-3. **グラフ表示**: 月別・カテゴリ別の支出可視化
-4. **予算アラート**: 残額が少なくなったら通知
-5. **CSV エクスポート**: データのバックアップ・分析用
+1. **カテゴリ管理**: 支出のカテゴリ分類・集計
+2. **グラフ表示**: 月別・カテゴリ別の支出可視化
+3. **予算アラート**: 残額が少なくなったら通知
+4. **CSV エクスポート**: データのバックアップ・分析用

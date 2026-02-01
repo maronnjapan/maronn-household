@@ -18,4 +18,10 @@ const db = drizzle(sqlite, { schema: authSchema });
 
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
     database: drizzleAdapter(db, { provider: 'sqlite', schema: authSchema }),
+    socialProviders: {
+        google: {
+            clientId: "dummy-for-cli",
+            clientSecret: "dummy-for-cli",
+        },
+    },
 });

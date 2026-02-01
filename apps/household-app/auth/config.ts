@@ -2,8 +2,6 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import * as authSchema from "../database/drizzle/schema/auth";
-import { sendEmail, isEmailConfigured } from "../lib/email";
-import { buildPasswordResetEmailTemplate } from "../lib/email/password-reset-template";
 
 /**
  * Better Authインスタンスの型
@@ -13,7 +11,7 @@ export type Auth = ReturnType<typeof betterAuth>;
 
 /**
  * Better Auth設定
- * メール/パスワード認証
+ * Googleログイン認証のみ
  * Cloudflare D1を使用（SQLite）
  */
 
@@ -21,13 +19,9 @@ interface Env {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  // Resend設定（パスワードリセットメール送信用）
-  RESEND_API_KEY?: string;
-  EMAIL_FROM?: string;
-  // AWS SES設定（将来の切り替え用に残す）
-  // AWS_SES_REGION?: string;
-  // AWS_ACCESS_KEY_ID?: string;
-  // AWS_SECRET_ACCESS_KEY?: string;
+  // Google OAuth設定
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
 }
 
 /**
@@ -37,6 +31,8 @@ function validateEnv(env: Env): void {
   const requiredVars = [
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
   ] as const;
 
   const missing = requiredVars.filter((key) => !env[key]);
@@ -79,37 +75,10 @@ export function createAuth(env: Env): Auth {
     baseURL: env.BETTER_AUTH_URL,
     basePath: "/api/auth",
     trustedOrigins: [env.BETTER_AUTH_URL],
-    emailAndPassword: {
-      enabled: true,
-      sendResetPassword: async ({ user, url }) => {
-        // Resend環境変数が設定されていない場合はログに出力して終了
-        if (!isEmailConfigured({ RESEND_API_KEY: env.RESEND_API_KEY }) || !env.EMAIL_FROM) {
-          console.warn(
-            "Resend environment variables not configured. Password reset email not sent.",
-            {
-              hasResendKey: Boolean(env.RESEND_API_KEY),
-              hasEmailFrom: Boolean(env.EMAIL_FROM),
-            }
-          );
-          console.log(`Password reset URL for ${user.email}: ${url}`);
-          return;
-        }
-
-        const template = buildPasswordResetEmailTemplate({ url });
-
-        console.info(
-          `Sending password reset email via Resend. to=${user.email} from=${env.EMAIL_FROM}`
-        );
-        await sendEmail(
-          { RESEND_API_KEY: env.RESEND_API_KEY! },
-          {
-            to: user.email,
-            from: env.EMAIL_FROM,
-            subject: "【家計簿アプリ】パスワードリセットのご案内",
-            bodyText: template.text,
-            bodyHtml: template.html,
-          }
-        );
+    socialProviders: {
+      google: {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
       },
     },
     user: {

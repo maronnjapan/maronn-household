@@ -1,6 +1,7 @@
 import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
 import { CelebrationModal } from '../../components/CelebrationModal';
+import { BudgetAlertBanner } from '../../components/BudgetAlertBanner';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import { useCelebration } from '../../hooks/use-celebration';
@@ -46,6 +47,9 @@ export function Page() {
       <header>
         <p className="month">{month}</p>
       </header>
+
+      {/* 予算アラートバナー */}
+      <BudgetAlertBanner budget={budget} remaining={remaining} />
 
       <section className="input-section">
         <h2>支出を記録</h2>

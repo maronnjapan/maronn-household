@@ -8,6 +8,8 @@ import {
   apiTokens,
   apiUsage,
   webhooks,
+  recurringExpenses,
+  budgetAlerts,
 } from '../database/drizzle/schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
@@ -16,6 +18,12 @@ import {
   decryptWebhookSecret,
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
+import {
+  convertToJPY,
+  serializeExchangeRate,
+  type ExchangeRateInfo,
+} from '../lib/exchange-rate';
+import type { CurrencyCode } from '../database/drizzle/schema/household';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
 
@@ -144,6 +152,52 @@ const createWebhookInputSchema = z.object({
 
 const deleteWebhookInputSchema = z.object({
   id: z.string(),
+});
+
+// 定期支出入力スキーマ
+const createRecurringExpenseInputSchema = z.object({
+  amount: z.number().positive(), // 円金額（JPYの場合）または最小単位金額（USD/EURの場合はセント）
+  category: z.string().optional(),
+  memo: z.string().optional(),
+  dayOfMonth: z.number().min(1).max(31),
+  currency: z.enum(['JPY', 'USD', 'EUR']).optional(), // 通貨（デフォルト: JPY）
+});
+
+const updateRecurringExpenseInputSchema = z.object({
+  id: z.string(),
+  amount: z.number().positive().optional(),
+  category: z.string().optional(),
+  memo: z.string().optional(),
+  dayOfMonth: z.number().min(1).max(31).optional(),
+  isActive: z.boolean().optional(),
+  currency: z.enum(['JPY', 'USD', 'EUR']).optional(),
+});
+
+const deleteRecurringExpenseInputSchema = z.object({
+  id: z.string(),
+});
+
+// 予算アラート入力スキーマ
+const createBudgetAlertInputSchema = z.object({
+  thresholdPercent: z.number().min(1).max(100),
+  thresholdAmount: z.number().positive().optional(),
+});
+
+const updateBudgetAlertInputSchema = z.object({
+  id: z.string(),
+  thresholdPercent: z.number().min(1).max(100).optional(),
+  thresholdAmount: z.number().positive().optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+const deleteBudgetAlertInputSchema = z.object({
+  id: z.string(),
+});
+
+// カテゴリ分析入力スキーマ
+const getCategoryAnalysisInputSchema = z.object({
+  month: z.string().optional(), // YYYY-MM形式、省略時は今月
+  months: z.number().min(1).max(12).optional(), // 過去何ヶ月分を取得（デフォルト1）
 });
 
 async function deliverExpenseWebhooks(params: {
@@ -758,8 +812,472 @@ export const appRouter = router({
     // webhooksを削除
     await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
 
+    // 定期支出、予算アラートも削除
+    await database.delete(recurringExpenses).where(eq(recurringExpenses.userId, userId)).run();
+    await database.delete(budgetAlerts).where(eq(budgetAlerts.userId, userId)).run();
+
     return { success: true };
   }),
+
+  // ========================================
+  // 定期支出関連
+  // ========================================
+
+  // 定期支出一覧を取得（認証必須）
+  listRecurringExpenses: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const results = await database
+      .select()
+      .from(recurringExpenses)
+      .where(eq(recurringExpenses.userId, userId))
+      .orderBy(recurringExpenses.dayOfMonth)
+      .all();
+
+    return { recurringExpenses: results };
+  }),
+
+  // 定期支出を作成（認証必須）
+  createRecurringExpense: protectedProcedure
+    .input(createRecurringExpenseInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { amount, category, memo, dayOfMonth, currency = 'JPY' } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      // 外貨の場合は為替レートを取得して円換算
+      let amountJPY = amount;
+      let originalAmount: number | null = null;
+      let exchangeRateJson: string | null = null;
+
+      if (currency !== 'JPY') {
+        const { amountJPY: converted, rateInfo } = await convertToJPY(amount, currency as CurrencyCode);
+        amountJPY = converted;
+        originalAmount = amount;
+        exchangeRateJson = serializeExchangeRate(rateInfo);
+      }
+
+      const now = new Date().toISOString();
+      const id = ulid();
+
+      await database
+        .insert(recurringExpenses)
+        .values({
+          id,
+          userId,
+          amount: amountJPY,
+          category: category || null,
+          memo: memo || null,
+          dayOfMonth,
+          isActive: 1,
+          lastGeneratedMonth: null,
+          currency: currency as CurrencyCode,
+          originalAmount,
+          lastExchangeRate: exchangeRateJson,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      return { id, success: true, amountJPY, exchangeRate: exchangeRateJson ? JSON.parse(exchangeRateJson) : null };
+    }),
+
+  // 定期支出を更新（認証必須）
+  updateRecurringExpense: protectedProcedure
+    .input(updateRecurringExpenseInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id, amount, category, memo, dayOfMonth, isActive, currency } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      // 既存データを確認
+      const existing = await database
+        .select()
+        .from(recurringExpenses)
+        .where(and(
+          eq(recurringExpenses.id, id),
+          eq(recurringExpenses.userId, userId)
+        ))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '定期支出が見つかりません',
+        });
+      }
+
+      // 通貨または金額が変更された場合は為替換算を再計算
+      const newCurrency = currency ?? existing.currency ?? 'JPY';
+      let amountJPY = amount ?? existing.amount;
+      let originalAmount = existing.originalAmount;
+      let exchangeRateJson = existing.lastExchangeRate;
+
+      if (amount !== undefined || currency !== undefined) {
+        const inputAmount = amount ?? (existing.originalAmount ?? existing.amount);
+        if (newCurrency !== 'JPY') {
+          const { amountJPY: converted, rateInfo } = await convertToJPY(inputAmount, newCurrency as CurrencyCode);
+          amountJPY = converted;
+          originalAmount = inputAmount;
+          exchangeRateJson = serializeExchangeRate(rateInfo);
+        } else {
+          amountJPY = inputAmount;
+          originalAmount = null;
+          exchangeRateJson = null;
+        }
+      }
+
+      await database
+        .update(recurringExpenses)
+        .set({
+          amount: amountJPY,
+          category: category !== undefined ? (category || null) : existing.category,
+          memo: memo !== undefined ? (memo || null) : existing.memo,
+          dayOfMonth: dayOfMonth ?? existing.dayOfMonth,
+          isActive: isActive !== undefined ? (isActive ? 1 : 0) : existing.isActive,
+          currency: newCurrency as CurrencyCode,
+          originalAmount,
+          lastExchangeRate: exchangeRateJson,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(recurringExpenses.id, id))
+        .run();
+
+      return { success: true, amountJPY };
+    }),
+
+  // 定期支出を削除（認証必須）
+  deleteRecurringExpense: protectedProcedure
+    .input(deleteRecurringExpenseInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      await database
+        .delete(recurringExpenses)
+        .where(and(
+          eq(recurringExpenses.id, id),
+          eq(recurringExpenses.userId, userId)
+        ))
+        .run();
+
+      return { success: true };
+    }),
+
+  // 定期支出から今月分の支出を生成（認証必須）
+  // 外貨建ての定期支出は生成時に最新の為替レートで円換算
+  generateRecurringExpenses: protectedProcedure.mutation(async (opts) => {
+    const userId = opts.ctx.user.id;
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // アクティブな定期支出を取得
+    const activeRecurring = await database
+      .select()
+      .from(recurringExpenses)
+      .where(and(
+        eq(recurringExpenses.userId, userId),
+        eq(recurringExpenses.isActive, 1)
+      ))
+      .all();
+
+    const generated: { id: string; amount: number; currency: string; rate?: number }[] = [];
+
+    for (const recurring of activeRecurring) {
+      // 既に今月分が生成済みならスキップ
+      if (recurring.lastGeneratedMonth === currentMonth) {
+        continue;
+      }
+
+      // 支出を生成
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const lastDay = new Date(year, month, 0).getDate();
+      const day = Math.min(recurring.dayOfMonth, lastDay);
+      const date = `${currentMonth}-${String(day).padStart(2, '0')}`;
+
+      // 外貨建ての場合は最新の為替レートで円換算
+      let amountJPY = recurring.amount;
+      let rateInfo: ExchangeRateInfo | null = null;
+      const currency = (recurring.currency ?? 'JPY') as CurrencyCode;
+
+      if (currency !== 'JPY' && recurring.originalAmount) {
+        const result = await convertToJPY(recurring.originalAmount, currency);
+        amountJPY = result.amountJPY;
+        rateInfo = result.rateInfo;
+      }
+
+      const expenseId = ulid();
+      const createdAt = new Date().toISOString();
+
+      // メモに為替情報を追加（外貨の場合）
+      let memo = recurring.memo ? `[定期] ${recurring.memo}` : '[定期支出]';
+      if (currency !== 'JPY' && rateInfo) {
+        const symbol = currency === 'USD' ? '$' : '€';
+        const originalDisplay = (recurring.originalAmount! / 100).toFixed(2);
+        memo += ` (${symbol}${originalDisplay} @ ${rateInfo.rate.toFixed(2)}円/${currency})`;
+      }
+
+      await database
+        .insert(expenses)
+        .values({
+          id: expenseId,
+          userId,
+          amount: amountJPY,
+          category: recurring.category,
+          memo,
+          date,
+          createdAt,
+          updatedAt: createdAt,
+          deviceId: 'recurring-system',
+        })
+        .run();
+
+      // 定期支出の為替レート情報と生成済み月を更新
+      await database
+        .update(recurringExpenses)
+        .set({
+          amount: amountJPY, // 最新の円換算額を保存
+          lastGeneratedMonth: currentMonth,
+          lastExchangeRate: rateInfo ? serializeExchangeRate(rateInfo) : recurring.lastExchangeRate,
+          updatedAt: createdAt,
+        })
+        .where(eq(recurringExpenses.id, recurring.id))
+        .run();
+
+      generated.push({
+        id: expenseId,
+        amount: amountJPY,
+        currency,
+        rate: rateInfo?.rate,
+      });
+    }
+
+    return { generated, count: generated.length };
+  }),
+
+  // ========================================
+  // 予算アラート関連
+  // ========================================
+
+  // 予算アラート一覧を取得（認証必須）
+  listBudgetAlerts: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const results = await database
+      .select()
+      .from(budgetAlerts)
+      .where(eq(budgetAlerts.userId, userId))
+      .orderBy(budgetAlerts.thresholdPercent)
+      .all();
+
+    return { alerts: results };
+  }),
+
+  // 予算アラートを作成（認証必須）
+  createBudgetAlert: protectedProcedure
+    .input(createBudgetAlertInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { thresholdPercent, thresholdAmount } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      const now = new Date().toISOString();
+      const id = ulid();
+
+      await database
+        .insert(budgetAlerts)
+        .values({
+          id,
+          userId,
+          thresholdPercent,
+          thresholdAmount: thresholdAmount ?? null,
+          isEnabled: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      return { id, success: true };
+    }),
+
+  // 予算アラートを更新（認証必須）
+  updateBudgetAlert: protectedProcedure
+    .input(updateBudgetAlertInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id, thresholdPercent, thresholdAmount, isEnabled } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      // 既存データを確認
+      const existing = await database
+        .select()
+        .from(budgetAlerts)
+        .where(and(
+          eq(budgetAlerts.id, id),
+          eq(budgetAlerts.userId, userId)
+        ))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '予算アラートが見つかりません',
+        });
+      }
+
+      await database
+        .update(budgetAlerts)
+        .set({
+          thresholdPercent: thresholdPercent ?? existing.thresholdPercent,
+          thresholdAmount: thresholdAmount !== undefined ? (thresholdAmount ?? null) : existing.thresholdAmount,
+          isEnabled: isEnabled !== undefined ? (isEnabled ? 1 : 0) : existing.isEnabled,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(budgetAlerts.id, id))
+        .run();
+
+      return { success: true };
+    }),
+
+  // 予算アラートを削除（認証必須）
+  deleteBudgetAlert: protectedProcedure
+    .input(deleteBudgetAlertInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id } = opts.input;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      await database
+        .delete(budgetAlerts)
+        .where(and(
+          eq(budgetAlerts.id, id),
+          eq(budgetAlerts.userId, userId)
+        ))
+        .run();
+
+      return { success: true };
+    }),
+
+  // ========================================
+  // カテゴリ分析関連
+  // ========================================
+
+  // カテゴリ別支出集計（認証必須）
+  getCategoryAnalysis: protectedProcedure
+    .input(getCategoryAnalysisInputSchema)
+    .query(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      // 基準月を決定
+      const now = new Date();
+      const baseMonth = opts.input.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const actualMonths = opts.input.months || 1;
+
+      // 対象期間を計算
+      const [baseYear, baseMonthNum] = baseMonth.split('-').map(Number);
+      const startDate = new Date(baseYear!, baseMonthNum! - actualMonths, 1);
+      const startMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
+      const endMonth = `${baseMonth}-31`;
+
+      // 支出を取得
+      const results = await database
+        .select()
+        .from(expenses)
+        .where(and(
+          eq(expenses.userId, userId),
+          gte(expenses.date, startMonth),
+          lte(expenses.date, endMonth)
+        ))
+        .all();
+
+      // カテゴリ別に集計
+      const categoryTotals: Record<string, number> = {};
+      let total = 0;
+
+      for (const expense of results) {
+        const category = expense.category || 'other';
+        categoryTotals[category] = (categoryTotals[category] || 0) + expense.amount;
+        total += expense.amount;
+      }
+
+      // 割合を計算
+      const analysis = Object.entries(categoryTotals).map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: total > 0 ? Math.round((amount / total) * 100) : 0,
+      })).sort((a, b) => b.amount - a.amount);
+
+      return {
+        analysis,
+        total,
+        period: {
+          start: startMonth.slice(0, 7),
+          end: baseMonth,
+          months: actualMonths,
+        },
+      };
+    }),
+
+  // 月別支出推移を取得（認証必須）
+  getMonthlyTrend: protectedProcedure
+    .input(z.object({
+      months: z.number().min(1).max(12).optional(),
+    }))
+    .query(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+      const actualMonths = opts.input.months || 6;
+
+      // 対象期間を計算
+      const now = new Date();
+      const trends: { month: string; total: number; budget: number | null }[] = [];
+
+      for (let i = 0; i < actualMonths; i++) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const month = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+        const startDate = `${month}-01`;
+        const endDate = `${month}-31`;
+
+        // その月の支出合計
+        const expenseResult = await database
+          .select({ total: sql<number>`COALESCE(SUM(amount), 0)` })
+          .from(expenses)
+          .where(and(
+            eq(expenses.userId, userId),
+            gte(expenses.date, startDate),
+            lte(expenses.date, endDate)
+          ))
+          .get();
+
+        // その月の予算
+        const budgetResult = await database
+          .select()
+          .from(budgets)
+          .where(and(
+            eq(budgets.userId, userId),
+            eq(budgets.month, month)
+          ))
+          .get();
+
+        trends.push({
+          month,
+          total: expenseResult?.total ?? 0,
+          budget: budgetResult?.amount ?? null,
+        });
+      }
+
+      return {
+        trends: trends.reverse(), // 古い順に並べ替え
+      };
+    }),
 
 });
 

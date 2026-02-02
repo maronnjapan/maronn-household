@@ -3,6 +3,7 @@ import { DeleteAccountSection } from '../../components/DeleteAccountSection';
 import { HandPreferenceSection } from '../../components/HandPreferenceSection';
 import { ApiTokenSection } from '../../components/ApiTokenSection';
 import { WebhookSection } from '../../components/WebhookSection';
+import { BudgetAlertSection } from '../../components/BudgetAlertSection';
 import './settings.css';
 
 /**
@@ -21,6 +22,7 @@ export function Page() {
         <p>読込中...</p>
       ) : isAuthenticated ? (
         <>
+          <BudgetAlertSection />
           <ApiTokenSection />
           <WebhookSection />
           <DeleteAccountSection />

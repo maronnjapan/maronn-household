@@ -3,5 +3,78 @@
  * 電卓スタイルは global.css に移動済み（全ページでフローティングモーダルから利用可能にするため）
  */
 
-/* 現在このファイルにはページ固有のスタイルはありません */
-/* 電卓UI（ExpenseInput）のスタイルは styles/global.css に定義されています */
+/* 予算アラートバナー */
+.budget-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.budget-alert-banner.warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+}
+
+.budget-alert-banner.danger {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
+
+.budget-alert-banner .alert-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.budget-alert-banner.warning .alert-icon {
+  background: #f59e0b;
+  color: white;
+}
+
+.budget-alert-banner.danger .alert-icon {
+  background: #ef4444;
+  color: white;
+}
+
+.budget-alert-banner .alert-content {
+  flex: 1;
+}
+
+.budget-alert-banner .alert-message {
+  font-weight: 500;
+  margin: 0;
+}
+
+.budget-alert-banner .alert-detail {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin: 0.25rem 0 0;
+}
+
+.budget-alert-banner .alert-settings {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  text-decoration: none;
+}
+
+.budget-alert-banner.warning .alert-settings {
+  background: #f59e0b;
+  color: white;
+}
+
+.budget-alert-banner.danger .alert-settings {
+  background: #ef4444;
+  color: white;
+}

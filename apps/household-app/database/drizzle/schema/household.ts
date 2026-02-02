@@ -1,5 +1,62 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
+/**
+ * サブスクリプションプランの種類
+ */
+export type SubscriptionPlan = 'free' | 'premium';
+
+/**
+ * サブスクリプションのステータス
+ */
+export type SubscriptionStatus = 'active' | 'canceled' | 'expired';
+
+/**
+ * ユーザーサブスクリプション管理テーブル
+ * フリーミアムモデルの基盤
+ */
+export const userSubscriptions = sqliteTable('user_subscriptions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  plan: text('plan').notNull().$type<SubscriptionPlan>(), // 'free' | 'premium'
+  status: text('status').notNull().$type<SubscriptionStatus>(), // 'active' | 'canceled' | 'expired'
+  startedAt: text('started_at').notNull(),
+  expiresAt: text('expires_at'), // nullなら無期限（freeプラン）
+  canceledAt: text('canceled_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * 定期支出（繰り返し支出）テーブル
+ * 毎月自動で支出を生成するためのテンプレート
+ */
+export const recurringExpenses = sqliteTable('recurring_expenses', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  amount: integer('amount').notNull(),
+  category: text('category'),
+  memo: text('memo'),
+  dayOfMonth: integer('day_of_month').notNull(), // 1-31（月末を超える場合は月末に調整）
+  isActive: integer('is_active').notNull().default(1),
+  lastGeneratedMonth: text('last_generated_month'), // 最後に支出を生成した月（YYYY-MM）
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * 予算アラート設定テーブル
+ * 残額が閾値を下回ったときに警告を表示
+ */
+export const budgetAlerts = sqliteTable('budget_alerts', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  thresholdPercent: integer('threshold_percent').notNull(), // 予算の何%で警告（例: 20 = 残り20%）
+  thresholdAmount: integer('threshold_amount'), // 金額ベースの閾値（オプション）
+  isEnabled: integer('is_enabled').notNull().default(1),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const expenses = sqliteTable('expenses', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),

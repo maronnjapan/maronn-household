@@ -1,32 +1,6 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
 /**
- * サブスクリプションプランの種類
- */
-export type SubscriptionPlan = 'free' | 'premium';
-
-/**
- * サブスクリプションのステータス
- */
-export type SubscriptionStatus = 'active' | 'canceled' | 'expired';
-
-/**
- * ユーザーサブスクリプション管理テーブル
- * フリーミアムモデルの基盤
- */
-export const userSubscriptions = sqliteTable('user_subscriptions', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull(),
-  plan: text('plan').notNull().$type<SubscriptionPlan>(), // 'free' | 'premium'
-  status: text('status').notNull().$type<SubscriptionStatus>(), // 'active' | 'canceled' | 'expired'
-  startedAt: text('started_at').notNull(),
-  expiresAt: text('expires_at'), // nullなら無期限（freeプラン）
-  canceledAt: text('canceled_at'),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-});
-
-/**
  * サポートする通貨
  */
 export type CurrencyCode = 'JPY' | 'USD' | 'EUR';

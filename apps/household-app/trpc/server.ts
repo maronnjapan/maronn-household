@@ -8,16 +8,9 @@ import {
   apiTokens,
   apiUsage,
   webhooks,
-  userSubscriptions,
   recurringExpenses,
   budgetAlerts,
 } from '../database/drizzle/schema/household';
-import {
-  isPremiumUser,
-  canUseFeature,
-  FREE_PLAN_LIMITS,
-  type Subscription,
-} from '../lib/subscription';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
 import {
@@ -819,134 +812,12 @@ export const appRouter = router({
     // webhooksを削除
     await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
 
-    // 新規追加: サブスクリプション、定期支出、予算アラートも削除
-    await database.delete(userSubscriptions).where(eq(userSubscriptions.userId, userId)).run();
+    // 定期支出、予算アラートも削除
     await database.delete(recurringExpenses).where(eq(recurringExpenses.userId, userId)).run();
     await database.delete(budgetAlerts).where(eq(budgetAlerts.userId, userId)).run();
 
     return { success: true };
   }),
-
-  // ========================================
-  // サブスクリプション関連
-  // ========================================
-
-  // サブスクリプション情報を取得（認証必須）
-  getSubscription: protectedProcedure.query(async (opts) => {
-    const userId = opts.ctx.user.id;
-    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
-
-    const subscription = await database
-      .select()
-      .from(userSubscriptions)
-      .where(and(
-        eq(userSubscriptions.userId, userId),
-        eq(userSubscriptions.status, 'active')
-      ))
-      .orderBy(desc(userSubscriptions.createdAt))
-      .limit(1)
-      .get();
-
-    // サブスクリプションがない場合はfreeプランとして扱う
-    if (!subscription) {
-      return {
-        subscription: null,
-        plan: 'free' as const,
-        isPremium: false,
-        limits: FREE_PLAN_LIMITS,
-      };
-    }
-
-    const sub: Subscription = {
-      id: subscription.id,
-      userId: subscription.userId,
-      plan: subscription.plan as 'free' | 'premium',
-      status: subscription.status as 'active' | 'canceled' | 'expired',
-      startedAt: subscription.startedAt,
-      expiresAt: subscription.expiresAt,
-      canceledAt: subscription.canceledAt,
-    };
-
-    return {
-      subscription: sub,
-      plan: sub.plan,
-      isPremium: isPremiumUser(sub),
-      limits: isPremiumUser(sub) ? null : FREE_PLAN_LIMITS,
-    };
-  }),
-
-  // 機能へのアクセス可否をチェック（認証必須）
-  checkFeatureAccess: protectedProcedure
-    .input(z.object({
-      feature: z.enum([
-        'category_analysis',
-        'recurring_expenses',
-        'budget_alerts',
-        'csv_export',
-        'multiple_budgets',
-        'unlimited_webhooks',
-      ]),
-    }))
-    .query(async (opts) => {
-      const userId = opts.ctx.user.id;
-      const { feature } = opts.input;
-      const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
-
-      // サブスクリプションを取得
-      const subscription = await database
-        .select()
-        .from(userSubscriptions)
-        .where(and(
-          eq(userSubscriptions.userId, userId),
-          eq(userSubscriptions.status, 'active')
-        ))
-        .orderBy(desc(userSubscriptions.createdAt))
-        .limit(1)
-        .get();
-
-      const sub: Subscription | null = subscription ? {
-        id: subscription.id,
-        userId: subscription.userId,
-        plan: subscription.plan as 'free' | 'premium',
-        status: subscription.status as 'active' | 'canceled' | 'expired',
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        canceledAt: subscription.canceledAt,
-      } : null;
-
-      // 現在の使用量を取得
-      let currentUsage = 0;
-      if (feature === 'recurring_expenses') {
-        const count = await database
-          .select({ count: sql<number>`count(*)` })
-          .from(recurringExpenses)
-          .where(and(
-            eq(recurringExpenses.userId, userId),
-            eq(recurringExpenses.isActive, 1)
-          ))
-          .get();
-        currentUsage = count?.count ?? 0;
-      } else if (feature === 'budget_alerts') {
-        const count = await database
-          .select({ count: sql<number>`count(*)` })
-          .from(budgetAlerts)
-          .where(and(
-            eq(budgetAlerts.userId, userId),
-            eq(budgetAlerts.isEnabled, 1)
-          ))
-          .get();
-        currentUsage = count?.count ?? 0;
-      } else if (feature === 'unlimited_webhooks') {
-        const count = await database
-          .select({ count: sql<number>`count(*)` })
-          .from(webhooks)
-          .where(eq(webhooks.userId, userId))
-          .get();
-        currentUsage = count?.count ?? 0;
-      }
-
-      return canUseFeature(feature, sub, currentUsage);
-    }),
 
   // ========================================
   // 定期支出関連
@@ -974,48 +845,6 @@ export const appRouter = router({
       const userId = opts.ctx.user.id;
       const { amount, category, memo, dayOfMonth, currency = 'JPY' } = opts.input;
       const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
-
-      // サブスクリプションをチェック
-      const subscription = await database
-        .select()
-        .from(userSubscriptions)
-        .where(and(
-          eq(userSubscriptions.userId, userId),
-          eq(userSubscriptions.status, 'active')
-        ))
-        .orderBy(desc(userSubscriptions.createdAt))
-        .limit(1)
-        .get();
-
-      const sub: Subscription | null = subscription ? {
-        id: subscription.id,
-        userId: subscription.userId,
-        plan: subscription.plan as 'free' | 'premium',
-        status: subscription.status as 'active' | 'canceled' | 'expired',
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        canceledAt: subscription.canceledAt,
-      } : null;
-
-      // 現在の定期支出数を取得
-      const count = await database
-        .select({ count: sql<number>`count(*)` })
-        .from(recurringExpenses)
-        .where(and(
-          eq(recurringExpenses.userId, userId),
-          eq(recurringExpenses.isActive, 1)
-        ))
-        .get();
-
-      const currentUsage = count?.count ?? 0;
-      const access = canUseFeature('recurring_expenses', sub, currentUsage);
-
-      if (!access.allowed) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: `定期支出は${access.limit}件まで登録できます。プレミアムプランにアップグレードすると無制限で登録できます。`,
-        });
-      }
 
       // 外貨の場合は為替レートを取得して円換算
       let amountJPY = amount;
@@ -1258,48 +1087,6 @@ export const appRouter = router({
       const { thresholdPercent, thresholdAmount } = opts.input;
       const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
-      // サブスクリプションをチェック
-      const subscription = await database
-        .select()
-        .from(userSubscriptions)
-        .where(and(
-          eq(userSubscriptions.userId, userId),
-          eq(userSubscriptions.status, 'active')
-        ))
-        .orderBy(desc(userSubscriptions.createdAt))
-        .limit(1)
-        .get();
-
-      const sub: Subscription | null = subscription ? {
-        id: subscription.id,
-        userId: subscription.userId,
-        plan: subscription.plan as 'free' | 'premium',
-        status: subscription.status as 'active' | 'canceled' | 'expired',
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        canceledAt: subscription.canceledAt,
-      } : null;
-
-      // 現在のアラート数を取得
-      const count = await database
-        .select({ count: sql<number>`count(*)` })
-        .from(budgetAlerts)
-        .where(and(
-          eq(budgetAlerts.userId, userId),
-          eq(budgetAlerts.isEnabled, 1)
-        ))
-        .get();
-
-      const currentUsage = count?.count ?? 0;
-      const access = canUseFeature('budget_alerts', sub, currentUsage);
-
-      if (!access.allowed) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: `予算アラートは${access.limit}件まで設定できます。プレミアムプランにアップグレードすると無制限で設定できます。`,
-        });
-      }
-
       const now = new Date().toISOString();
       const id = ulid();
 
@@ -1391,33 +1178,7 @@ export const appRouter = router({
       // 基準月を決定
       const now = new Date();
       const baseMonth = opts.input.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const monthsToFetch = opts.input.months || 1;
-
-      // サブスクリプションをチェックして取得可能な月数を制限
-      const subscription = await database
-        .select()
-        .from(userSubscriptions)
-        .where(and(
-          eq(userSubscriptions.userId, userId),
-          eq(userSubscriptions.status, 'active')
-        ))
-        .orderBy(desc(userSubscriptions.createdAt))
-        .limit(1)
-        .get();
-
-      const sub: Subscription | null = subscription ? {
-        id: subscription.id,
-        userId: subscription.userId,
-        plan: subscription.plan as 'free' | 'premium',
-        status: subscription.status as 'active' | 'canceled' | 'expired',
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        canceledAt: subscription.canceledAt,
-      } : null;
-
-      const access = canUseFeature('category_analysis', sub);
-      const maxMonths = access.limit ?? 12;
-      const actualMonths = Math.min(monthsToFetch, maxMonths);
+      const actualMonths = opts.input.months || 1;
 
       // 対象期間を計算
       const [baseYear, baseMonthNum] = baseMonth.split('-').map(Number);
@@ -1461,7 +1222,6 @@ export const appRouter = router({
           end: baseMonth,
           months: actualMonths,
         },
-        isPremiumRequired: monthsToFetch > maxMonths,
       };
     }),
 
@@ -1474,33 +1234,7 @@ export const appRouter = router({
       const userId = opts.ctx.user.id;
       const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
-      const monthsToFetch = opts.input.months || 6;
-
-      // サブスクリプションをチェック
-      const subscription = await database
-        .select()
-        .from(userSubscriptions)
-        .where(and(
-          eq(userSubscriptions.userId, userId),
-          eq(userSubscriptions.status, 'active')
-        ))
-        .orderBy(desc(userSubscriptions.createdAt))
-        .limit(1)
-        .get();
-
-      const sub: Subscription | null = subscription ? {
-        id: subscription.id,
-        userId: subscription.userId,
-        plan: subscription.plan as 'free' | 'premium',
-        status: subscription.status as 'active' | 'canceled' | 'expired',
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        canceledAt: subscription.canceledAt,
-      } : null;
-
-      const access = canUseFeature('category_analysis', sub);
-      const maxMonths = access.limit ?? 12;
-      const actualMonths = Math.min(monthsToFetch, maxMonths);
+      const actualMonths = opts.input.months || 6;
 
       // 対象期間を計算
       const now = new Date();
@@ -1542,7 +1276,6 @@ export const appRouter = router({
 
       return {
         trends: trends.reverse(), // 古い順に並べ替え
-        isPremiumRequired: monthsToFetch > maxMonths,
       };
     }),
 

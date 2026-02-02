@@ -209,7 +209,6 @@ export function Page() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
-  const subscriptionQuery = trpc.getSubscription.useQuery();
   const listQuery = trpc.listRecurringExpenses.useQuery();
   const createMutation = trpc.createRecurringExpense.useMutation({
     onSuccess: () => {
@@ -238,11 +237,7 @@ export function Page() {
     },
   });
 
-  const isPremium = subscriptionQuery.data?.isPremium ?? false;
-  const limits = subscriptionQuery.data?.limits;
   const recurringExpenses = listQuery.data?.recurringExpenses ?? [];
-  const activeCount = recurringExpenses.filter((r) => r.isActive).length;
-  const canAddMore = isPremium || (limits && activeCount < limits.recurringExpenses);
 
   const handleCreate = (data: {
     amount: number;
@@ -292,16 +287,6 @@ export function Page() {
         </p>
       </header>
 
-      {!isPremium && limits && (
-        <div className="limit-banner">
-          <p>
-            無料プランでは定期支出を{limits.recurringExpenses}件まで登録できます
-            （現在{activeCount}件）。
-            <a href="/premium">プレミアムプラン</a>で無制限に。
-          </p>
-        </div>
-      )}
-
       <section className="recurring-actions">
         <button
           className="btn-generate"
@@ -310,7 +295,7 @@ export function Page() {
         >
           {generateMutation.isPending ? '生成中...' : '今月分を生成'}
         </button>
-        {!isAdding && canAddMore && (
+        {!isAdding && (
           <button className="btn-add" onClick={() => setIsAdding(true)}>
             新規追加
           </button>

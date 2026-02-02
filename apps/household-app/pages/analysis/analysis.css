@@ -13,19 +13,6 @@
   margin: 0 0 1rem;
 }
 
-.premium-banner {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-}
-
-.premium-banner a {
-  color: #ffd700;
-  font-weight: bold;
-}
-
 .analysis-section {
   background: #fff;
   border-radius: 0.75rem;
@@ -221,18 +208,6 @@
 
 .chart-legend .legend-color.spent {
   background: #36A2EB;
-}
-
-.premium-hint {
-  text-align: center;
-  font-size: 0.875rem;
-  color: #666;
-  margin-top: 1rem;
-}
-
-.premium-hint a {
-  color: #667eea;
-  font-weight: 500;
 }
 
 /* テーブル */

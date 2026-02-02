@@ -146,25 +146,13 @@ function BarChart({
  * カテゴリ別分析ページ
  */
 export function Page() {
-  const subscriptionQuery = trpc.getSubscription.useQuery();
   const categoryQuery = trpc.getCategoryAnalysis.useQuery({ months: 1 });
   const trendQuery = trpc.getMonthlyTrend.useQuery({ months: 6 });
-
-  const isPremium = subscriptionQuery.data?.isPremium ?? false;
 
   return (
     <main className="analysis-page">
       <header className="analysis-header">
         <h1>支出分析</h1>
-        {!isPremium && (
-          <div className="premium-banner">
-            <p>
-              無料プランでは今月のデータのみ表示されます。
-              <a href="/premium">プレミアムにアップグレード</a>
-              すると全期間のデータを分析できます。
-            </p>
-          </div>
-        )}
       </header>
 
       <section className="analysis-section">
@@ -224,13 +212,6 @@ export function Page() {
                 支出
               </span>
             </div>
-            {trendQuery.data?.isPremiumRequired && (
-              <p className="premium-hint">
-                より長期間のデータを見るには
-                <a href="/premium">プレミアムプラン</a>
-                が必要です。
-              </p>
-            )}
           </>
         )}
       </section>

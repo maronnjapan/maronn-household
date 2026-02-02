@@ -1,21 +1,5 @@
 -- マネタイズ機能用テーブル
--- サブスクリプション、定期支出、予算アラート
-
--- ユーザーサブスクリプション管理テーブル
-CREATE TABLE IF NOT EXISTS user_subscriptions (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  plan TEXT NOT NULL CHECK(plan IN ('free', 'premium')),
-  status TEXT NOT NULL CHECK(status IN ('active', 'canceled', 'expired')),
-  started_at TEXT NOT NULL,
-  expires_at TEXT,
-  canceled_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status);
+-- 定期支出、予算アラート
 
 -- 定期支出（繰り返し支出）テーブル
 CREATE TABLE IF NOT EXISTS recurring_expenses (

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useBudgetAlertSettings } from '../hooks/use-budget-alerts';
-import { trpc } from '../trpc/client';
 
 /**
  * 予算アラート設定セクション
@@ -10,7 +9,6 @@ export function BudgetAlertSection() {
   const [newPercent, setNewPercent] = useState('20');
   const [newAmount, setNewAmount] = useState('');
 
-  const subscriptionQuery = trpc.getSubscription.useQuery();
   const {
     alerts,
     isLoading,
@@ -20,11 +18,6 @@ export function BudgetAlertSection() {
     isCreating,
     isDeleting,
   } = useBudgetAlertSettings();
-
-  const isPremium = subscriptionQuery.data?.isPremium ?? false;
-  const limits = subscriptionQuery.data?.limits;
-  const enabledCount = alerts.filter((a) => a.isEnabled).length;
-  const canAddMore = isPremium || (limits && enabledCount < limits.budgetAlerts);
 
   const handleAdd = async () => {
     const percent = parseInt(newPercent, 10);
@@ -61,13 +54,6 @@ export function BudgetAlertSection() {
       <p className="section-description">
         予算の残りが設定した割合を下回ったときに警告を表示します
       </p>
-
-      {!isPremium && limits && (
-        <p className="limit-note">
-          無料プランでは{limits.budgetAlerts}件まで設定できます（現在{enabledCount}件）。
-          <a href="/premium">プレミアム</a>で無制限に。
-        </p>
-      )}
 
       {isLoading ? (
         <p>読込中...</p>
@@ -154,11 +140,11 @@ export function BudgetAlertSection() {
                 </button>
               </div>
             </div>
-          ) : canAddMore ? (
+          ) : (
             <button className="btn-new-alert" onClick={() => setIsAdding(true)}>
               新しいアラートを追加
             </button>
-          ) : null}
+          )}
         </>
       )}
     </section>

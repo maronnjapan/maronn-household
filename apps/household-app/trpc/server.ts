@@ -25,6 +25,12 @@ import {
   decryptWebhookSecret,
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
+import {
+  convertToJPY,
+  serializeExchangeRate,
+  type ExchangeRateInfo,
+} from '../lib/exchange-rate';
+import type { CurrencyCode } from '../database/drizzle/schema/household';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
 
@@ -157,10 +163,11 @@ const deleteWebhookInputSchema = z.object({
 
 // 定期支出入力スキーマ
 const createRecurringExpenseInputSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().positive(), // 円金額（JPYの場合）または最小単位金額（USD/EURの場合はセント）
   category: z.string().optional(),
   memo: z.string().optional(),
   dayOfMonth: z.number().min(1).max(31),
+  currency: z.enum(['JPY', 'USD', 'EUR']).optional(), // 通貨（デフォルト: JPY）
 });
 
 const updateRecurringExpenseInputSchema = z.object({
@@ -170,6 +177,7 @@ const updateRecurringExpenseInputSchema = z.object({
   memo: z.string().optional(),
   dayOfMonth: z.number().min(1).max(31).optional(),
   isActive: z.boolean().optional(),
+  currency: z.enum(['JPY', 'USD', 'EUR']).optional(),
 });
 
 const deleteRecurringExpenseInputSchema = z.object({
@@ -964,7 +972,7 @@ export const appRouter = router({
     .input(createRecurringExpenseInputSchema)
     .mutation(async (opts) => {
       const userId = opts.ctx.user.id;
-      const { amount, category, memo, dayOfMonth } = opts.input;
+      const { amount, category, memo, dayOfMonth, currency = 'JPY' } = opts.input;
       const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
       // サブスクリプションをチェック
@@ -1009,6 +1017,18 @@ export const appRouter = router({
         });
       }
 
+      // 外貨の場合は為替レートを取得して円換算
+      let amountJPY = amount;
+      let originalAmount: number | null = null;
+      let exchangeRateJson: string | null = null;
+
+      if (currency !== 'JPY') {
+        const { amountJPY: converted, rateInfo } = await convertToJPY(amount, currency as CurrencyCode);
+        amountJPY = converted;
+        originalAmount = amount;
+        exchangeRateJson = serializeExchangeRate(rateInfo);
+      }
+
       const now = new Date().toISOString();
       const id = ulid();
 
@@ -1017,18 +1037,21 @@ export const appRouter = router({
         .values({
           id,
           userId,
-          amount,
+          amount: amountJPY,
           category: category || null,
           memo: memo || null,
           dayOfMonth,
           isActive: 1,
           lastGeneratedMonth: null,
+          currency: currency as CurrencyCode,
+          originalAmount,
+          lastExchangeRate: exchangeRateJson,
           createdAt: now,
           updatedAt: now,
         })
         .run();
 
-      return { id, success: true };
+      return { id, success: true, amountJPY, exchangeRate: exchangeRateJson ? JSON.parse(exchangeRateJson) : null };
     }),
 
   // 定期支出を更新（認証必須）
@@ -1036,7 +1059,7 @@ export const appRouter = router({
     .input(updateRecurringExpenseInputSchema)
     .mutation(async (opts) => {
       const userId = opts.ctx.user.id;
-      const { id, amount, category, memo, dayOfMonth, isActive } = opts.input;
+      const { id, amount, category, memo, dayOfMonth, isActive, currency } = opts.input;
       const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
 
       // 既存データを確認
@@ -1056,20 +1079,43 @@ export const appRouter = router({
         });
       }
 
+      // 通貨または金額が変更された場合は為替換算を再計算
+      const newCurrency = currency ?? existing.currency ?? 'JPY';
+      let amountJPY = amount ?? existing.amount;
+      let originalAmount = existing.originalAmount;
+      let exchangeRateJson = existing.lastExchangeRate;
+
+      if (amount !== undefined || currency !== undefined) {
+        const inputAmount = amount ?? (existing.originalAmount ?? existing.amount);
+        if (newCurrency !== 'JPY') {
+          const { amountJPY: converted, rateInfo } = await convertToJPY(inputAmount, newCurrency as CurrencyCode);
+          amountJPY = converted;
+          originalAmount = inputAmount;
+          exchangeRateJson = serializeExchangeRate(rateInfo);
+        } else {
+          amountJPY = inputAmount;
+          originalAmount = null;
+          exchangeRateJson = null;
+        }
+      }
+
       await database
         .update(recurringExpenses)
         .set({
-          amount: amount ?? existing.amount,
+          amount: amountJPY,
           category: category !== undefined ? (category || null) : existing.category,
           memo: memo !== undefined ? (memo || null) : existing.memo,
           dayOfMonth: dayOfMonth ?? existing.dayOfMonth,
           isActive: isActive !== undefined ? (isActive ? 1 : 0) : existing.isActive,
+          currency: newCurrency as CurrencyCode,
+          originalAmount,
+          lastExchangeRate: exchangeRateJson,
           updatedAt: new Date().toISOString(),
         })
         .where(eq(recurringExpenses.id, id))
         .run();
 
-      return { success: true };
+      return { success: true, amountJPY };
     }),
 
   // 定期支出を削除（認証必須）
@@ -1092,6 +1138,7 @@ export const appRouter = router({
     }),
 
   // 定期支出から今月分の支出を生成（認証必須）
+  // 外貨建ての定期支出は生成時に最新の為替レートで円換算
   generateRecurringExpenses: protectedProcedure.mutation(async (opts) => {
     const userId = opts.ctx.user.id;
     const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
@@ -1109,7 +1156,7 @@ export const appRouter = router({
       ))
       .all();
 
-    const generated: string[] = [];
+    const generated: { id: string; amount: number; currency: string; rate?: number }[] = [];
 
     for (const recurring of activeRecurring) {
       // 既に今月分が生成済みならスキップ
@@ -1124,17 +1171,36 @@ export const appRouter = router({
       const day = Math.min(recurring.dayOfMonth, lastDay);
       const date = `${currentMonth}-${String(day).padStart(2, '0')}`;
 
+      // 外貨建ての場合は最新の為替レートで円換算
+      let amountJPY = recurring.amount;
+      let rateInfo: ExchangeRateInfo | null = null;
+      const currency = (recurring.currency ?? 'JPY') as CurrencyCode;
+
+      if (currency !== 'JPY' && recurring.originalAmount) {
+        const result = await convertToJPY(recurring.originalAmount, currency);
+        amountJPY = result.amountJPY;
+        rateInfo = result.rateInfo;
+      }
+
       const expenseId = ulid();
       const createdAt = new Date().toISOString();
+
+      // メモに為替情報を追加（外貨の場合）
+      let memo = recurring.memo ? `[定期] ${recurring.memo}` : '[定期支出]';
+      if (currency !== 'JPY' && rateInfo) {
+        const symbol = currency === 'USD' ? '$' : '€';
+        const originalDisplay = (recurring.originalAmount! / 100).toFixed(2);
+        memo += ` (${symbol}${originalDisplay} @ ${rateInfo.rate.toFixed(2)}円/${currency})`;
+      }
 
       await database
         .insert(expenses)
         .values({
           id: expenseId,
           userId,
-          amount: recurring.amount,
+          amount: amountJPY,
           category: recurring.category,
-          memo: recurring.memo ? `[定期] ${recurring.memo}` : '[定期支出]',
+          memo,
           date,
           createdAt,
           updatedAt: createdAt,
@@ -1142,17 +1208,24 @@ export const appRouter = router({
         })
         .run();
 
-      // 生成済み月を更新
+      // 定期支出の為替レート情報と生成済み月を更新
       await database
         .update(recurringExpenses)
         .set({
+          amount: amountJPY, // 最新の円換算額を保存
           lastGeneratedMonth: currentMonth,
+          lastExchangeRate: rateInfo ? serializeExchangeRate(rateInfo) : recurring.lastExchangeRate,
           updatedAt: createdAt,
         })
         .where(eq(recurringExpenses.id, recurring.id))
         .run();
 
-      generated.push(expenseId);
+      generated.push({
+        id: expenseId,
+        amount: amountJPY,
+        currency,
+        rate: rateInfo?.rate,
+      });
     }
 
     return { generated, count: generated.length };

@@ -10,6 +10,7 @@ export const expenses = sqliteTable('expenses', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deviceId: text('device_id').notNull(),
+  subBudgetId: text('sub_budget_id'),
 });
 
 export const budgets = sqliteTable('budgets', {
@@ -35,6 +36,25 @@ export const apiUsage = sqliteTable('api_usage', {
   month: text('month').notNull(),
   count: integer('count').notNull().default(0),
   createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const subBudgets = sqliteTable('sub_budgets', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  name: text('name').notNull(),
+  amount: integer('amount').notNull(),
+  startMonth: text('start_month').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const subBudgetMonthlyAmounts = sqliteTable('sub_budget_monthly_amounts', {
+  id: text('id').primaryKey(),
+  subBudgetId: text('sub_budget_id').notNull(),
+  userId: text('user_id').notNull(),
+  month: text('month').notNull(),
+  amount: integer('amount').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
 

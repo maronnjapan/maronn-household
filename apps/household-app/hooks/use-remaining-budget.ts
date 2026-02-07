@@ -82,6 +82,7 @@ export function useRemainingBudget(
       updatedAt: e.updatedAt,
       deviceId: e.deviceId,
       syncStatus: 'synced' as const,
+      subBudgetId: e.subBudgetId ?? undefined,
     }));
     // 非同期でマージを実行（レンダリングをブロックしない）
     // 月とuserIdを渡すことで、サーバーで削除されたデータもローカルから削除される
@@ -89,12 +90,14 @@ export function useRemainingBudget(
   }
 
   // 支出をIndexedDBからリアルタイム取得（ユーザーIDでフィルタリング）
+  // サブ予算に紐づく支出は除外（メイン予算の計算には含めない）
   const expensesData = useLiveQuery(async () => {
-    const expenses = await getExpensesByMonth(month, userId);
-    const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const allExpenses = await getExpensesByMonth(month, userId);
+    const mainExpenses = allExpenses.filter((e) => !e.subBudgetId);
+    const spent = mainExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     return {
-      expenses,
+      expenses: mainExpenses,
       spent,
     };
   }, [month, userId]);

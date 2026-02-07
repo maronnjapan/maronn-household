@@ -62,6 +62,7 @@ async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
         createdAt: expense.createdAt,
         updatedAt: expense.updatedAt,
         deviceId: expense.deviceId,
+        subBudgetId: expense.subBudgetId,
       })
     );
 
@@ -151,6 +152,7 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
       updatedAt: e.updatedAt,
       deviceId: e.deviceId,
       syncStatus: 'synced' as const,
+      subBudgetId: e.subBudgetId ?? undefined,
     }));
   } catch (error) {
     console.error('Failed to download expenses:', month, error);

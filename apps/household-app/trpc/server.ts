@@ -8,6 +8,8 @@ import {
   apiTokens,
   apiUsage,
   webhooks,
+  subBudgets,
+  subBudgetMonthlyAmounts,
 } from '../database/drizzle/schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
@@ -100,6 +102,7 @@ const expenseInputSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   deviceId: z.string(),
+  subBudgetId: z.string().optional(),
 });
 
 const getExpensesInputSchema = z.object({
@@ -144,6 +147,28 @@ const createWebhookInputSchema = z.object({
 
 const deleteWebhookInputSchema = z.object({
   id: z.string(),
+});
+
+const createSubBudgetInputSchema = z.object({
+  name: z.string().min(1),
+  amount: z.number().min(0),
+  startMonth: z.string(),
+});
+
+const updateSubBudgetInputSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).optional(),
+  amount: z.number().min(0).optional(),
+  month: z.string(),
+});
+
+const deleteSubBudgetInputSchema = z.object({
+  id: z.string(),
+});
+
+const getSubBudgetDetailInputSchema = z.object({
+  id: z.string(),
+  month: z.string(),
 });
 
 async function deliverExpenseWebhooks(params: {
@@ -255,6 +280,7 @@ export const appRouter = router({
         createdAt,
         updatedAt,
         deviceId,
+        subBudgetId,
       } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
 
@@ -282,6 +308,7 @@ export const appRouter = router({
               date,
               updatedAt,
               deviceId,
+              subBudgetId: subBudgetId || null,
             })
             .where(eq(expenses.id, id))
             .run();
@@ -317,6 +344,7 @@ export const appRouter = router({
           createdAt,
           updatedAt,
           deviceId,
+          subBudgetId: subBudgetId || null,
         })
         .run();
 
@@ -735,6 +763,269 @@ export const appRouter = router({
       return { success: true };
     }),
 
+  // サブ予算一覧取得（認証必須）
+  getSubBudgets: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const results = await database
+      .select()
+      .from(subBudgets)
+      .where(eq(subBudgets.userId, userId))
+      .orderBy(desc(subBudgets.createdAt))
+      .all();
+
+    return { subBudgets: results };
+  }),
+
+  // サブ予算作成（認証必須）
+  createSubBudget: protectedProcedure
+    .input(createSubBudgetInputSchema)
+    .mutation(async (opts) => {
+      const { name, amount, startMonth } = opts.input;
+      const userId = opts.ctx.user.id;
+      const now = new Date().toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const id = ulid();
+      await database
+        .insert(subBudgets)
+        .values({
+          id,
+          userId,
+          name,
+          amount,
+          startMonth,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      // 開始月の月別金額を記録
+      await database
+        .insert(subBudgetMonthlyAmounts)
+        .values({
+          id: `${id}-${startMonth}`,
+          subBudgetId: id,
+          userId,
+          month: startMonth,
+          amount,
+          updatedAt: now,
+        })
+        .run();
+
+      return { id, success: true };
+    }),
+
+  // サブ予算更新（認証必須）
+  updateSubBudget: protectedProcedure
+    .input(updateSubBudgetInputSchema)
+    .mutation(async (opts) => {
+      const { id, name, amount, month } = opts.input;
+      const userId = opts.ctx.user.id;
+      const now = new Date().toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(subBudgets)
+        .where(and(eq(subBudgets.id, id), eq(subBudgets.userId, userId)))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Sub-budget not found',
+        });
+      }
+
+      const updates: Record<string, unknown> = { updatedAt: now };
+      if (name !== undefined) updates.name = name;
+      if (amount !== undefined) updates.amount = amount;
+
+      await database
+        .update(subBudgets)
+        .set(updates)
+        .where(eq(subBudgets.id, id))
+        .run();
+
+      // 金額変更時は月別金額を記録（繰り越し計算用）
+      if (amount !== undefined) {
+        const monthlyId = `${id}-${month}`;
+        const existingMonthly = await database
+          .select()
+          .from(subBudgetMonthlyAmounts)
+          .where(eq(subBudgetMonthlyAmounts.id, monthlyId))
+          .get();
+
+        if (existingMonthly) {
+          await database
+            .update(subBudgetMonthlyAmounts)
+            .set({ amount, updatedAt: now })
+            .where(eq(subBudgetMonthlyAmounts.id, monthlyId))
+            .run();
+        } else {
+          await database
+            .insert(subBudgetMonthlyAmounts)
+            .values({
+              id: monthlyId,
+              subBudgetId: id,
+              userId,
+              month,
+              amount,
+              updatedAt: now,
+            })
+            .run();
+        }
+      }
+
+      return { success: true };
+    }),
+
+  // サブ予算削除（認証必須）
+  deleteSubBudget: protectedProcedure
+    .input(deleteSubBudgetInputSchema)
+    .mutation(async (opts) => {
+      const { id } = opts.input;
+      const userId = opts.ctx.user.id;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(subBudgets)
+        .where(and(eq(subBudgets.id, id), eq(subBudgets.userId, userId)))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Sub-budget not found',
+        });
+      }
+
+      // 月別金額も削除
+      await database
+        .delete(subBudgetMonthlyAmounts)
+        .where(eq(subBudgetMonthlyAmounts.subBudgetId, id))
+        .run();
+
+      // サブ予算本体を削除
+      await database.delete(subBudgets).where(eq(subBudgets.id, id)).run();
+
+      // 紐づく支出のsubBudgetIdをnullに更新
+      await database
+        .update(expenses)
+        .set({ subBudgetId: null })
+        .where(and(eq(expenses.subBudgetId, id), eq(expenses.userId, userId)))
+        .run();
+
+      return { success: true };
+    }),
+
+  // サブ予算詳細取得（繰り越し計算込み、認証必須）
+  getSubBudgetDetail: protectedProcedure
+    .input(getSubBudgetDetailInputSchema)
+    .query(async (opts) => {
+      const { id, month } = opts.input;
+      const userId = opts.ctx.user.id;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // サブ予算を取得
+      const subBudget = await database
+        .select()
+        .from(subBudgets)
+        .where(and(eq(subBudgets.id, id), eq(subBudgets.userId, userId)))
+        .get();
+
+      if (!subBudget) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Sub-budget not found',
+        });
+      }
+
+      // 月別金額を取得
+      const monthlyAmounts = await database
+        .select()
+        .from(subBudgetMonthlyAmounts)
+        .where(eq(subBudgetMonthlyAmounts.subBudgetId, id))
+        .all();
+
+      // 開始月から対象月までの全支出を取得
+      const allExpenses = await database
+        .select()
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.userId, userId),
+            eq(expenses.subBudgetId, id),
+            gte(expenses.date, `${subBudget.startMonth}-01`),
+            lte(expenses.date, `${month}-31`)
+          )
+        )
+        .all();
+
+      // 月ごとの支出合計を計算
+      const expensesByMonth = new Map<string, number>();
+      for (const expense of allExpenses) {
+        const expenseMonth = expense.date.substring(0, 7);
+        expensesByMonth.set(
+          expenseMonth,
+          (expensesByMonth.get(expenseMonth) ?? 0) + expense.amount
+        );
+      }
+
+      // 繰り越し計算
+      let carryover = 0;
+      const monthlyAmountsSorted = [...monthlyAmounts].sort((a, b) =>
+        a.month.localeCompare(b.month)
+      );
+
+      // startMonthから対象月の前月までの繰り越しを計算
+      let currentMonth = subBudget.startMonth;
+      while (currentMonth < month) {
+        // その月の有効な金額を取得（最新の設定値）
+        const effectiveAmount = getEffectiveMonthlyAmount(
+          currentMonth,
+          monthlyAmountsSorted,
+          subBudget.amount
+        );
+        const monthSpent = expensesByMonth.get(currentMonth) ?? 0;
+        carryover += effectiveAmount - monthSpent;
+
+        currentMonth = getNextMonth(currentMonth);
+      }
+
+      // 今月の有効金額
+      const currentMonthAmount = getEffectiveMonthlyAmount(
+        month,
+        monthlyAmountsSorted,
+        subBudget.amount
+      );
+      const currentMonthSpent = expensesByMonth.get(month) ?? 0;
+
+      return {
+        subBudget,
+        monthlyAmount: currentMonthAmount,
+        carryover,
+        available: currentMonthAmount + carryover,
+        spent: currentMonthSpent,
+        remaining: currentMonthAmount + carryover - currentMonthSpent,
+      };
+    }),
+
   // アカウントデータ削除（D1の家計データのみ、認証必須）
   // 認証データ（user, session, account）の削除はBetterAuth経由で行う
   deleteAccountData: protectedProcedure.mutation(async (opts) => {
@@ -758,9 +1049,46 @@ export const appRouter = router({
     // webhooksを削除
     await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
 
+    // subBudgetMonthlyAmountsを削除
+    await database.delete(subBudgetMonthlyAmounts).where(eq(subBudgetMonthlyAmounts.userId, userId)).run();
+
+    // subBudgetsを削除
+    await database.delete(subBudgets).where(eq(subBudgets.userId, userId)).run();
+
     return { success: true };
   }),
 
 });
+
+/**
+ * 指定月に有効なサブ予算の月額を取得
+ * その月以前の最新の月別金額設定を使用、なければデフォルト値
+ */
+function getEffectiveMonthlyAmount(
+  month: string,
+  monthlyAmounts: { month: string; amount: number }[],
+  defaultAmount: number
+): number {
+  let effectiveAmount = defaultAmount;
+  for (const ma of monthlyAmounts) {
+    if (ma.month <= month) {
+      effectiveAmount = ma.amount;
+    } else {
+      break;
+    }
+  }
+  return effectiveAmount;
+}
+
+/**
+ * 次の月を取得（YYYY-MM形式）
+ */
+function getNextMonth(month: string): string {
+  const [year, monthNum] = month.split('-').map(Number) as [number, number];
+  if (monthNum === 12) {
+    return `${year + 1}-01`;
+  }
+  return `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+}
 
 export type AppRouter = typeof appRouter;

@@ -3,6 +3,7 @@ import type { CreateExpenseParams } from '@maronn/domain';
 import { evaluateExpression } from '../utils/calculator';
 import { Accordion } from './Accordion';
 import { EXPENSE_CATEGORIES } from '../constants/categories';
+import { SubBudgetSelector } from './SubBudgetSelector';
 
 interface ExpenseInputProps {
   onAdd: (params: CreateExpenseParams) => void | Promise<void>;
@@ -45,6 +46,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
   const [expression, setExpression] = useState(initialState.current.expression);
   const [memo, setMemo] = useState(initialState.current.memo);
   const [category, setCategory] = useState(initialState.current.category);
+  const [subBudgetId, setSubBudgetId] = useState('');
 
   // 式を評価して金額を取得
   const calculatedAmount = evaluateExpression(expression);
@@ -79,12 +81,14 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
       amount,
       category: category || undefined,
       memo: memo.trim() || undefined,
+      subBudgetId: subBudgetId || undefined,
     });
 
     // フォームをクリア
     setExpression('');
     setMemo('');
     setCategory('');
+    setSubBudgetId('');
   };
 
   const isValid = calculatedAmount !== null && calculatedAmount > 0;
@@ -175,6 +179,9 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
           .
         </button>
       </div>
+
+      {/* サブ予算選択（サブ予算が存在する場合のみ表示） */}
+      <SubBudgetSelector value={subBudgetId} onChange={setSubBudgetId} />
 
       {/* メモ・カテゴリー入力（アコーディオン） */}
       <Accordion title="詳細設定（任意）" defaultOpen={false}>

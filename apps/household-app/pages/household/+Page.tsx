@@ -1,6 +1,7 @@
 import { RemainingDisplay } from '../../components/RemainingDisplay';
 import { ExpenseInput } from '../../components/ExpenseInput';
 import { CelebrationModal } from '../../components/CelebrationModal';
+import { SubBudgetDisplay } from '../../components/SubBudgetDisplay';
 import { useRemainingBudget } from '../../hooks/use-remaining-budget';
 import { useAddExpense } from '../../hooks/use-add-expense';
 import { useCelebration } from '../../hooks/use-celebration';
@@ -63,6 +64,10 @@ export function Page() {
           budgetPaceComparison={budgetPaceComparison}
           isLoading={isLoading}
         />
+      </section>
+
+      <section className="sub-budget-section">
+        <SubBudgetDisplay />
       </section>
 
       <footer>

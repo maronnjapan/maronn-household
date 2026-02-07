@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   getNextMonth,
-  getMonthRange,
+  monthsBetween,
   getEffectiveMonthlyAmount,
+  calculateTotalAllocated,
   calculateSubBudgetCarryover,
   calculateSubBudgetAvailable,
   calculateSubBudgetRemaining,
@@ -26,25 +27,25 @@ describe('getNextMonth', () => {
   });
 });
 
-describe('getMonthRange', () => {
-  it('同じ月の場合は空配列を返す', () => {
-    expect(getMonthRange('2025-06', '2025-06')).toEqual([]);
+describe('monthsBetween', () => {
+  it('同じ月の場合は0を返す', () => {
+    expect(monthsBetween('2025-06', '2025-06')).toBe(0);
   });
 
-  it('連続する月の範囲を返す', () => {
-    expect(getMonthRange('2025-01', '2025-04')).toEqual([
-      '2025-01', '2025-02', '2025-03',
-    ]);
+  it('連続する月の差を返す', () => {
+    expect(monthsBetween('2025-01', '2025-04')).toBe(3);
   });
 
-  it('年をまたぐ範囲を返す', () => {
-    expect(getMonthRange('2025-11', '2026-02')).toEqual([
-      '2025-11', '2025-12', '2026-01',
-    ]);
+  it('年をまたぐ月数を返す', () => {
+    expect(monthsBetween('2025-11', '2026-02')).toBe(3);
   });
 
-  it('1ヶ月の範囲を返す', () => {
-    expect(getMonthRange('2025-06', '2025-07')).toEqual(['2025-06']);
+  it('1ヶ月の差を返す', () => {
+    expect(monthsBetween('2025-06', '2025-07')).toBe(1);
+  });
+
+  it('toがfromより前の場合は0を返す', () => {
+    expect(monthsBetween('2025-06', '2025-03')).toBe(0);
   });
 });
 
@@ -87,94 +88,74 @@ describe('getEffectiveMonthlyAmount', () => {
   });
 });
 
-describe('calculateSubBudgetCarryover', () => {
-  it('開始月と対象月が同じ場合は0を返す', () => {
-    const result = calculateSubBudgetCarryover(
-      '2025-06', '2025-06', [], 10000, new Map()
-    );
-    expect(result).toBe(0);
+describe('calculateTotalAllocated', () => {
+  it('開始月と終了月が同じ場合は0を返す', () => {
+    expect(calculateTotalAllocated('2025-06', '2025-06', [], 10000)).toBe(0);
   });
 
-  it('支出がない場合は月額予算の累計を返す', () => {
-    // 3ヶ月分（1月〜3月）で対象は4月、月額10000円
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-04', [], 10000, new Map()
-    );
-    expect(result).toBe(30000); // 10000 * 3
+  it('レート変更なしの場合はデフォルト×月数を返す', () => {
+    // 3ヶ月分（1月〜3月）、月額10000円
+    expect(calculateTotalAllocated('2025-01', '2025-04', [], 10000)).toBe(30000);
   });
 
-  it('予算以下の支出がある場合は余りを繰り越す', () => {
-    // 1万円/月で5000円しか使わない = 5000円余り
-    const expenses = new Map([
-      ['2025-01', 5000],
-    ]);
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-02', [], 10000, expenses
-    );
-    expect(result).toBe(5000);
+  it('1ヶ月分を返す', () => {
+    expect(calculateTotalAllocated('2025-06', '2025-07', [], 10000)).toBe(10000);
   });
 
-  it('複数月の繰り越しが累計される', () => {
-    // 1月: 10000 - 5000 = +5000
-    // 2月: 10000 - 8000 = +2000
-    // 3月: 10000 - 12000 = -2000
-    // 合計: +5000
-    const expenses = new Map([
-      ['2025-01', 5000],
-      ['2025-02', 8000],
-      ['2025-03', 12000],
-    ]);
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-04', [], 10000, expenses
-    );
-    expect(result).toBe(5000);
-  });
-
-  it('予算変更があっても過去の月は旧予算で計算される', () => {
-    // 1月〜3月: 10000円/月
-    // 4月〜: 20000円/月
+  it('レート変更がある場合は区間ごとに計算する', () => {
+    // 1月〜3月: 10000円/月 (3ヶ月 = 30000)
+    // 4月〜4月: 20000円/月 (1ヶ月 = 20000)
+    // 合計: 50000
     const monthlyAmounts: SubBudgetMonthlyAmount[] = [
       { month: '2025-01', amount: 10000 },
       { month: '2025-04', amount: 20000 },
     ];
-    // 1月: 10000 - 5000 = +5000
-    // 2月: 10000 - 10000 = 0
-    // 3月: 10000 - 8000 = +2000
-    // 4月: 20000 - 15000 = +5000
-    // 繰り越し合計（5月の時点）: +12000
-    const expenses = new Map([
-      ['2025-01', 5000],
-      ['2025-02', 10000],
-      ['2025-03', 8000],
-      ['2025-04', 15000],
-    ]);
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-05', monthlyAmounts, 10000, expenses
-    );
-    expect(result).toBe(12000);
+    expect(calculateTotalAllocated('2025-01', '2025-05', monthlyAmounts, 5000)).toBe(50000);
   });
 
-  it('超過した月はマイナスの繰り越しになる', () => {
-    const expenses = new Map([
-      ['2025-01', 15000],
-    ]);
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-02', [], 10000, expenses
-    );
-    expect(result).toBe(-5000);
+  it('開始月より前のレート設定が適用される', () => {
+    // 開始月(3月)より前に1月の設定がある → 3月は10000円が適用
+    const monthlyAmounts: SubBudgetMonthlyAmount[] = [
+      { month: '2025-01', amount: 10000 },
+    ];
+    // 3月〜5月: 10000 × 3 = 30000
+    expect(calculateTotalAllocated('2025-03', '2025-06', monthlyAmounts, 5000)).toBe(30000);
   });
 
-  it('支出がない月は月額全額が繰り越される', () => {
-    // 1月: 支出なし = +10000
-    // 2月: 支出5000 = +5000
-    // 繰り越し: +15000
-    const expenses = new Map([
-      ['2025-02', 5000],
-    ]);
-    const result = calculateSubBudgetCarryover(
-      '2025-01', '2025-03', [], 10000, expenses
-    );
-    expect(result).toBe(15000);
+  it('年をまたぐ期間でも正しく計算する', () => {
+    // 11月〜1月: 3ヶ月 × 10000 = 30000
+    expect(calculateTotalAllocated('2025-11', '2026-02', [], 10000)).toBe(30000);
+  });
+
+  it('複数のレート変更がある場合', () => {
+    // 1月: 5000 (1ヶ月 = 5000)
+    // 2月〜3月: 10000 (2ヶ月 = 20000)
+    // 4月〜5月: 20000 (2ヶ月 = 40000)
+    // 合計: 65000
+    const monthlyAmounts: SubBudgetMonthlyAmount[] = [
+      { month: '2025-01', amount: 5000 },
+      { month: '2025-02', amount: 10000 },
+      { month: '2025-04', amount: 20000 },
+    ];
+    expect(calculateTotalAllocated('2025-01', '2025-06', monthlyAmounts, 0)).toBe(65000);
+  });
+});
+
+describe('calculateSubBudgetCarryover', () => {
+  it('予算合計と支出合計の差を返す', () => {
+    expect(calculateSubBudgetCarryover(30000, 25000)).toBe(5000);
+  });
+
+  it('支出が予算を超えた場合はマイナスを返す', () => {
+    expect(calculateSubBudgetCarryover(10000, 15000)).toBe(-5000);
+  });
+
+  it('支出がない場合は予算合計をそのまま返す', () => {
+    expect(calculateSubBudgetCarryover(30000, 0)).toBe(30000);
+  });
+
+  it('予算も支出も0の場合は0を返す', () => {
+    expect(calculateSubBudgetCarryover(0, 0)).toBe(0);
   });
 });
 

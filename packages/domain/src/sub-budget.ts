@@ -21,19 +21,16 @@ export function getNextMonth(month: string): string {
 }
 
 /**
- * 月の範囲を生成（startMonth以上、endMonth未満）
- * @param startMonth 開始月（含む）
- * @param endMonth 終了月（含まない）
- * @returns 月の配列（YYYY-MM形式）
+ * 2つのYYYY-MM間の月数を計算
+ * @param from 開始月（含む）
+ * @param to 終了月（含まない）
+ * @returns 月数（toがfromより前の場合は0）
  */
-export function getMonthRange(startMonth: string, endMonth: string): string[] {
-  const months: string[] = [];
-  let current = startMonth;
-  while (current < endMonth) {
-    months.push(current);
-    current = getNextMonth(current);
-  }
-  return months;
+export function monthsBetween(from: string, to: string): number {
+  const [y1, m1] = from.split('-').map(Number);
+  const [y2, m2] = to.split('-').map(Number);
+  const diff = (y2! - y1!) * 12 + (m2! - m1!);
+  return Math.max(0, diff);
 }
 
 /**
@@ -62,33 +59,64 @@ export function getEffectiveMonthlyAmount(
 }
 
 /**
- * サブ予算の繰り越し額を計算
- * startMonth から targetMonth の前月までの各月の (月額予算 - 支出) の累計
+ * 期間内の予算合計を計算（月ループなし）
+ * 予算変更の区間ごとに「レート × 月数」で合算する
  *
- * @param startMonth 開始月（YYYY-MM形式）
- * @param targetMonth 対象月（YYYY-MM形式）
+ * @param startMonth 開始月（含む、YYYY-MM形式）
+ * @param endMonth 終了月（含まない、YYYY-MM形式）
  * @param monthlyAmounts 月別金額設定（月順にソート済み）
  * @param defaultAmount デフォルト金額
- * @param expensesByMonth 月ごとの支出合計のMap
- * @returns 繰り越し額（正の値=余り繰り越し、負の値=超過繰り越し）
+ * @returns 期間内の予算合計
  */
-export function calculateSubBudgetCarryover(
+export function calculateTotalAllocated(
   startMonth: string,
-  targetMonth: string,
+  endMonth: string,
   monthlyAmounts: readonly SubBudgetMonthlyAmount[],
-  defaultAmount: number,
-  expensesByMonth: ReadonlyMap<string, number>
+  defaultAmount: number
 ): number {
-  let carryover = 0;
-  const months = getMonthRange(startMonth, targetMonth);
+  if (startMonth >= endMonth) return 0;
 
-  for (const month of months) {
-    const amount = getEffectiveMonthlyAmount(month, monthlyAmounts, defaultAmount);
-    const spent = expensesByMonth.get(month) ?? 0;
-    carryover += amount - spent;
+  // startMonth時点での有効レートを決定
+  let currentRate = defaultAmount;
+  const rateChanges: { month: string; amount: number }[] = [];
+
+  for (const ma of monthlyAmounts) {
+    if (ma.month <= startMonth) {
+      currentRate = ma.amount;
+    } else if (ma.month < endMonth) {
+      rateChanges.push(ma);
+    }
   }
 
-  return carryover;
+  // 各区間の「レート × 月数」を合算
+  let total = 0;
+  let periodStart = startMonth;
+
+  for (const change of rateChanges) {
+    total += currentRate * monthsBetween(periodStart, change.month);
+    currentRate = change.amount;
+    periodStart = change.month;
+  }
+
+  // 最後の区間
+  total += currentRate * monthsBetween(periodStart, endMonth);
+
+  return total;
+}
+
+/**
+ * サブ予算の繰り越し額を計算
+ * 繰り越し = 過去の予算合計 - 過去の支出合計
+ *
+ * @param totalAllocated 過去月の予算合計
+ * @param totalPastExpenses 過去月の支出合計
+ * @returns 繰り越し額（正=余り、負=超過）
+ */
+export function calculateSubBudgetCarryover(
+  totalAllocated: number,
+  totalPastExpenses: number
+): number {
+  return totalAllocated - totalPastExpenses;
 }
 
 /**

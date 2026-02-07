@@ -20,6 +20,11 @@ import {
 import { createWebhookSignature } from '../lib/webhook-signature';
 import { ulid } from 'ulidx';
 import type { Session, User } from 'better-auth/types';
+import {
+  calculateTotalAllocated,
+  getEffectiveMonthlyAmount as getEffectiveAmount,
+  calculateSubBudgetCarryover,
+} from '@maronn/domain';
 
 /**
  * Cloudflare Workers環境変数の型定義
@@ -956,65 +961,63 @@ export const appRouter = router({
         });
       }
 
-      // 月別金額を取得
+      // 月別金額設定を取得（ソート済み）
       const monthlyAmounts = await database
         .select()
         .from(subBudgetMonthlyAmounts)
         .where(eq(subBudgetMonthlyAmounts.subBudgetId, id))
         .all();
+      const monthlyAmountsSorted = [...monthlyAmounts].sort((a, b) =>
+        a.month.localeCompare(b.month)
+      );
 
-      // 開始月から対象月までの全支出を取得
-      const allExpenses = await database
-        .select()
+      // 過去月の支出合計（startMonth〜対象月の前月）をSQL SUMで取得
+      const pastExpensesResult = await database
+        .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
         .from(expenses)
         .where(
           and(
             eq(expenses.userId, userId),
             eq(expenses.subBudgetId, id),
             gte(expenses.date, `${subBudget.startMonth}-01`),
-            lte(expenses.date, `${month}-31`)
+            lte(expenses.date, `${month}-00`)
           )
         )
-        .all();
+        .get();
+      const totalPastExpenses = pastExpensesResult?.total ?? 0;
 
-      // 月ごとの支出合計を計算
-      const expensesByMonth = new Map<string, number>();
-      for (const expense of allExpenses) {
-        const expenseMonth = expense.date.substring(0, 7);
-        expensesByMonth.set(
-          expenseMonth,
-          (expensesByMonth.get(expenseMonth) ?? 0) + expense.amount
-        );
-      }
-
-      // 繰り越し計算
-      let carryover = 0;
-      const monthlyAmountsSorted = [...monthlyAmounts].sort((a, b) =>
-        a.month.localeCompare(b.month)
-      );
-
-      // startMonthから対象月の前月までの繰り越しを計算
-      let currentMonth = subBudget.startMonth;
-      while (currentMonth < month) {
-        // その月の有効な金額を取得（最新の設定値）
-        const effectiveAmount = getEffectiveMonthlyAmount(
-          currentMonth,
-          monthlyAmountsSorted,
-          subBudget.amount
-        );
-        const monthSpent = expensesByMonth.get(currentMonth) ?? 0;
-        carryover += effectiveAmount - monthSpent;
-
-        currentMonth = getNextMonth(currentMonth);
-      }
-
-      // 今月の有効金額
-      const currentMonthAmount = getEffectiveMonthlyAmount(
+      // 過去月の予算合計（区間ごとに「レート×月数」で合算、月ループなし）
+      const totalAllocated = calculateTotalAllocated(
+        subBudget.startMonth,
         month,
         monthlyAmountsSorted,
         subBudget.amount
       );
-      const currentMonthSpent = expensesByMonth.get(month) ?? 0;
+
+      // 繰り越し = 過去の予算合計 - 過去の支出合計
+      const carryover = calculateSubBudgetCarryover(totalAllocated, totalPastExpenses);
+
+      // 今月の有効金額
+      const currentMonthAmount = getEffectiveAmount(
+        month,
+        monthlyAmountsSorted,
+        subBudget.amount
+      );
+
+      // 今月の支出合計をSQL SUMで取得
+      const currentExpensesResult = await database
+        .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.userId, userId),
+            eq(expenses.subBudgetId, id),
+            gte(expenses.date, `${month}-01`),
+            lte(expenses.date, `${month}-31`)
+          )
+        )
+        .get();
+      const currentMonthSpent = currentExpensesResult?.total ?? 0;
 
       return {
         subBudget,
@@ -1059,36 +1062,5 @@ export const appRouter = router({
   }),
 
 });
-
-/**
- * 指定月に有効なサブ予算の月額を取得
- * その月以前の最新の月別金額設定を使用、なければデフォルト値
- */
-function getEffectiveMonthlyAmount(
-  month: string,
-  monthlyAmounts: { month: string; amount: number }[],
-  defaultAmount: number
-): number {
-  let effectiveAmount = defaultAmount;
-  for (const ma of monthlyAmounts) {
-    if (ma.month <= month) {
-      effectiveAmount = ma.amount;
-    } else {
-      break;
-    }
-  }
-  return effectiveAmount;
-}
-
-/**
- * 次の月を取得（YYYY-MM形式）
- */
-function getNextMonth(month: string): string {
-  const [year, monthNum] = month.split('-').map(Number) as [number, number];
-  if (monthNum === 12) {
-    return `${year + 1}-01`;
-  }
-  return `${year}-${String(monthNum + 1).padStart(2, '0')}`;
-}
 
 export type AppRouter = typeof appRouter;

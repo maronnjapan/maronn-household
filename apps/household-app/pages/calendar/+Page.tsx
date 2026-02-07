@@ -12,6 +12,7 @@ import {
   type ImportableExpense,
 } from '../../lib/csv-parser';
 import { EXPENSE_CATEGORIES } from '../../constants/categories';
+import { useSubBudgets } from '../../hooks/use-sub-budget';
 import './calendar.css';
 import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
 
@@ -50,6 +51,7 @@ interface AddingState {
   amount: string;
   memo: string;
   category: string;
+  subBudgetId: string;
 }
 
 export function Page() {
@@ -66,6 +68,7 @@ export function Page() {
   const { budget } = useGetBudget(monthStr);
   const { handleUpdateExpense, handleDeleteExpense } = useExpenseActions();
   const { addExpense } = useAddExpense();
+  const { subBudgets: subBudgetsList } = useSubBudgets();
 
   // 月の日数を計算
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -183,7 +186,7 @@ export function Page() {
   }
 
   const handleStartAdd = () => {
-    setAdding({ amount: '', memo: '', category: '' });
+    setAdding({ amount: '', memo: '', category: '', subBudgetId: '' });
     setEditing(null);
     setDeletingId(null);
   }
@@ -205,6 +208,7 @@ export function Page() {
       memo: adding.memo || undefined,
       category: adding.category || undefined,
       date: selectedDay.date,
+      subBudgetId: adding.subBudgetId || undefined,
     });
 
     setAdding(null);
@@ -375,6 +379,20 @@ export function Page() {
                       placeholder="メモ（任意）"
                       className="add-input memo"
                     />
+                    {subBudgetsList.length > 0 && (
+                      <select
+                        value={adding.subBudgetId}
+                        onChange={(e) => setAdding({ ...adding, subBudgetId: e.target.value })}
+                        className="add-input sub-budget"
+                      >
+                        <option value="">メイン予算</option>
+                        {subBudgetsList.map((sb) => (
+                          <option key={sb.id} value={sb.id}>
+                            {sb.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div className="add-actions">
                     <button className="btn-add-save" onClick={handleSaveAdd}>追加</button>

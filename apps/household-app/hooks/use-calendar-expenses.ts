@@ -64,6 +64,7 @@ export function useCalendarExpenses(
       updatedAt: e.updatedAt,
       deviceId: e.deviceId,
       syncStatus: 'synced' as const,
+      subBudgetId: e.subBudgetId ?? undefined,
     }));
     // 非同期でマージを実行（レンダリングをブロックしない）
     // 月とuserIdを渡すことで、サーバーで削除されたデータもローカルから削除される

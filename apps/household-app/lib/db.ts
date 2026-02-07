@@ -78,6 +78,14 @@ export class HouseholdDB extends Dexie {
       syncMeta: 'id',
       celebrations: 'id, userId, [userId+id]', // Primary: id (達成月), Indexes: userId, 複合インデックス
     });
+
+    // Version 4: サブ予算対応（subBudgetIdインデックス追加）
+    this.version(4).stores({
+      expenses: 'id, date, syncStatus, createdAt, userId, [userId+date], subBudgetId',
+      budgets: 'id, month, updatedAt',
+      syncMeta: 'id',
+      celebrations: 'id, userId, [userId+id]',
+    });
   }
 }
 
@@ -359,6 +367,30 @@ export async function markCelebrationShown(
     userId,
     shownAt: new Date().toISOString(),
   });
+}
+
+/**
+ * 指定サブ予算・指定月の支出合計を取得
+ * @param subBudgetId サブ予算ID
+ * @param month 対象月（YYYY-MM形式）
+ * @param userId ユーザーID
+ */
+export async function getSubBudgetExpensesByMonth(
+  subBudgetId: string,
+  month: string,
+  userId: string = ANONYMOUS_USER_ID
+): Promise<LocalExpenseEntity[]> {
+  const startDate = `${month}-01`;
+  const year = parseInt(month.split('-')[0] as string);
+  const monthNum = parseInt(month.split('-')[1] as string);
+  const nextMonth = monthNum === 12 ? `${year + 1}-01` : `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+  const endDate = `${nextMonth}-01`;
+
+  return db.expenses
+    .where('[userId+date]')
+    .between([userId, startDate], [userId, endDate], true, false)
+    .filter((expense) => expense.subBudgetId === subBudgetId)
+    .toArray();
 }
 
 /**

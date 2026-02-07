@@ -18,6 +18,7 @@ export interface ExpenseEntity {
   updatedAt: string; // ISO 8601
   syncStatus: SyncStatus;
   deviceId: string; // 競合解決用
+  subBudgetId?: string; // サブ予算ID（サブ予算に紐づく場合）
 }
 
 /**
@@ -29,6 +30,7 @@ export interface CreateExpenseParams {
   memo?: string;
   date?: string;
   deviceId?: string;
+  subBudgetId?: string;
 }
 
 /**
@@ -83,5 +85,6 @@ export function createExpense(params: CreateExpenseParams): ExpenseEntity {
     updatedAt: now,
     syncStatus: 'pending',
     deviceId: getDeviceId(params.deviceId),
+    subBudgetId: params.subBudgetId,
   };
 }

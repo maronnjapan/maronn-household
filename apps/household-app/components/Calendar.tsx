@@ -124,9 +124,18 @@ export function Calendar({
             >
               <span className="calendar-day-number">{day}</span>
               {dayExpenses && (
-                <span className="calendar-day-amount">
-                  {formatCurrency(dayExpenses.total)}
-                </span>
+                <div className="calendar-day-amounts">
+                  {dayExpenses.mainTotal > 0 && (
+                    <span className="calendar-day-amount main">
+                      {formatCurrency(dayExpenses.mainTotal)}
+                    </span>
+                  )}
+                  {dayExpenses.subTotal > 0 && (
+                    <span className="calendar-day-amount sub">
+                      ({formatCurrency(dayExpenses.subTotal)})
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           );

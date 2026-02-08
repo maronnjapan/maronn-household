@@ -106,12 +106,12 @@ export function Calendar({
           const isSunday = dayOfWeek === 0;
           const isSaturday = dayOfWeek === 6;
 
-          // 1日あたりの予算と比較して色分け
+          // 1日あたりの予算と比較して色分け（メイン予算のみで判定）
           let budgetClass = '';
           if (dayExpenses) {
-            if (dayExpenses.total > dailyBudget) {
+            if (dayExpenses.mainTotal > dailyBudget) {
               budgetClass = 'over-budget';
-            } else if (dayExpenses.total <= dailyBudget) {
+            } else if (dayExpenses.mainTotal <= dailyBudget) {
               budgetClass = 'under-budget';
             }
           }
@@ -124,9 +124,18 @@ export function Calendar({
             >
               <span className="calendar-day-number">{day}</span>
               {dayExpenses && (
-                <span className="calendar-day-amount">
-                  {formatCurrency(dayExpenses.total)}
-                </span>
+                <div className="calendar-day-amounts">
+                  {dayExpenses.mainTotal > 0 && (
+                    <span className="calendar-day-amount main">
+                      {formatCurrency(dayExpenses.mainTotal)}
+                    </span>
+                  )}
+                  {dayExpenses.subTotal > 0 && (
+                    <span className="calendar-day-amount sub">
+                      ({formatCurrency(dayExpenses.subTotal)})
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           );

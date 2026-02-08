@@ -9,6 +9,8 @@ export interface DayExpenses {
   date: string; // 'YYYY-MM-DD'
   expenses: ExpenseEntity[];
   total: number;
+  mainTotal: number; // メイン予算の支出合計
+  subTotal: number; // サブ予算の支出合計
 }
 
 export interface CalendarExpensesResult {
@@ -82,16 +84,24 @@ export function useCalendarExpenses(
     for (const expense of expenses) {
       const date = expense.date;
       totalSpent += expense.amount;
+      const isSubBudget = Boolean(expense.subBudgetId);
 
       if (expensesByDay.has(date)) {
         const dayData = expensesByDay.get(date)!;
         dayData.expenses.push(expense);
         dayData.total += expense.amount;
+        if (isSubBudget) {
+          dayData.subTotal += expense.amount;
+        } else {
+          dayData.mainTotal += expense.amount;
+        }
       } else {
         expensesByDay.set(date, {
           date,
           expenses: [expense],
           total: expense.amount,
+          mainTotal: isSubBudget ? 0 : expense.amount,
+          subTotal: isSubBudget ? expense.amount : 0,
         });
       }
     }

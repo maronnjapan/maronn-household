@@ -164,11 +164,28 @@
   margin-bottom: 0.25rem;
 }
 
+.calendar-day-amounts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-top: auto;
+}
+
 .calendar-day-amount {
   font-size: 0.75rem;
   color: #e65100;
   font-weight: bold;
-  margin-top: auto;
+}
+
+.calendar-day-amount.main {
+  /* メイン予算のスタイル（デフォルト） */
+}
+
+.calendar-day-amount.sub {
+  /* サブ予算のスタイル（括弧付き、少し小さめ、異なる色） */
+  font-size: 0.65rem;
+  color: #7b1fa2;
+  font-weight: normal;
 }
 
 /* モーダル */
@@ -920,6 +937,10 @@
 
   .calendar-day-amount {
     font-size: 0.55rem;
+  }
+
+  .calendar-day-amount.sub {
+    font-size: 0.5rem;
   }
 
   .calendar-nav-btn {

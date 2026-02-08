@@ -324,7 +324,14 @@ export function Page() {
                           // 表示モード
                           <>
                             <div className="expense-info">
-                              <span className="expense-amount">{formatCurrency(expense.amount)}</span>
+                              <span className="expense-amount">
+                                {formatCurrency(expense.amount)}
+                                {expense.subBudgetId && (
+                                  <span style={{ fontSize: '0.75rem', color: '#7b1fa2', marginLeft: '0.5rem' }}>
+                                    (サブ予算)
+                                  </span>
+                                )}
+                              </span>
                               {expense.category && (
                                 <span className="expense-category">{getCategoryLabel(expense.category)}</span>
                               )}
@@ -340,8 +347,17 @@ export function Page() {
                     ))}
                   </ul>
                   <div className="expense-total">
-                    <span>合計</span>
-                    <span>{formatCurrency(currentDayExpenses.total)}</span>
+                    <div>
+                      <div>メイン予算: {formatCurrency(currentDayExpenses.mainTotal)}</div>
+                      {currentDayExpenses.subTotal > 0 && (
+                        <div style={{ fontSize: '0.875rem', color: '#7b1fa2' }}>
+                          サブ予算: {formatCurrency(currentDayExpenses.subTotal)}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div>合計: {formatCurrency(currentDayExpenses.total)}</div>
+                    </div>
                   </div>
                 </>
               ) : (

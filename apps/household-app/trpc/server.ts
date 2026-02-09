@@ -8,6 +8,7 @@ import {
   apiTokens,
   apiUsage,
   webhooks,
+  webhookBatchSchedules,
   subBudgets,
   subBudgetMonthlyAmounts,
 } from '../database/drizzle/schema/household';
@@ -24,6 +25,10 @@ import {
   calculateTotalAllocated,
   getEffectiveMonthlyAmount as getEffectiveAmount,
   calculateSubBudgetCarryover,
+  buildDefaultEventPayload,
+  buildEventPayloadFromTemplate,
+  calculateNextExecution,
+  type ScheduleConfig,
 } from '@maronn/domain';
 
 /**
@@ -148,9 +153,46 @@ const revokeApiTokenInputSchema = z.object({
 const createWebhookInputSchema = z.object({
   url: z.string().url(),
   secret: z.string().optional(),
+  customHeaders: z.record(z.string()).optional(),
+  bodyTemplate: z.string().optional(),
+});
+
+const updateWebhookInputSchema = z.object({
+  id: z.string(),
+  url: z.string().url().optional(),
+  secret: z.string().nullable().optional(),
+  customHeaders: z.record(z.string()).nullable().optional(),
+  bodyTemplate: z.string().nullable().optional(),
 });
 
 const deleteWebhookInputSchema = z.object({
+  id: z.string(),
+});
+
+const createWebhookBatchScheduleInputSchema = z.object({
+  webhookId: z.string(),
+  scheduleType: z.enum(['hourly', 'daily', 'weekly', 'monthly']),
+  minute: z.number().min(0).max(59).optional(),
+  hour: z.number().min(0).max(23).optional(),
+  dayOfWeek: z.number().min(0).max(6).optional(),
+  dayOfMonth: z.number().min(1).max(31).optional(),
+  bodyTemplate: z.string().optional(),
+  customHeaders: z.record(z.string()).optional(),
+});
+
+const updateWebhookBatchScheduleInputSchema = z.object({
+  id: z.string(),
+  scheduleType: z.enum(['hourly', 'daily', 'weekly', 'monthly']).optional(),
+  minute: z.number().min(0).max(59).optional(),
+  hour: z.number().min(0).max(23).nullable().optional(),
+  dayOfWeek: z.number().min(0).max(6).nullable().optional(),
+  dayOfMonth: z.number().min(1).max(31).nullable().optional(),
+  bodyTemplate: z.string().nullable().optional(),
+  customHeaders: z.record(z.string()).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+const deleteWebhookBatchScheduleInputSchema = z.object({
   id: z.string(),
 });
 
@@ -203,30 +245,34 @@ async function deliverExpenseWebhooks(params: {
     return;
   }
 
-  const payload = JSON.stringify({
-    event,
-    occurredAt: new Date().toISOString(),
-    userId,
-    expense: {
-      id: expense.id,
-      amount: expense.amount,
-      category: expense.category ?? null,
-      memo: expense.memo ?? null,
-      date: expense.date,
-      createdAt: expense.createdAt,
-      updatedAt: expense.updatedAt,
-      deviceId: expense.deviceId,
-    },
-  });
-
   await Promise.allSettled(
     targets.map(async (target) => {
+      // ボディテンプレートが設定されている場合はテンプレートを使用
+      const payload = target.bodyTemplate
+        ? buildEventPayloadFromTemplate(
+            target.bodyTemplate,
+            event,
+            userId,
+            expense
+          )
+        : buildDefaultEventPayload(event, userId, expense);
+
+      // デフォルトヘッダー
       const headers = new Headers({
         'Content-Type': 'application/json',
         'X-Household-Webhook-Event': event,
         'X-Household-Webhook-Id': target.id,
       });
 
+      // カスタムヘッダーをマージ（カスタムがデフォルトを上書き）
+      if (target.customHeaders) {
+        const custom = JSON.parse(target.customHeaders) as Record<string, string>;
+        for (const [key, value] of Object.entries(custom)) {
+          headers.set(key, value);
+        }
+      }
+
+      // HMAC署名
       if (target.secretEncrypted && target.secretIv) {
         if (!env?.WEBHOOK_SECRET_KEY) {
           console.error('[Webhook] Missing WEBHOOK_SECRET_KEY for signing');
@@ -670,6 +716,10 @@ export const appRouter = router({
         createdAt: target.createdAt,
         updatedAt: target.updatedAt,
         hasSecret: Boolean(target.secretEncrypted),
+        customHeaders: target.customHeaders
+          ? (JSON.parse(target.customHeaders) as Record<string, string>)
+          : null,
+        bodyTemplate: target.bodyTemplate,
       })),
     };
   }),
@@ -679,7 +729,7 @@ export const appRouter = router({
     .input(createWebhookInputSchema)
     .mutation(async (opts) => {
       const userId = opts.ctx.user.id;
-      const { url, secret } = opts.input;
+      const { url, secret, customHeaders, bodyTemplate } = opts.input;
       const createdAt = new Date().toISOString();
 
       const database = opts.ctx.env?.DB
@@ -727,6 +777,8 @@ export const appRouter = router({
           url,
           secretEncrypted,
           secretIv,
+          customHeaders: customHeaders ? JSON.stringify(customHeaders) : null,
+          bodyTemplate: bodyTemplate || null,
           createdAt,
           updatedAt: createdAt,
         })
@@ -737,6 +789,76 @@ export const appRouter = router({
         url,
         createdAt,
       };
+    }),
+
+  // Webhookを更新（認証必須）
+  updateWebhook: protectedProcedure
+    .input(updateWebhookInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id, url, secret, customHeaders, bodyTemplate } = opts.input;
+      const updatedAt = new Date().toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(webhooks)
+        .where(and(eq(webhooks.id, id), eq(webhooks.userId, userId)))
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Webhook not found',
+        });
+      }
+
+      const updates: Record<string, unknown> = { updatedAt };
+
+      if (url !== undefined) {
+        updates.url = url;
+      }
+
+      if (secret !== undefined) {
+        if (secret === null) {
+          updates.secretEncrypted = null;
+          updates.secretIv = null;
+        } else {
+          if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Webhook secret key is not configured',
+            });
+          }
+          const encrypted = await encryptWebhookSecret(
+            secret,
+            opts.ctx.env.WEBHOOK_SECRET_KEY
+          );
+          updates.secretEncrypted = encrypted.encrypted;
+          updates.secretIv = encrypted.iv;
+        }
+      }
+
+      if (customHeaders !== undefined) {
+        updates.customHeaders = customHeaders
+          ? JSON.stringify(customHeaders)
+          : null;
+      }
+
+      if (bodyTemplate !== undefined) {
+        updates.bodyTemplate = bodyTemplate;
+      }
+
+      await database
+        .update(webhooks)
+        .set(updates)
+        .where(eq(webhooks.id, id))
+        .run();
+
+      return { success: true };
     }),
 
   // Webhookを削除（認証必須）
@@ -762,6 +884,12 @@ export const appRouter = router({
           message: 'Webhook not found',
         });
       }
+
+      // 紐づくバッチスケジュールも削除
+      await database
+        .delete(webhookBatchSchedules)
+        .where(eq(webhookBatchSchedules.webhookId, id))
+        .run();
 
       await database.delete(webhooks).where(eq(webhooks.id, id)).run();
 
@@ -1029,6 +1157,237 @@ export const appRouter = router({
       };
     }),
 
+  // バッチスケジュール一覧取得（認証必須）
+  listWebhookBatchSchedules: protectedProcedure.query(async (opts) => {
+    const userId = opts.ctx.user.id;
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+
+    const schedules = await database
+      .select()
+      .from(webhookBatchSchedules)
+      .where(eq(webhookBatchSchedules.userId, userId))
+      .orderBy(desc(webhookBatchSchedules.createdAt))
+      .all();
+
+    return {
+      schedules: schedules.map((s) => ({
+        id: s.id,
+        webhookId: s.webhookId,
+        scheduleType: s.scheduleType,
+        minute: s.minute,
+        hour: s.hour,
+        dayOfWeek: s.dayOfWeek,
+        dayOfMonth: s.dayOfMonth,
+        bodyTemplate: s.bodyTemplate,
+        customHeaders: s.customHeaders
+          ? (JSON.parse(s.customHeaders) as Record<string, string>)
+          : null,
+        isActive: Boolean(s.isActive),
+        lastExecutedAt: s.lastExecutedAt,
+        nextExecutionAt: s.nextExecutionAt,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      })),
+    };
+  }),
+
+  // バッチスケジュール作成（認証必須）
+  createWebhookBatchSchedule: protectedProcedure
+    .input(createWebhookBatchScheduleInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const {
+        webhookId,
+        scheduleType,
+        minute,
+        hour,
+        dayOfWeek,
+        dayOfMonth,
+        bodyTemplate,
+        customHeaders,
+      } = opts.input;
+      const now = new Date();
+      const createdAt = now.toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // 対象webhookの所有者確認
+      const webhook = await database
+        .select()
+        .from(webhooks)
+        .where(and(eq(webhooks.id, webhookId), eq(webhooks.userId, userId)))
+        .get();
+
+      if (!webhook) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Webhook not found',
+        });
+      }
+
+      // 次回実行時刻を計算
+      const config: ScheduleConfig = {
+        scheduleType,
+        minute,
+        hour,
+        dayOfWeek,
+        dayOfMonth,
+      };
+      const nextExecution = calculateNextExecution(config, now);
+
+      const id = ulid();
+      await database
+        .insert(webhookBatchSchedules)
+        .values({
+          id,
+          userId,
+          webhookId,
+          scheduleType,
+          minute: minute ?? 0,
+          hour: hour ?? null,
+          dayOfWeek: dayOfWeek ?? null,
+          dayOfMonth: dayOfMonth ?? null,
+          bodyTemplate: bodyTemplate || null,
+          customHeaders: customHeaders ? JSON.stringify(customHeaders) : null,
+          isActive: 1,
+          lastExecutedAt: null,
+          nextExecutionAt: nextExecution.toISOString(),
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .run();
+
+      return {
+        id,
+        nextExecutionAt: nextExecution.toISOString(),
+        createdAt,
+      };
+    }),
+
+  // バッチスケジュール更新（認証必須）
+  updateWebhookBatchSchedule: protectedProcedure
+    .input(updateWebhookBatchScheduleInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const {
+        id,
+        scheduleType,
+        minute,
+        hour,
+        dayOfWeek,
+        dayOfMonth,
+        bodyTemplate,
+        customHeaders,
+        isActive,
+      } = opts.input;
+      const now = new Date();
+      const updatedAt = now.toISOString();
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(webhookBatchSchedules)
+        .where(
+          and(
+            eq(webhookBatchSchedules.id, id),
+            eq(webhookBatchSchedules.userId, userId)
+          )
+        )
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Batch schedule not found',
+        });
+      }
+
+      const updates: Record<string, unknown> = { updatedAt };
+
+      if (scheduleType !== undefined) updates.scheduleType = scheduleType;
+      if (minute !== undefined) updates.minute = minute;
+      if (hour !== undefined) updates.hour = hour;
+      if (dayOfWeek !== undefined) updates.dayOfWeek = dayOfWeek;
+      if (dayOfMonth !== undefined) updates.dayOfMonth = dayOfMonth;
+      if (bodyTemplate !== undefined) updates.bodyTemplate = bodyTemplate;
+      if (customHeaders !== undefined) {
+        updates.customHeaders = customHeaders
+          ? JSON.stringify(customHeaders)
+          : null;
+      }
+      if (isActive !== undefined) updates.isActive = isActive ? 1 : 0;
+
+      // スケジュール設定が変更された場合、次回実行時刻を再計算
+      const newScheduleType = (scheduleType ?? existing.scheduleType) as ScheduleConfig['scheduleType'];
+      const newMinute = minute !== undefined ? (minute ?? 0) : existing.minute;
+      const newHour = hour !== undefined ? hour : existing.hour;
+      const newDayOfWeek = dayOfWeek !== undefined ? dayOfWeek : existing.dayOfWeek;
+      const newDayOfMonth = dayOfMonth !== undefined ? dayOfMonth : existing.dayOfMonth;
+
+      const config: ScheduleConfig = {
+        scheduleType: newScheduleType,
+        minute: newMinute ?? undefined,
+        hour: newHour ?? undefined,
+        dayOfWeek: newDayOfWeek ?? undefined,
+        dayOfMonth: newDayOfMonth ?? undefined,
+      };
+      const nextExecution = calculateNextExecution(config, now);
+      updates.nextExecutionAt = nextExecution.toISOString();
+
+      await database
+        .update(webhookBatchSchedules)
+        .set(updates)
+        .where(eq(webhookBatchSchedules.id, id))
+        .run();
+
+      return {
+        success: true,
+        nextExecutionAt: nextExecution.toISOString(),
+      };
+    }),
+
+  // バッチスケジュール削除（認証必須）
+  deleteWebhookBatchSchedule: protectedProcedure
+    .input(deleteWebhookBatchScheduleInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { id } = opts.input;
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      const existing = await database
+        .select()
+        .from(webhookBatchSchedules)
+        .where(
+          and(
+            eq(webhookBatchSchedules.id, id),
+            eq(webhookBatchSchedules.userId, userId)
+          )
+        )
+        .get();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Batch schedule not found',
+        });
+      }
+
+      await database
+        .delete(webhookBatchSchedules)
+        .where(eq(webhookBatchSchedules.id, id))
+        .run();
+
+      return { success: true };
+    }),
+
   // アカウントデータ削除（D1の家計データのみ、認証必須）
   // 認証データ（user, session, account）の削除はBetterAuth経由で行う
   deleteAccountData: protectedProcedure.mutation(async (opts) => {
@@ -1048,6 +1407,9 @@ export const appRouter = router({
 
     // apiUsageを削除
     await database.delete(apiUsage).where(eq(apiUsage.userId, userId)).run();
+
+    // webhookBatchSchedulesを削除
+    await database.delete(webhookBatchSchedules).where(eq(webhookBatchSchedules.userId, userId)).run();
 
     // webhooksを削除
     await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();

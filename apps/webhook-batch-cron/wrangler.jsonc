@@ -1,0 +1,26 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "webhook-batch-cron",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-01-03",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true
+	},
+	// 毎時0分に実行（hourlyスケジュールに対応）
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
+	// household-appと同じD1データベースを使用
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "household-db",
+			"database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+		}
+	]
+}

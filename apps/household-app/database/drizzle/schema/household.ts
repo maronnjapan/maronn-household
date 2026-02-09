@@ -64,6 +64,26 @@ export const webhooks = sqliteTable('webhooks', {
   url: text('url').notNull(),
   secretEncrypted: text('secret_encrypted'),
   secretIv: text('secret_iv'),
+  customHeaders: text('custom_headers'),
+  bodyTemplate: text('body_template'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const webhookBatchSchedules = sqliteTable('webhook_batch_schedules', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  webhookId: text('webhook_id').notNull(),
+  scheduleType: text('schedule_type').notNull(), // 'hourly' | 'daily' | 'weekly' | 'monthly'
+  minute: integer('minute').notNull().default(0),
+  hour: integer('hour'),
+  dayOfWeek: integer('day_of_week'),
+  dayOfMonth: integer('day_of_month'),
+  bodyTemplate: text('body_template'),
+  customHeaders: text('custom_headers'),
+  isActive: integer('is_active').notNull().default(1),
+  lastExecutedAt: text('last_executed_at'),
+  nextExecutionAt: text('next_execution_at').notNull(),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

@@ -23,6 +23,7 @@ interface WebhookBatchScheduleRow {
 	day_of_month: number | null;
 	body_template: string | null;
 	custom_headers: string | null;
+	custom_headers_iv: string | null;
 	is_active: number;
 	last_executed_at: string | null;
 	next_execution_at: string;
@@ -37,6 +38,7 @@ interface WebhookRow {
 	secret_encrypted: string | null;
 	secret_iv: string | null;
 	custom_headers: string | null;
+	custom_headers_iv: string | null;
 	body_template: string | null;
 }
 
@@ -232,7 +234,10 @@ async function processDueSchedules(db: D1Database, env: Env): Promise<number> {
 	// 実行予定のアクティブなスケジュールを取得
 	const dueSchedules = await db
 		.prepare(
-			`SELECT s.*, w.url, w.secret_encrypted, w.secret_iv, w.custom_headers AS webhook_custom_headers, w.body_template AS webhook_body_template
+			`SELECT s.*, w.url, w.secret_encrypted, w.secret_iv,
+			        w.custom_headers AS webhook_custom_headers,
+			        w.custom_headers_iv AS webhook_custom_headers_iv,
+			        w.body_template AS webhook_body_template
 			 FROM webhook_batch_schedules s
 			 JOIN webhooks w ON s.webhook_id = w.id
 			 WHERE s.is_active = 1
@@ -244,6 +249,7 @@ async function processDueSchedules(db: D1Database, env: Env): Promise<number> {
 			secret_encrypted: string | null;
 			secret_iv: string | null;
 			webhook_custom_headers: string | null;
+			webhook_custom_headers_iv: string | null;
 			webhook_body_template: string | null;
 		}>();
 
@@ -276,6 +282,7 @@ async function processSchedule(
 		secret_encrypted: string | null;
 		secret_iv: string | null;
 		webhook_custom_headers: string | null;
+		webhook_custom_headers_iv: string | null;
 		webhook_body_template: string | null;
 	},
 	now: Date
@@ -364,15 +371,25 @@ async function processSchedule(
 		'X-Household-Webhook-Schedule-Id': schedule.id,
 	};
 
-	// Webhookのカスタムヘッダーをマージ
-	if (schedule.webhook_custom_headers) {
-		const webhookHeaders = JSON.parse(schedule.webhook_custom_headers) as Record<string, string>;
+	// Webhookのカスタムヘッダーを復号してマージ
+	if (schedule.webhook_custom_headers && schedule.webhook_custom_headers_iv && env.WEBHOOK_SECRET_KEY) {
+		const webhookHeadersJson = await decryptWebhookSecret(
+			schedule.webhook_custom_headers,
+			schedule.webhook_custom_headers_iv,
+			env.WEBHOOK_SECRET_KEY
+		);
+		const webhookHeaders = JSON.parse(webhookHeadersJson) as Record<string, string>;
 		Object.assign(headers, webhookHeaders);
 	}
 
-	// スケジュールのカスタムヘッダーで上書き
-	if (schedule.custom_headers) {
-		const scheduleHeaders = JSON.parse(schedule.custom_headers) as Record<string, string>;
+	// スケジュールのカスタムヘッダーを復号して上書き
+	if (schedule.custom_headers && schedule.custom_headers_iv && env.WEBHOOK_SECRET_KEY) {
+		const scheduleHeadersJson = await decryptWebhookSecret(
+			schedule.custom_headers,
+			schedule.custom_headers_iv,
+			env.WEBHOOK_SECRET_KEY
+		);
+		const scheduleHeaders = JSON.parse(scheduleHeadersJson) as Record<string, string>;
 		Object.assign(headers, scheduleHeaders);
 	}
 

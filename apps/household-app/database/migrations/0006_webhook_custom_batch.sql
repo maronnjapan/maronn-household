@@ -1,5 +1,7 @@
 -- カスタムヘッダー・ボディテンプレートをwebhooksテーブルに追加
+-- カスタムヘッダーはAES-GCM暗号化して保存（シークレット漏洩防止）
 ALTER TABLE `webhooks` ADD COLUMN `custom_headers` text;
+ALTER TABLE `webhooks` ADD COLUMN `custom_headers_iv` text;
 ALTER TABLE `webhooks` ADD COLUMN `body_template` text;
 
 -- バッチスケジュールテーブルを作成
@@ -14,6 +16,7 @@ CREATE TABLE `webhook_batch_schedules` (
 	`day_of_month` integer,
 	`body_template` text,
 	`custom_headers` text,
+	`custom_headers_iv` text,
 	`is_active` integer NOT NULL DEFAULT 1,
 	`last_executed_at` text,
 	`next_execution_at` text NOT NULL,

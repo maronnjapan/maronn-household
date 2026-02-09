@@ -218,6 +218,29 @@ const getSubBudgetDetailInputSchema = z.object({
   month: z.string(),
 });
 
+/**
+ * カスタムヘッダーを暗号化する（AES-GCM）
+ * シークレット（Authorization等）が平文でDBに残らないようにする
+ */
+async function encryptCustomHeaders(
+  headers: Record<string, string>,
+  secretKey: string
+): Promise<{ encrypted: string; iv: string }> {
+  return encryptWebhookSecret(JSON.stringify(headers), secretKey);
+}
+
+/**
+ * 暗号化されたカスタムヘッダーを復号する
+ */
+async function decryptCustomHeaders(
+  encrypted: string,
+  iv: string,
+  secretKey: string
+): Promise<Record<string, string>> {
+  const json = await decryptWebhookSecret(encrypted, iv, secretKey);
+  return JSON.parse(json) as Record<string, string>;
+}
+
 async function deliverExpenseWebhooks(params: {
   database: ReturnType<typeof drizzle>;
   env?: Env;
@@ -264,9 +287,13 @@ async function deliverExpenseWebhooks(params: {
         'X-Household-Webhook-Id': target.id,
       });
 
-      // カスタムヘッダーをマージ（カスタムがデフォルトを上書き）
-      if (target.customHeaders) {
-        const custom = JSON.parse(target.customHeaders) as Record<string, string>;
+      // カスタムヘッダーを復号してマージ（カスタムがデフォルトを上書き）
+      if (target.customHeaders && target.customHeadersIv && env?.WEBHOOK_SECRET_KEY) {
+        const custom = await decryptCustomHeaders(
+          target.customHeaders,
+          target.customHeadersIv,
+          env.WEBHOOK_SECRET_KEY
+        );
         for (const [key, value] of Object.entries(custom)) {
           headers.set(key, value);
         }
@@ -709,19 +736,31 @@ export const appRouter = router({
       .orderBy(desc(webhooks.createdAt))
       .all();
 
-    return {
-      webhooks: targets.map((target) => ({
-        id: target.id,
-        url: target.url,
-        createdAt: target.createdAt,
-        updatedAt: target.updatedAt,
-        hasSecret: Boolean(target.secretEncrypted),
-        customHeaders: target.customHeaders
-          ? (JSON.parse(target.customHeaders) as Record<string, string>)
-          : null,
-        bodyTemplate: target.bodyTemplate,
-      })),
-    };
+    const secretKey = opts.ctx.env?.WEBHOOK_SECRET_KEY;
+
+    const webhookResults = await Promise.all(
+      targets.map(async (target) => {
+        let customHeaders: Record<string, string> | null = null;
+        if (target.customHeaders && target.customHeadersIv && secretKey) {
+          customHeaders = await decryptCustomHeaders(
+            target.customHeaders,
+            target.customHeadersIv,
+            secretKey
+          );
+        }
+        return {
+          id: target.id,
+          url: target.url,
+          createdAt: target.createdAt,
+          updatedAt: target.updatedAt,
+          hasSecret: Boolean(target.secretEncrypted),
+          customHeaders,
+          bodyTemplate: target.bodyTemplate,
+        };
+      })
+    );
+
+    return { webhooks: webhookResults };
   }),
 
   // Webhookを追加（認証必須）
@@ -768,6 +807,24 @@ export const appRouter = router({
         secretIv = encrypted.iv;
       }
 
+      let encryptedHeaders: string | null = null;
+      let headersIv: string | null = null;
+
+      if (customHeaders) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+        const encrypted = await encryptCustomHeaders(
+          customHeaders,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        encryptedHeaders = encrypted.encrypted;
+        headersIv = encrypted.iv;
+      }
+
       const id = ulid();
       await database
         .insert(webhooks)
@@ -777,7 +834,8 @@ export const appRouter = router({
           url,
           secretEncrypted,
           secretIv,
-          customHeaders: customHeaders ? JSON.stringify(customHeaders) : null,
+          customHeaders: encryptedHeaders,
+          customHeadersIv: headersIv,
           bodyTemplate: bodyTemplate || null,
           createdAt,
           updatedAt: createdAt,
@@ -843,9 +901,23 @@ export const appRouter = router({
       }
 
       if (customHeaders !== undefined) {
-        updates.customHeaders = customHeaders
-          ? JSON.stringify(customHeaders)
-          : null;
+        if (customHeaders === null) {
+          updates.customHeaders = null;
+          updates.customHeadersIv = null;
+        } else {
+          if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Webhook secret key is not configured',
+            });
+          }
+          const encrypted = await encryptCustomHeaders(
+            customHeaders,
+            opts.ctx.env.WEBHOOK_SECRET_KEY
+          );
+          updates.customHeaders = encrypted.encrypted;
+          updates.customHeadersIv = encrypted.iv;
+        }
       }
 
       if (bodyTemplate !== undefined) {
@@ -1169,26 +1241,38 @@ export const appRouter = router({
       .orderBy(desc(webhookBatchSchedules.createdAt))
       .all();
 
-    return {
-      schedules: schedules.map((s) => ({
-        id: s.id,
-        webhookId: s.webhookId,
-        scheduleType: s.scheduleType,
-        minute: s.minute,
-        hour: s.hour,
-        dayOfWeek: s.dayOfWeek,
-        dayOfMonth: s.dayOfMonth,
-        bodyTemplate: s.bodyTemplate,
-        customHeaders: s.customHeaders
-          ? (JSON.parse(s.customHeaders) as Record<string, string>)
-          : null,
-        isActive: Boolean(s.isActive),
-        lastExecutedAt: s.lastExecutedAt,
-        nextExecutionAt: s.nextExecutionAt,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-      })),
-    };
+    const secretKey = opts.ctx.env?.WEBHOOK_SECRET_KEY;
+
+    const scheduleResults = await Promise.all(
+      schedules.map(async (s) => {
+        let customHeaders: Record<string, string> | null = null;
+        if (s.customHeaders && s.customHeadersIv && secretKey) {
+          customHeaders = await decryptCustomHeaders(
+            s.customHeaders,
+            s.customHeadersIv,
+            secretKey
+          );
+        }
+        return {
+          id: s.id,
+          webhookId: s.webhookId,
+          scheduleType: s.scheduleType,
+          minute: s.minute,
+          hour: s.hour,
+          dayOfWeek: s.dayOfWeek,
+          dayOfMonth: s.dayOfMonth,
+          bodyTemplate: s.bodyTemplate,
+          customHeaders,
+          isActive: Boolean(s.isActive),
+          lastExecutedAt: s.lastExecutedAt,
+          nextExecutionAt: s.nextExecutionAt,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        };
+      })
+    );
+
+    return { schedules: scheduleResults };
   }),
 
   // バッチスケジュール作成（認証必須）
@@ -1237,6 +1321,24 @@ export const appRouter = router({
       };
       const nextExecution = calculateNextExecution(config, now);
 
+      let encryptedHeaders: string | null = null;
+      let headersIv: string | null = null;
+
+      if (customHeaders) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+        const encrypted = await encryptCustomHeaders(
+          customHeaders,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        encryptedHeaders = encrypted.encrypted;
+        headersIv = encrypted.iv;
+      }
+
       const id = ulid();
       await database
         .insert(webhookBatchSchedules)
@@ -1250,7 +1352,8 @@ export const appRouter = router({
           dayOfWeek: dayOfWeek ?? null,
           dayOfMonth: dayOfMonth ?? null,
           bodyTemplate: bodyTemplate || null,
-          customHeaders: customHeaders ? JSON.stringify(customHeaders) : null,
+          customHeaders: encryptedHeaders,
+          customHeadersIv: headersIv,
           isActive: 1,
           lastExecutedAt: null,
           nextExecutionAt: nextExecution.toISOString(),
@@ -1316,9 +1419,23 @@ export const appRouter = router({
       if (dayOfMonth !== undefined) updates.dayOfMonth = dayOfMonth;
       if (bodyTemplate !== undefined) updates.bodyTemplate = bodyTemplate;
       if (customHeaders !== undefined) {
-        updates.customHeaders = customHeaders
-          ? JSON.stringify(customHeaders)
-          : null;
+        if (customHeaders === null) {
+          updates.customHeaders = null;
+          updates.customHeadersIv = null;
+        } else {
+          if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Webhook secret key is not configured',
+            });
+          }
+          const encrypted = await encryptCustomHeaders(
+            customHeaders,
+            opts.ctx.env.WEBHOOK_SECRET_KEY
+          );
+          updates.customHeaders = encrypted.encrypted;
+          updates.customHeadersIv = encrypted.iv;
+        }
       }
       if (isActive !== undefined) updates.isActive = isActive ? 1 : 0;
 

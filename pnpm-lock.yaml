@@ -166,6 +166,15 @@ importers:
         specifier: ^4.54.0
         version: 4.60.0
 
+  apps/webhook-batch-cron:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^4.54.0
+        version: 4.60.0
+
   packages/domain:
     dependencies:
       ulidx:

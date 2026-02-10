@@ -338,7 +338,13 @@ header {
   gap: 16px;
 }
 
-input {
+/* テキスト入力フィールドのスタイル（チェックボックスには適用しない） */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="date"] {
   padding: 16px 20px;
   font-size: 18px;
   min-height: 56px;
@@ -349,15 +355,39 @@ input {
   -webkit-appearance: none;
 }
 
-input:focus {
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="tel"]:focus,
+input[type="date"]:focus {
   outline: none;
   border-color: #3498db;
   border-width: 3px;
   box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
-input:active {
+input[type="text"]:active,
+input[type="email"]:active,
+input[type="password"]:active,
+input[type="number"]:active,
+input[type="tel"]:active,
+input[type="date"]:active {
   transform: scale(0.995);
+}
+
+/* チェックボックス専用スタイル */
+input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  cursor: pointer;
+  accent-color: #3498db;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:focus {
+  outline: 2px solid #3498db;
+  outline-offset: 2px;
 }
 
 .add-button {

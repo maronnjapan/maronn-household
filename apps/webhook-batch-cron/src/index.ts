@@ -17,7 +17,6 @@ interface WebhookBatchScheduleRow {
 	user_id: string;
 	webhook_id: string;
 	schedule_type: string;
-	minute: number;
 	hour: number | null;
 	day_of_week: number | null;
 	day_of_month: number | null;
@@ -73,7 +72,6 @@ function renderTemplate(
 
 function calculateNextExecution(
 	scheduleType: ScheduleType,
-	minute: number,
 	hour: number | null,
 	dayOfWeek: number | null,
 	dayOfMonth: number | null,
@@ -83,14 +81,14 @@ function calculateNextExecution(
 
 	switch (scheduleType) {
 		case 'hourly': {
-			next.setUTCMinutes(minute, 0, 0);
+			next.setUTCMinutes(0, 0, 0);
 			if (next <= now) {
 				next.setUTCHours(next.getUTCHours() + 1);
 			}
 			return next;
 		}
 		case 'daily': {
-			next.setUTCHours(hour ?? 9, minute, 0, 0);
+			next.setUTCHours(hour ?? 9, 0, 0, 0);
 			if (next <= now) {
 				next.setUTCDate(next.getUTCDate() + 1);
 			}
@@ -98,7 +96,7 @@ function calculateNextExecution(
 		}
 		case 'weekly': {
 			const targetDay = dayOfWeek ?? 1;
-			next.setUTCHours(hour ?? 9, minute, 0, 0);
+			next.setUTCHours(hour ?? 9, 0, 0, 0);
 			const currentDay = next.getUTCDay();
 			let daysUntil = targetDay - currentDay;
 			if (daysUntil < 0) daysUntil += 7;
@@ -108,7 +106,7 @@ function calculateNextExecution(
 		}
 		case 'monthly': {
 			const targetDate = dayOfMonth ?? 1;
-			next.setUTCHours(hour ?? 9, minute, 0, 0);
+			next.setUTCHours(hour ?? 9, 0, 0, 0);
 			next.setUTCDate(targetDate);
 			if (next <= now) {
 				next.setUTCMonth(next.getUTCMonth() + 1);
@@ -425,7 +423,6 @@ async function processSchedule(
 	// 次回実行時刻を計算して更新
 	const nextExecution = calculateNextExecution(
 		scheduleType,
-		schedule.minute,
 		schedule.hour,
 		schedule.day_of_week,
 		schedule.day_of_month,

@@ -34,7 +34,6 @@ export type ScheduleType = 'hourly' | 'daily' | 'weekly' | 'monthly';
  */
 export interface ScheduleConfig {
   scheduleType: ScheduleType;
-  minute?: number;    // 0-59 (hourly/daily/weekly/monthly)
   hour?: number;      // 0-23 (daily/weekly/monthly)
   dayOfWeek?: number; // 0-6, 0=Sunday (weekly)
   dayOfMonth?: number; // 1-31 (monthly)
@@ -55,8 +54,7 @@ export function calculateNextExecution(
 
   switch (config.scheduleType) {
     case 'hourly': {
-      const minute = config.minute ?? 0;
-      next.setUTCMinutes(minute, 0, 0);
+      next.setUTCMinutes(0, 0, 0);
       if (next <= now) {
         next.setUTCHours(next.getUTCHours() + 1);
       }
@@ -65,8 +63,7 @@ export function calculateNextExecution(
 
     case 'daily': {
       const hour = config.hour ?? 9;
-      const minute = config.minute ?? 0;
-      next.setUTCHours(hour, minute, 0, 0);
+      next.setUTCHours(hour, 0, 0, 0);
       if (next <= now) {
         next.setUTCDate(next.getUTCDate() + 1);
       }
@@ -76,8 +73,7 @@ export function calculateNextExecution(
     case 'weekly': {
       const dayOfWeek = config.dayOfWeek ?? 1; // default Monday
       const hour = config.hour ?? 9;
-      const minute = config.minute ?? 0;
-      next.setUTCHours(hour, minute, 0, 0);
+      next.setUTCHours(hour, 0, 0, 0);
       const currentDay = next.getUTCDay();
       let daysUntil = dayOfWeek - currentDay;
       if (daysUntil < 0) {
@@ -93,8 +89,7 @@ export function calculateNextExecution(
     case 'monthly': {
       const dayOfMonth = config.dayOfMonth ?? 1;
       const hour = config.hour ?? 9;
-      const minute = config.minute ?? 0;
-      next.setUTCHours(hour, minute, 0, 0);
+      next.setUTCHours(hour, 0, 0, 0);
       next.setUTCDate(dayOfMonth);
       if (next <= now) {
         next.setUTCMonth(next.getUTCMonth() + 1);

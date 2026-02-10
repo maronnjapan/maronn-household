@@ -168,12 +168,10 @@ function BodyFieldSelector(props: {
  */
 function ScheduleConfigForm(props: {
   scheduleType: string;
-  minute: number;
   hour: number;
   dayOfWeek: number;
   dayOfMonth: number;
   onScheduleTypeChange: (type: string) => void;
-  onMinuteChange: (minute: number) => void;
   onHourChange: (hour: number) => void;
   onDayOfWeekChange: (day: number) => void;
   onDayOfMonthChange: (day: number) => void;
@@ -198,18 +196,7 @@ function ScheduleConfigForm(props: {
 
       <div className="webhook-schedule-details">
         {props.scheduleType === 'hourly' && (
-          <label className="webhook-schedule-field">
-            毎時
-            <select
-              value={props.minute}
-              onChange={(e) => props.onMinuteChange(Number(e.target.value))}
-            >
-              {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
-                <option key={m} value={m}>{m}分</option>
-              ))}
-            </select>
-            に実行
-          </label>
+          <p className="webhook-field-hint">毎時0分に実行されます</p>
         )}
 
         {props.scheduleType === 'daily' && (
@@ -221,14 +208,6 @@ function ScheduleConfigForm(props: {
             >
               {Array.from({ length: 24 }, (_, h) => (
                 <option key={h} value={h}>{h}時</option>
-              ))}
-            </select>
-            <select
-              value={props.minute}
-              onChange={(e) => props.onMinuteChange(Number(e.target.value))}
-            >
-              {[0, 15, 30, 45].map((m) => (
-                <option key={m} value={m}>{m}分</option>
               ))}
             </select>
             に実行
@@ -306,7 +285,6 @@ export function WebhookSection() {
   );
   const [customHeaders, setCustomHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [scheduleType, setScheduleType] = useState('weekly');
-  const [minute, setMinute] = useState(0);
   const [hour, setHour] = useState(9);
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [dayOfMonth, setDayOfMonth] = useState(1);
@@ -318,7 +296,6 @@ export function WebhookSection() {
   );
   const [batchAddHeaders, setBatchAddHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [batchAddScheduleType, setBatchAddScheduleType] = useState('weekly');
-  const [batchAddMinute, setBatchAddMinute] = useState(0);
   const [batchAddHour, setBatchAddHour] = useState(9);
   const [batchAddDayOfWeek, setBatchAddDayOfWeek] = useState(1);
   const [batchAddDayOfMonth, setBatchAddDayOfMonth] = useState(1);
@@ -337,7 +314,6 @@ export function WebhookSection() {
         createScheduleMutation.mutate({
           webhookId: result.id,
           scheduleType: scheduleType as 'hourly' | 'daily' | 'weekly' | 'monthly',
-          minute,
           hour: scheduleType !== 'hourly' ? hour : undefined,
           dayOfWeek: scheduleType === 'weekly' ? dayOfWeek : undefined,
           dayOfMonth: scheduleType === 'monthly' ? dayOfMonth : undefined,
@@ -401,7 +377,6 @@ export function WebhookSection() {
     setBatchBodyFields(new Set(['totalSpent', 'budget', 'remaining', 'month']));
     setCustomHeaders([]);
     setScheduleType('weekly');
-    setMinute(0);
     setHour(9);
     setDayOfWeek(1);
     setDayOfMonth(1);
@@ -413,7 +388,6 @@ export function WebhookSection() {
     setBatchAddFields(new Set(['totalSpent', 'budget', 'remaining', 'month']));
     setBatchAddHeaders([]);
     setBatchAddScheduleType('weekly');
-    setBatchAddMinute(0);
     setBatchAddHour(9);
     setBatchAddDayOfWeek(1);
     setBatchAddDayOfMonth(1);
@@ -446,7 +420,6 @@ export function WebhookSection() {
     createScheduleMutation.mutate({
       webhookId,
       scheduleType: batchAddScheduleType as 'hourly' | 'daily' | 'weekly' | 'monthly',
-      minute: batchAddMinute,
       hour: batchAddScheduleType !== 'hourly' ? batchAddHour : undefined,
       dayOfWeek: batchAddScheduleType === 'weekly' ? batchAddDayOfWeek : undefined,
       dayOfMonth: batchAddScheduleType === 'monthly' ? batchAddDayOfMonth : undefined,
@@ -463,20 +436,19 @@ export function WebhookSection() {
 
   function formatSchedule(s: {
     scheduleType: string;
-    minute: number;
     hour: number | null;
     dayOfWeek: number | null;
     dayOfMonth: number | null;
   }): string {
     switch (s.scheduleType) {
       case 'hourly':
-        return `毎時 ${s.minute}分`;
+        return '毎時 0分';
       case 'daily':
-        return `毎日 ${s.hour ?? 9}:${String(s.minute).padStart(2, '0')}`;
+        return `毎日 ${s.hour ?? 9}:00`;
       case 'weekly':
-        return `毎週${DAY_OF_WEEK_LABELS[s.dayOfWeek ?? 1]}曜 ${s.hour ?? 9}:${String(s.minute).padStart(2, '0')}`;
+        return `毎週${DAY_OF_WEEK_LABELS[s.dayOfWeek ?? 1]}曜 ${s.hour ?? 9}:00`;
       case 'monthly':
-        return `毎月${s.dayOfMonth ?? 1}日 ${s.hour ?? 9}:${String(s.minute).padStart(2, '0')}`;
+        return `毎月${s.dayOfMonth ?? 1}日 ${s.hour ?? 9}:00`;
       default:
         return s.scheduleType;
     }
@@ -645,12 +617,10 @@ export function WebhookSection() {
             <>
               <ScheduleConfigForm
                 scheduleType={scheduleType}
-                minute={minute}
                 hour={hour}
                 dayOfWeek={dayOfWeek}
                 dayOfMonth={dayOfMonth}
                 onScheduleTypeChange={setScheduleType}
-                onMinuteChange={setMinute}
                 onHourChange={setHour}
                 onDayOfWeekChange={setDayOfWeek}
                 onDayOfMonthChange={setDayOfMonth}
@@ -781,12 +751,10 @@ export function WebhookSection() {
                     <h4>バッチスケジュール追加</h4>
                     <ScheduleConfigForm
                       scheduleType={batchAddScheduleType}
-                      minute={batchAddMinute}
                       hour={batchAddHour}
                       dayOfWeek={batchAddDayOfWeek}
                       dayOfMonth={batchAddDayOfMonth}
                       onScheduleTypeChange={setBatchAddScheduleType}
-                      onMinuteChange={setBatchAddMinute}
                       onHourChange={setBatchAddHour}
                       onDayOfWeekChange={setBatchAddDayOfWeek}
                       onDayOfMonthChange={setBatchAddDayOfMonth}

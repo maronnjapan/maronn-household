@@ -76,7 +76,6 @@ export const webhookBatchSchedules = sqliteTable('webhook_batch_schedules', {
   userId: text('user_id').notNull(),
   webhookId: text('webhook_id').notNull(),
   scheduleType: text('schedule_type').notNull(), // 'hourly' | 'daily' | 'weekly' | 'monthly'
-  minute: integer('minute').notNull().default(0),
   hour: integer('hour'),
   dayOfWeek: integer('day_of_week'),
   dayOfMonth: integer('day_of_month'),

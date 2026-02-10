@@ -67,26 +67,17 @@ describe('renderTemplate', () => {
 
 describe('calculateNextExecution', () => {
   describe('hourly', () => {
-    it('現在時刻より後の同時間内の分を返す', () => {
+    it('現在時刻より後の次の正時を返す', () => {
       const now = new Date('2026-02-09T10:15:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'hourly', minute: 30 },
+        { scheduleType: 'hourly' },
         now
       );
-      expect(result).toEqual(new Date('2026-02-09T10:30:00Z'));
+      expect(result).toEqual(new Date('2026-02-09T11:00:00Z'));
     });
 
-    it('分が過ぎている場合は次の時間を返す', () => {
-      const now = new Date('2026-02-09T10:35:00Z');
-      const result = calculateNextExecution(
-        { scheduleType: 'hourly', minute: 30 },
-        now
-      );
-      expect(result).toEqual(new Date('2026-02-09T11:30:00Z'));
-    });
-
-    it('minuteが省略された場合はデフォルト0分', () => {
-      const now = new Date('2026-02-09T10:01:00Z');
+    it('正時ちょうどの場合は次の正時を返す', () => {
+      const now = new Date('2026-02-09T10:00:00Z');
       const result = calculateNextExecution(
         { scheduleType: 'hourly' },
         now
@@ -99,7 +90,7 @@ describe('calculateNextExecution', () => {
     it('今日のまだ来ていない時刻を返す', () => {
       const now = new Date('2026-02-09T08:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'daily', hour: 9, minute: 0 },
+        { scheduleType: 'daily', hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-09T09:00:00Z'));
@@ -108,7 +99,7 @@ describe('calculateNextExecution', () => {
     it('時刻が過ぎている場合は翌日を返す', () => {
       const now = new Date('2026-02-09T10:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'daily', hour: 9, minute: 0 },
+        { scheduleType: 'daily', hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-10T09:00:00Z'));
@@ -129,7 +120,7 @@ describe('calculateNextExecution', () => {
       // 2026-02-08 is Sunday
       const now = new Date('2026-02-08T08:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9, minute: 0 },
+        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-09T09:00:00Z'));
@@ -139,7 +130,7 @@ describe('calculateNextExecution', () => {
       // 2026-02-10 is Tuesday
       const now = new Date('2026-02-10T10:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9, minute: 0 },
+        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-16T09:00:00Z'));
@@ -149,7 +140,7 @@ describe('calculateNextExecution', () => {
       // 2026-02-09 is Monday
       const now = new Date('2026-02-09T10:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9, minute: 0 },
+        { scheduleType: 'weekly', dayOfWeek: 1, hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-16T09:00:00Z'));
@@ -169,7 +160,7 @@ describe('calculateNextExecution', () => {
     it('今月のまだ来ていない日を返す', () => {
       const now = new Date('2026-02-05T08:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+        { scheduleType: 'monthly', dayOfMonth: 15, hour: 9 },
         now
       );
       expect(result).toEqual(new Date('2026-02-15T09:00:00Z'));
@@ -178,7 +169,7 @@ describe('calculateNextExecution', () => {
     it('日が過ぎている場合は来月を返す', () => {
       const now = new Date('2026-02-20T10:00:00Z');
       const result = calculateNextExecution(
-        { scheduleType: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+        { scheduleType: 'monthly', dayOfMonth: 15, hour: 9 },
         now
       );
       expect(result.getUTCMonth()).toBe(2); // March (0-indexed)

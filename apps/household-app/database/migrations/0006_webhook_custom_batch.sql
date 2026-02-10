@@ -10,7 +10,6 @@ CREATE TABLE `webhook_batch_schedules` (
 	`user_id` text NOT NULL,
 	`webhook_id` text NOT NULL,
 	`schedule_type` text NOT NULL,
-	`minute` integer NOT NULL DEFAULT 0,
 	`hour` integer,
 	`day_of_week` integer,
 	`day_of_month` integer,

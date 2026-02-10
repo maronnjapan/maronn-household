@@ -172,7 +172,6 @@ const deleteWebhookInputSchema = z.object({
 const createWebhookBatchScheduleInputSchema = z.object({
   webhookId: z.string(),
   scheduleType: z.enum(['hourly', 'daily', 'weekly', 'monthly']),
-  minute: z.number().min(0).max(59).optional(),
   hour: z.number().min(0).max(23).optional(),
   dayOfWeek: z.number().min(0).max(6).optional(),
   dayOfMonth: z.number().min(1).max(31).optional(),
@@ -183,7 +182,6 @@ const createWebhookBatchScheduleInputSchema = z.object({
 const updateWebhookBatchScheduleInputSchema = z.object({
   id: z.string(),
   scheduleType: z.enum(['hourly', 'daily', 'weekly', 'monthly']).optional(),
-  minute: z.number().min(0).max(59).optional(),
   hour: z.number().min(0).max(23).nullable().optional(),
   dayOfWeek: z.number().min(0).max(6).nullable().optional(),
   dayOfMonth: z.number().min(1).max(31).nullable().optional(),
@@ -1257,7 +1255,6 @@ export const appRouter = router({
           id: s.id,
           webhookId: s.webhookId,
           scheduleType: s.scheduleType,
-          minute: s.minute,
           hour: s.hour,
           dayOfWeek: s.dayOfWeek,
           dayOfMonth: s.dayOfMonth,
@@ -1283,7 +1280,6 @@ export const appRouter = router({
       const {
         webhookId,
         scheduleType,
-        minute,
         hour,
         dayOfWeek,
         dayOfMonth,
@@ -1314,7 +1310,6 @@ export const appRouter = router({
       // 次回実行時刻を計算
       const config: ScheduleConfig = {
         scheduleType,
-        minute,
         hour,
         dayOfWeek,
         dayOfMonth,
@@ -1347,7 +1342,6 @@ export const appRouter = router({
           userId,
           webhookId,
           scheduleType,
-          minute: minute ?? 0,
           hour: hour ?? null,
           dayOfWeek: dayOfWeek ?? null,
           dayOfMonth: dayOfMonth ?? null,
@@ -1377,7 +1371,6 @@ export const appRouter = router({
       const {
         id,
         scheduleType,
-        minute,
         hour,
         dayOfWeek,
         dayOfMonth,
@@ -1413,7 +1406,6 @@ export const appRouter = router({
       const updates: Record<string, unknown> = { updatedAt };
 
       if (scheduleType !== undefined) updates.scheduleType = scheduleType;
-      if (minute !== undefined) updates.minute = minute;
       if (hour !== undefined) updates.hour = hour;
       if (dayOfWeek !== undefined) updates.dayOfWeek = dayOfWeek;
       if (dayOfMonth !== undefined) updates.dayOfMonth = dayOfMonth;
@@ -1441,14 +1433,12 @@ export const appRouter = router({
 
       // スケジュール設定が変更された場合、次回実行時刻を再計算
       const newScheduleType = (scheduleType ?? existing.scheduleType) as ScheduleConfig['scheduleType'];
-      const newMinute = minute !== undefined ? (minute ?? 0) : existing.minute;
       const newHour = hour !== undefined ? hour : existing.hour;
       const newDayOfWeek = dayOfWeek !== undefined ? dayOfWeek : existing.dayOfWeek;
       const newDayOfMonth = dayOfMonth !== undefined ? dayOfMonth : existing.dayOfMonth;
 
       const config: ScheduleConfig = {
         scheduleType: newScheduleType,
-        minute: newMinute ?? undefined,
         hour: newHour ?? undefined,
         dayOfWeek: newDayOfWeek ?? undefined,
         dayOfMonth: newDayOfMonth ?? undefined,

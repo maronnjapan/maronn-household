@@ -516,63 +516,96 @@
   background: #f0f7ff;
 }
 
-/* Body Field Selector */
-.webhook-body-selector {
+/* Body Template Editor */
+.webhook-body-editor {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
 }
 
-.webhook-body-checkboxes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 0.375rem;
-}
-
-.webhook-body-checkbox {
+.webhook-body-presets {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  cursor: pointer;
-  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.webhook-body-presets-label {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.webhook-body-preset-button {
+  background: white;
+  border: 1px solid #ced4da;
   color: #2c3e50;
-  padding: 0.25rem 0.375rem;
+  padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  transition: background 0.15s;
-}
-
-.webhook-body-checkbox:hover {
-  background: #ecf0f1;
-}
-
-.webhook-body-checkbox input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #3498db;
   cursor: pointer;
-  margin: 0;
+  font-size: 0.8rem;
+  transition: all 0.15s;
 }
 
-.webhook-body-preview {
-  margin-top: 0.375rem;
+.webhook-body-preset-button:hover {
+  border-color: #3498db;
+  background: #f0f7ff;
+  color: #3498db;
 }
 
-.webhook-body-preview-label {
+.webhook-body-textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 5rem;
+  box-sizing: border-box;
+}
+
+.webhook-body-textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.webhook-body-variables {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.webhook-body-variables-label {
   font-size: 0.8rem;
   color: #7f8c8d;
   font-weight: 600;
 }
 
-.webhook-body-preview-code {
-  background: #2c3e50;
-  color: #ecf0f1;
-  padding: 0.5rem 0.75rem;
+.webhook-body-variable-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.webhook-body-variable-tag {
+  background: #ecf0f1;
+  border: 1px solid #dee2e6;
+  color: #2c3e50;
+  padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
+  cursor: pointer;
   font-size: 0.75rem;
-  overflow-x: auto;
-  margin-top: 0.25rem;
-  white-space: pre-wrap;
-  word-break: break-all;
+  transition: all 0.15s;
+}
+
+.webhook-body-variable-tag:hover {
+  background: #d1ecf1;
+  border-color: #3498db;
+  color: #0c5460;
 }
 
 /* Schedule Config */

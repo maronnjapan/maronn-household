@@ -1,35 +1,79 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { trpc } from '../trpc/client';
 
 const MAX_WEBHOOKS = 5;
 
 /**
- * イベントWebhookで選択可能なボディフィールド
+ * 都度通知で使用可能な変数
  */
-const EVENT_BODY_FIELDS = [
-  { key: 'event', label: 'イベント種別', template: '"event":"{{event}}"' },
-  { key: 'expense.amount', label: '金額', template: '"amount":{{expense.amount}}' },
-  { key: 'expense.category', label: 'カテゴリ', template: '"category":"{{expense.category}}"' },
-  { key: 'expense.memo', label: 'メモ', template: '"memo":"{{expense.memo}}"' },
-  { key: 'expense.date', label: '日付', template: '"date":"{{expense.date}}"' },
-  { key: 'expense.id', label: '支出ID', template: '"expenseId":"{{expense.id}}"' },
-  { key: 'userId', label: 'ユーザーID', template: '"userId":"{{userId}}"' },
-  { key: 'expense.createdAt', label: '作成日時', template: '"createdAt":"{{expense.createdAt}}"' },
-  { key: 'expense.updatedAt', label: '更新日時', template: '"updatedAt":"{{expense.updatedAt}}"' },
+const EVENT_VARIABLES = [
+  { key: 'event', label: 'イベント種別' },
+  { key: 'expense.amount', label: '金額' },
+  { key: 'expense.category', label: 'カテゴリ' },
+  { key: 'expense.memo', label: 'メモ' },
+  { key: 'expense.date', label: '日付' },
+  { key: 'expense.id', label: '支出ID' },
+  { key: 'userId', label: 'ユーザーID' },
+  { key: 'expense.createdAt', label: '作成日時' },
+  { key: 'expense.updatedAt', label: '更新日時' },
 ] as const;
 
 /**
- * バッチWebhookで選択可能なボディフィールド
+ * バッチ通知で使用可能な変数
  */
-const BATCH_BODY_FIELDS = [
-  { key: 'totalSpent', label: '支出合計', template: '"totalSpent":{{totalSpent}}' },
-  { key: 'budget', label: '予算', template: '"budget":{{budget}}' },
-  { key: 'remaining', label: '残額', template: '"remaining":{{remaining}}' },
-  { key: 'expenseCount', label: '支出件数', template: '"expenseCount":{{expenseCount}}' },
-  { key: 'month', label: '対象月', template: '"month":"{{month}}"' },
-  { key: 'periodStart', label: '集計開始日', template: '"periodStart":"{{periodStart}}"' },
-  { key: 'periodEnd', label: '集計終了日', template: '"periodEnd":"{{periodEnd}}"' },
-  { key: 'scheduleType', label: 'スケジュール種別', template: '"scheduleType":"{{scheduleType}}"' },
+const BATCH_VARIABLES = [
+  { key: 'totalSpent', label: '支出合計' },
+  { key: 'budget', label: '予算' },
+  { key: 'remaining', label: '残額' },
+  { key: 'expenseCount', label: '支出件数' },
+  { key: 'month', label: '対象月' },
+  { key: 'periodStart', label: '集計開始日' },
+  { key: 'periodEnd', label: '集計終了日' },
+  { key: 'scheduleType', label: 'スケジュール種別' },
+] as const;
+
+/**
+ * 都度通知のプリセットテンプレート
+ */
+const EVENT_PRESETS = [
+  {
+    name: 'Slack',
+    template: `{"text":"支出: ¥{{expense.amount}} ({{expense.category}})\\nメモ: {{expense.memo}}\\n日付: {{expense.date}}"}`,
+  },
+  {
+    name: 'Discord',
+    template: `{"content":"💰 支出記録\\n金額: ¥{{expense.amount}}\\nカテゴリ: {{expense.category}}\\nメモ: {{expense.memo}}\\n日付: {{expense.date}}"}`,
+  },
+  {
+    name: 'LINE Notify',
+    template: `{"message":"\\n支出: ¥{{expense.amount}}\\nカテゴリ: {{expense.category}}\\nメモ: {{expense.memo}}\\n日付: {{expense.date}}"}`,
+  },
+  {
+    name: 'JSON（全項目）',
+    template: `{"event":"{{event}}","userId":"{{userId}}","amount":{{expense.amount}},"category":"{{expense.category}}","memo":"{{expense.memo}}","date":"{{expense.date}}","expenseId":"{{expense.id}}"}`,
+  },
+] as const;
+
+/**
+ * バッチ通知のプリセットテンプレート
+ */
+const BATCH_PRESETS = [
+  {
+    name: 'Slack',
+    template: `{"text":"📊 {{month}} 支出サマリー\\n支出合計: ¥{{totalSpent}}\\n予算: ¥{{budget}}\\n残額: ¥{{remaining}}\\n件数: {{expenseCount}}件"}`,
+  },
+  {
+    name: 'Discord',
+    template: `{"content":"📊 {{month}} 支出サマリー\\n支出合計: ¥{{totalSpent}}\\n予算: ¥{{budget}}\\n残額: ¥{{remaining}}\\n件数: {{expenseCount}}件"}`,
+  },
+  {
+    name: 'LINE Notify',
+    template: `{"message":"\\n📊 {{month}} 支出サマリー\\n支出合計: ¥{{totalSpent}}\\n予算: ¥{{budget}}\\n残額: ¥{{remaining}}\\n件数: {{expenseCount}}件"}`,
+  },
+  {
+    name: 'JSON（全項目）',
+    template: `{"totalSpent":{{totalSpent}},"budget":{{budget}},"remaining":{{remaining}},"expenseCount":{{expenseCount}},"month":"{{month}}","periodStart":"{{periodStart}}","periodEnd":"{{periodEnd}}","scheduleType":"{{scheduleType}}"}`,
+  },
 ] as const;
 
 const SCHEDULE_TYPE_LABELS: Record<string, string> = {
@@ -42,18 +86,6 @@ const SCHEDULE_TYPE_LABELS: Record<string, string> = {
 const DAY_OF_WEEK_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 type NotificationType = 'event' | 'batch';
-
-/**
- * 選択されたフィールドからボディテンプレートを生成
- */
-function buildBodyTemplate(
-  selectedKeys: Set<string>,
-  fields: readonly { key: string; template: string }[]
-): string | undefined {
-  const selected = fields.filter((f) => selectedKeys.has(f.key));
-  if (selected.length === 0) return undefined;
-  return `{${selected.map((f) => f.template).join(',')}}`;
-}
 
 /**
  * カスタムヘッダーのキーバリューペアエディター
@@ -117,48 +149,88 @@ function CustomHeadersEditor(props: {
 }
 
 /**
- * ボディフィールド選択（チェックボックス）
+ * ボディテンプレートエディター（自由記述 + プリセット + 変数挿入）
  */
-function BodyFieldSelector(props: {
-  fields: readonly { key: string; label: string; template: string }[];
-  selected: Set<string>;
-  onChange: (selected: Set<string>) => void;
-  bodyPreview: string | undefined;
+function BodyTemplateEditor(props: {
+  value: string;
+  onChange: (value: string) => void;
+  variables: readonly { key: string; label: string }[];
+  presets: readonly { name: string; template: string }[];
 }) {
-  function handleToggle(key: string) {
-    const next = new Set(props.selected);
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function handleInsertVariable(key: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      props.onChange(props.value + `{{${key}}}`);
+      return;
     }
-    props.onChange(next);
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const insert = `{{${key}}}`;
+    const newValue =
+      props.value.substring(0, start) + insert + props.value.substring(end);
+    props.onChange(newValue);
+    // カーソルを挿入位置の直後に移動（次のレンダリング後）
+    const newPos = start + insert.length;
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newPos, newPos);
+    });
+  }
+
+  function handlePreset(template: string) {
+    props.onChange(template);
   }
 
   return (
-    <div className="webhook-body-selector">
-      <label className="webhook-field-label">送信するデータ項目</label>
+    <div className="webhook-body-editor">
+      <label className="webhook-field-label">リクエストボディ（任意）</label>
       <p className="webhook-field-hint">
-        チェックした項目がリクエストボディに含まれます。未選択の場合はデフォルト形式で送信されます。
+        送信先サービスが期待するJSON形式で記述してください。
+        {'{{変数名}}'} で動的な値を埋め込めます。空欄の場合はデフォルト形式で送信されます。
       </p>
-      <div className="webhook-body-checkboxes">
-        {props.fields.map((field) => (
-          <label key={field.key} className="webhook-body-checkbox">
-            <input
-              type="checkbox"
-              checked={props.selected.has(field.key)}
-              onChange={() => handleToggle(field.key)}
-            />
-            <span>{field.label}</span>
-          </label>
+
+      <div className="webhook-body-presets">
+        <span className="webhook-body-presets-label">プリセット:</span>
+        {props.presets.map((preset) => (
+          <button
+            key={preset.name}
+            type="button"
+            onClick={() => handlePreset(preset.template)}
+            className="webhook-body-preset-button"
+          >
+            {preset.name}
+          </button>
         ))}
       </div>
-      {props.bodyPreview && (
-        <div className="webhook-body-preview">
-          <span className="webhook-body-preview-label">ボディプレビュー:</span>
-          <pre className="webhook-body-preview-code">{props.bodyPreview}</pre>
+
+      <textarea
+        ref={textareaRef}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        className="webhook-body-textarea"
+        rows={5}
+        placeholder='例: {"text":"支出: ¥{{expense.amount}} ({{expense.category}})"}'
+        spellCheck={false}
+      />
+
+      <div className="webhook-body-variables">
+        <span className="webhook-body-variables-label">変数を挿入:</span>
+        <div className="webhook-body-variable-tags">
+          {props.variables.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => handleInsertVariable(v.key)}
+              className="webhook-body-variable-tag"
+              title={v.label}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -277,12 +349,8 @@ export function WebhookSection() {
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
   const [notificationType, setNotificationType] = useState<NotificationType>('event');
-  const [eventBodyFields, setEventBodyFields] = useState<Set<string>>(
-    new Set(['event', 'expense.amount', 'expense.category', 'expense.date'])
-  );
-  const [batchBodyFields, setBatchBodyFields] = useState<Set<string>>(
-    new Set(['totalSpent', 'budget', 'remaining', 'month'])
-  );
+  const [eventBodyTemplate, setEventBodyTemplate] = useState('');
+  const [batchBodyTemplate, setBatchBodyTemplate] = useState('');
   const [customHeaders, setCustomHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [scheduleType, setScheduleType] = useState('weekly');
   const [hour, setHour] = useState(9);
@@ -291,9 +359,7 @@ export function WebhookSection() {
   const [errorMessage, setErrorMessage] = useState('');
 
   // --- バッチ追加フォーム ---
-  const [batchAddFields, setBatchAddFields] = useState<Set<string>>(
-    new Set(['totalSpent', 'budget', 'remaining', 'month'])
-  );
+  const [batchAddBodyTemplate, setBatchAddBodyTemplate] = useState('');
   const [batchAddHeaders, setBatchAddHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [batchAddScheduleType, setBatchAddScheduleType] = useState('weekly');
   const [batchAddHour, setBatchAddHour] = useState(9);
@@ -309,15 +375,14 @@ export function WebhookSection() {
     onSuccess: (result) => {
       if (notificationType === 'batch') {
         // バッチの場合、webhookを作成した後にスケジュールも作成
-        const headersObj = batchAddHeadersToObj(customHeaders);
-        const bodyTemplate = buildBodyTemplate(batchBodyFields, BATCH_BODY_FIELDS);
+        const headersObj = headersToObj(customHeaders);
         createScheduleMutation.mutate({
           webhookId: result.id,
           scheduleType: scheduleType as 'hourly' | 'daily' | 'weekly' | 'monthly',
           hour: scheduleType !== 'hourly' ? hour : undefined,
           dayOfWeek: scheduleType === 'weekly' ? dayOfWeek : undefined,
           dayOfMonth: scheduleType === 'monthly' ? dayOfMonth : undefined,
-          bodyTemplate: bodyTemplate || undefined,
+          bodyTemplate: batchBodyTemplate || undefined,
           customHeaders: Object.keys(headersObj).length > 0 ? headersObj : undefined,
         });
       }
@@ -357,7 +422,7 @@ export function WebhookSection() {
   const webhookCount = webhookData?.webhooks.length ?? 0;
   const canAddMore = webhookCount < MAX_WEBHOOKS;
 
-  function batchAddHeadersToObj(
+  function headersToObj(
     headers: Array<{ key: string; value: string }>
   ): Record<string, string> {
     const obj: Record<string, string> = {};
@@ -373,8 +438,8 @@ export function WebhookSection() {
     setUrl('');
     setSecret('');
     setNotificationType('event');
-    setEventBodyFields(new Set(['event', 'expense.amount', 'expense.category', 'expense.date']));
-    setBatchBodyFields(new Set(['totalSpent', 'budget', 'remaining', 'month']));
+    setEventBodyTemplate('');
+    setBatchBodyTemplate('');
     setCustomHeaders([]);
     setScheduleType('weekly');
     setHour(9);
@@ -385,7 +450,7 @@ export function WebhookSection() {
   }
 
   function resetBatchAddForm() {
-    setBatchAddFields(new Set(['totalSpent', 'budget', 'remaining', 'month']));
+    setBatchAddBodyTemplate('');
     setBatchAddHeaders([]);
     setBatchAddScheduleType('weekly');
     setBatchAddHour(9);
@@ -394,17 +459,16 @@ export function WebhookSection() {
   }
 
   function handleCreate() {
-    const headersObj = batchAddHeadersToObj(customHeaders);
-    const bodyTemplate =
-      notificationType === 'event'
-        ? buildBodyTemplate(eventBodyFields, EVENT_BODY_FIELDS)
-        : undefined; // batch body is set via schedule
+    const headersObj = headersToObj(customHeaders);
 
     createWebhookMutation.mutate({
       url,
       secret: secret || undefined,
       customHeaders: Object.keys(headersObj).length > 0 ? headersObj : undefined,
-      bodyTemplate: notificationType === 'event' ? bodyTemplate : undefined,
+      bodyTemplate:
+        notificationType === 'event' && eventBodyTemplate
+          ? eventBodyTemplate
+          : undefined,
     });
   }
 
@@ -415,15 +479,14 @@ export function WebhookSection() {
   }
 
   function handleCreateBatchSchedule(webhookId: string) {
-    const headersObj = batchAddHeadersToObj(batchAddHeaders);
-    const bodyTemplate = buildBodyTemplate(batchAddFields, BATCH_BODY_FIELDS);
+    const headersObj = headersToObj(batchAddHeaders);
     createScheduleMutation.mutate({
       webhookId,
       scheduleType: batchAddScheduleType as 'hourly' | 'daily' | 'weekly' | 'monthly',
       hour: batchAddScheduleType !== 'hourly' ? batchAddHour : undefined,
       dayOfWeek: batchAddScheduleType === 'weekly' ? batchAddDayOfWeek : undefined,
       dayOfMonth: batchAddScheduleType === 'monthly' ? batchAddDayOfMonth : undefined,
-      bodyTemplate: bodyTemplate || undefined,
+      bodyTemplate: batchAddBodyTemplate || undefined,
       customHeaders: Object.keys(headersObj).length > 0 ? headersObj : undefined,
     });
   }
@@ -453,10 +516,6 @@ export function WebhookSection() {
         return s.scheduleType;
     }
   }
-
-  const eventBodyPreview = buildBodyTemplate(eventBodyFields, EVENT_BODY_FIELDS);
-  const batchBodyPreview = buildBodyTemplate(batchBodyFields, BATCH_BODY_FIELDS);
-  const batchAddBodyPreview = buildBodyTemplate(batchAddFields, BATCH_BODY_FIELDS);
 
   return (
     <section className="settings-section">
@@ -511,9 +570,10 @@ export function WebhookSection() {
           </div>
 
           <div className="webhook-guide-section">
-            <h4>4. 送信データ</h4>
-            <p>チェックボックスで送信したいデータ項目を選択すると、選択した項目だけを含むJSONが自動生成されます。</p>
-            <p>未選択の場合は、全項目を含むデフォルト形式で送信されます。</p>
+            <h4>4. リクエストボディ</h4>
+            <p>送信先サービスが期待するJSON形式で自由に記述できます。プリセット（Slack、Discord、LINE Notify）を選択すると、テンプレートが自動入力されます。</p>
+            <p>{'{{変数名}}'} と記述すると、実際のデータで自動置換されます。変数名のボタンをクリックすると、カーソル位置に挿入されます。</p>
+            <p>空欄の場合は全項目を含むデフォルト形式で送信されます。</p>
           </div>
         </div>
       )}
@@ -602,17 +662,17 @@ export function WebhookSection() {
             onChange={setCustomHeaders}
           />
 
-          {/* 都度通知: ボディフィールド選択 */}
+          {/* 都度通知: ボディテンプレート */}
           {notificationType === 'event' && (
-            <BodyFieldSelector
-              fields={EVENT_BODY_FIELDS}
-              selected={eventBodyFields}
-              onChange={setEventBodyFields}
-              bodyPreview={eventBodyPreview}
+            <BodyTemplateEditor
+              value={eventBodyTemplate}
+              onChange={setEventBodyTemplate}
+              variables={EVENT_VARIABLES}
+              presets={EVENT_PRESETS}
             />
           )}
 
-          {/* バッチ通知: スケジュール + ボディフィールド */}
+          {/* バッチ通知: スケジュール + ボディテンプレート */}
           {notificationType === 'batch' && (
             <>
               <ScheduleConfigForm
@@ -625,11 +685,11 @@ export function WebhookSection() {
                 onDayOfWeekChange={setDayOfWeek}
                 onDayOfMonthChange={setDayOfMonth}
               />
-              <BodyFieldSelector
-                fields={BATCH_BODY_FIELDS}
-                selected={batchBodyFields}
-                onChange={setBatchBodyFields}
-                bodyPreview={batchBodyPreview}
+              <BodyTemplateEditor
+                value={batchBodyTemplate}
+                onChange={setBatchBodyTemplate}
+                variables={BATCH_VARIABLES}
+                presets={BATCH_PRESETS}
               />
             </>
           )}
@@ -759,11 +819,11 @@ export function WebhookSection() {
                       onDayOfWeekChange={setBatchAddDayOfWeek}
                       onDayOfMonthChange={setBatchAddDayOfMonth}
                     />
-                    <BodyFieldSelector
-                      fields={BATCH_BODY_FIELDS}
-                      selected={batchAddFields}
-                      onChange={setBatchAddFields}
-                      bodyPreview={batchAddBodyPreview}
+                    <BodyTemplateEditor
+                      value={batchAddBodyTemplate}
+                      onChange={setBatchAddBodyTemplate}
+                      variables={BATCH_VARIABLES}
+                      presets={BATCH_PRESETS}
                     />
                     <CustomHeadersEditor
                       headers={batchAddHeaders}

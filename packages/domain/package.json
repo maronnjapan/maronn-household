@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./budget": "./src/budget.ts",
     "./expense": "./src/expense.ts",
-    "./sync": "./src/sync.ts"
+    "./sync": "./src/sync.ts",
+    "./webhook": "./src/webhook.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

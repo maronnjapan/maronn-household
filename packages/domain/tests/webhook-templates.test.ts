@@ -232,4 +232,41 @@ describe('テンプレートプリセットの整合性', () => {
     const preset = WEBHOOK_TEMPLATE_PRESETS.spreadsheet;
     expect(preset.requiredHeaderKeys).toHaveLength(0);
   });
+
+  it('全テンプレートにheaderDescriptionsがある', () => {
+    for (const preset of Object.values(WEBHOOK_TEMPLATE_PRESETS)) {
+      expect(preset.headerDescriptions).toBeDefined();
+      expect(typeof preset.headerDescriptions).toBe('object');
+    }
+  });
+
+  it('全テンプレートのheaderDescriptionsはdefaultHeadersのキーを含む', () => {
+    for (const preset of Object.values(WEBHOOK_TEMPLATE_PRESETS)) {
+      const headerKeys = Object.keys(preset.defaultHeaders);
+      const descriptionKeys = Object.keys(preset.headerDescriptions);
+      for (const key of headerKeys) {
+        expect(descriptionKeys).toContain(key);
+      }
+    }
+  });
+
+  it('LINEテンプレートのheaderDescriptionsにContent-TypeとAuthorizationの説明がある', () => {
+    const preset = WEBHOOK_TEMPLATE_PRESETS.line;
+    expect(preset.headerDescriptions['Content-Type']).toBeDefined();
+    expect(preset.headerDescriptions['Authorization']).toBeDefined();
+    expect(preset.headerDescriptions['Content-Type'].length).toBeGreaterThan(0);
+    expect(preset.headerDescriptions['Authorization'].length).toBeGreaterThan(0);
+  });
+
+  it('SlackテンプレートのheaderDescriptionsにContent-Typeの説明がある', () => {
+    const preset = WEBHOOK_TEMPLATE_PRESETS.slack;
+    expect(preset.headerDescriptions['Content-Type']).toBeDefined();
+    expect(preset.headerDescriptions['Content-Type'].length).toBeGreaterThan(0);
+  });
+
+  it('SpreadsheetテンプレートのheaderDescriptionsにContent-Typeの説明がある', () => {
+    const preset = WEBHOOK_TEMPLATE_PRESETS.spreadsheet;
+    expect(preset.headerDescriptions['Content-Type']).toBeDefined();
+    expect(preset.headerDescriptions['Content-Type'].length).toBeGreaterThan(0);
+  });
 });

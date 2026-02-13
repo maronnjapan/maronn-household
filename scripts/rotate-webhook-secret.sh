@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Webhook シークレットキーのローテーションスクリプト
+# シークレットキーのローテーションスクリプト
 #
 # 実行するだけでローテーションが完了する:
 #   bash scripts/rotate-webhook-secret.sh
 #   bash scripts/rotate-webhook-secret.sh --env production
 #
 # 処理フロー:
-#   1. 新しいシークレットキーを生成
-#   2. ローテーションAPIを呼び出し（サーバーが現在のキーでDBを再暗号化）
-#   3. 新キーを WEBHOOK_SECRET_KEY として全Workerに設定
+#   1. 新しいシークレットキーを生成（WEBHOOK_SECRET_KEY + ADMIN_API_KEY）
+#   2. 現在の ADMIN_API_KEY でローテーションAPIを呼び出し（DB再暗号化）
+#   3. WEBHOOK_SECRET_KEY と ADMIN_API_KEY を全Workerで更新
 #
 # 現在のキーの値を知る必要はない（サーバーの env から取得される）。
 # 必要な入力は ADMIN_API_KEY のみ。
@@ -38,8 +38,8 @@ usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
-Webhook シークレットキーをローテーションします。
-ADMIN_API_KEY の入力だけで完了します。
+WEBHOOK_SECRET_KEY と ADMIN_API_KEY をローテーションします。
+現在の ADMIN_API_KEY の入力だけで完了します。
 
 OPTIONS:
     -e, --env <env>        環境 (dev or production)。デフォルト: dev
@@ -175,8 +175,10 @@ wrangler_secret_put() {
 
 # ステップ1: 新しいキーを生成
 log_step "Step 1: 新しいシークレットキーを生成"
-NEW_KEY=$(openssl rand -base64 32)
-log_success "新しいキーを生成しました (${#NEW_KEY} chars)"
+NEW_WEBHOOK_KEY=$(openssl rand -base64 32)
+NEW_ADMIN_KEY=$(openssl rand -base64 32)
+log_success "WEBHOOK_SECRET_KEY 用の新しいキーを生成しました"
+log_success "ADMIN_API_KEY 用の新しいキーを生成しました"
 
 # ステップ2: ローテーションAPIを呼び出し
 # サーバーが現在の env.WEBHOOK_SECRET_KEY を旧キーとして使い、
@@ -192,7 +194,7 @@ else
     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ROTATE_URL}" \
         -H "Authorization: Bearer ${ADMIN_KEY}" \
         -H "Content-Type: application/json" \
-        -d "{\"newKey\": \"${NEW_KEY}\"}")
+        -d "{\"newKey\": \"${NEW_WEBHOOK_KEY}\"}")
 
     HTTP_CODE=$(echo "${RESPONSE}" | tail -n1)
     BODY=$(echo "${RESPONSE}" | sed '$d')
@@ -203,30 +205,38 @@ else
     elif [[ "${HTTP_CODE}" == "207" ]]; then
         log_warning "一部エラーあり (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "エラーを確認してください。WEBHOOK_SECRET_KEY はまだ更新しません。"
+        log_error "エラーを確認してください。シークレットはまだ更新しません。"
         exit 1
     else
         log_error "再暗号化APIの呼び出しに失敗 (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "WEBHOOK_SECRET_KEY はまだ更新しません。"
+        log_error "シークレットはまだ更新しません。"
         exit 1
     fi
 fi
 
-# ステップ3: 新キーを WEBHOOK_SECRET_KEY に設定
+# ステップ3: 全Workerのシークレットを更新
 # DBの再暗号化が成功した後、Workerの環境変数を新キーに更新
-log_step "Step 3: 新しいキーを WEBHOOK_SECRET_KEY に設定"
+log_step "Step 3: 全Workerのシークレットを更新"
 
 log_info "household-app: WEBHOOK_SECRET_KEY を更新中..."
-wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
+wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_WEBHOOK_KEY}"
 log_success "household-app: WEBHOOK_SECRET_KEY 更新完了"
 
+log_info "household-app: ADMIN_API_KEY を更新中..."
+wrangler_secret_put "${APP_DIR}" "ADMIN_API_KEY" "${NEW_ADMIN_KEY}"
+log_success "household-app: ADMIN_API_KEY 更新完了"
+
 log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY を更新中..."
-wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
+wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_WEBHOOK_KEY}"
 log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY 更新完了"
 
 # 完了
 echo ""
 log_step "ローテーション完了"
 log_success "全ステップが正常に完了しました"
+echo ""
+log_warning "以下の新しい ADMIN_API_KEY を安全な場所に保管してください（次回ローテーション時に必要です）"
+echo ""
+echo "  ADMIN_API_KEY: ${NEW_ADMIN_KEY}"
 echo ""

@@ -7,11 +7,11 @@
 #
 # 処理フロー:
 #   1. 新しいシークレットキーを生成（WEBHOOK_SECRET_KEY + ADMIN_API_KEY）
-#   2. 現在の ADMIN_API_KEY でローテーションAPIを呼び出し（DB再暗号化）
-#   3. WEBHOOK_SECRET_KEY と ADMIN_API_KEY を全Workerで更新
+#   2. ADMIN_API_KEY を先に wrangler で更新
+#   3. 新しい ADMIN_API_KEY でローテーションAPIを呼び出し（DB再暗号化）
+#   4. WEBHOOK_SECRET_KEY を全Workerで更新
 #
-# 現在のキーの値を知る必要はない（サーバーの env から取得される）。
-# 必要な入力は ADMIN_API_KEY のみ。
+# 手動入力は一切不要。スクリプト実行者 = wrangler アクセス権のある管理者。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,11 +39,10 @@ usage() {
 Usage: $0 [OPTIONS]
 
 WEBHOOK_SECRET_KEY と ADMIN_API_KEY をローテーションします。
-現在の ADMIN_API_KEY の入力だけで完了します。
+手動入力は一切不要です。
 
 OPTIONS:
     -e, --env <env>        環境 (dev or production)。デフォルト: dev
-    --admin-key <key>      ADMIN_API_KEY を直接指定（省略時はプロンプトで入力）
     --app-url <url>        アプリのベースURL（省略時は環境から自動判定）
     --dry-run              実際の変更を行わず、手順だけ表示する
     -h, --help             このヘルプを表示
@@ -55,9 +54,6 @@ EXAMPLES:
     # 本番環境でローテーション
     $0 --env production
 
-    # ADMIN_API_KEY を直接指定
-    $0 --env production --admin-key "my-admin-key"
-
     # ドライラン（手順確認のみ）
     $0 --dry-run
 EOF
@@ -65,7 +61,6 @@ EOF
 
 # デフォルト値
 ENVIRONMENT="dev"
-ADMIN_KEY=""
 APP_URL=""
 DRY_RUN=false
 
@@ -74,10 +69,6 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -e|--env)
             ENVIRONMENT="$2"
-            shift 2
-            ;;
-        --admin-key)
-            ADMIN_KEY="$2"
             shift 2
             ;;
         --app-url)
@@ -148,17 +139,6 @@ if ! command -v wrangler &> /dev/null; then
     exit 1
 fi
 
-# ADMIN_API_KEY の取得
-if [[ -z "${ADMIN_KEY}" ]]; then
-    echo ""
-    read -sp "ADMIN_API_KEY を入力してください: " ADMIN_KEY
-    echo ""
-    if [[ -z "${ADMIN_KEY}" ]]; then
-        log_error "ADMIN_API_KEY が空です"
-        exit 1
-    fi
-fi
-
 # wrangler secret put のヘルパー
 wrangler_secret_put() {
     local worker_dir="$1"
@@ -180,10 +160,18 @@ NEW_ADMIN_KEY=$(openssl rand -base64 32)
 log_success "WEBHOOK_SECRET_KEY 用の新しいキーを生成しました"
 log_success "ADMIN_API_KEY 用の新しいキーを生成しました"
 
-# ステップ2: ローテーションAPIを呼び出し
+# ステップ2: ADMIN_API_KEY を先に更新
+# wrangler secret put で更新すると次のリクエストから新しい値が使われる
+log_step "Step 2: ADMIN_API_KEY を更新"
+
+log_info "household-app: ADMIN_API_KEY を更新中..."
+wrangler_secret_put "${APP_DIR}" "ADMIN_API_KEY" "${NEW_ADMIN_KEY}"
+log_success "household-app: ADMIN_API_KEY 更新完了"
+
+# ステップ3: 新しい ADMIN_API_KEY でローテーションAPIを呼び出し
 # サーバーが現在の env.WEBHOOK_SECRET_KEY を旧キーとして使い、
 # リクエストボディの newKey で全データを再暗号化する
-log_step "Step 2: DB内の暗号化データを再暗号化（ローテーションAPI）"
+log_step "Step 3: DB内の暗号化データを再暗号化（ローテーションAPI）"
 
 ROTATE_URL="${APP_URL}/api/admin/rotate-secret-key"
 log_info "POST ${ROTATE_URL}"
@@ -192,7 +180,7 @@ if [[ "${DRY_RUN}" == true ]]; then
     log_info "[DRY RUN] curl -X POST ${ROTATE_URL} -H 'Authorization: Bearer ***' -d '{\"newKey\": \"***\"}'"
 else
     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ROTATE_URL}" \
-        -H "Authorization: Bearer ${ADMIN_KEY}" \
+        -H "Authorization: Bearer ${NEW_ADMIN_KEY}" \
         -H "Content-Type: application/json" \
         -d "{\"newKey\": \"${NEW_WEBHOOK_KEY}\"}")
 
@@ -205,27 +193,22 @@ else
     elif [[ "${HTTP_CODE}" == "207" ]]; then
         log_warning "一部エラーあり (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "エラーを確認してください。シークレットはまだ更新しません。"
+        log_error "エラーを確認してください。WEBHOOK_SECRET_KEY はまだ更新しません。"
         exit 1
     else
         log_error "再暗号化APIの呼び出しに失敗 (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "シークレットはまだ更新しません。"
+        log_error "WEBHOOK_SECRET_KEY はまだ更新しません。"
         exit 1
     fi
 fi
 
-# ステップ3: 全Workerのシークレットを更新
-# DBの再暗号化が成功した後、Workerの環境変数を新キーに更新
-log_step "Step 3: 全Workerのシークレットを更新"
+# ステップ4: WEBHOOK_SECRET_KEY を全Workerで更新
+log_step "Step 4: WEBHOOK_SECRET_KEY を更新"
 
 log_info "household-app: WEBHOOK_SECRET_KEY を更新中..."
 wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_WEBHOOK_KEY}"
 log_success "household-app: WEBHOOK_SECRET_KEY 更新完了"
-
-log_info "household-app: ADMIN_API_KEY を更新中..."
-wrangler_secret_put "${APP_DIR}" "ADMIN_API_KEY" "${NEW_ADMIN_KEY}"
-log_success "household-app: ADMIN_API_KEY 更新完了"
 
 log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY を更新中..."
 wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_WEBHOOK_KEY}"
@@ -235,8 +218,4 @@ log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY 更新完了"
 echo ""
 log_step "ローテーション完了"
 log_success "全ステップが正常に完了しました"
-echo ""
-log_warning "以下の新しい ADMIN_API_KEY を安全な場所に保管してください（次回ローテーション時に必要です）"
-echo ""
-echo "  ADMIN_API_KEY: ${NEW_ADMIN_KEY}"
 echo ""

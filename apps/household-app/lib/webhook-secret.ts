@@ -1,5 +1,8 @@
 /**
  * Webhookシークレットの暗号化ユーティリティ
+ *
+ * AES-GCMで暗号化・復号を行う。
+ * キーローテーション対応: 現在のキーで復号失敗時に旧キーで再試行する。
  */
 
 const ENCRYPTION_ALGORITHM = 'AES-GCM';
@@ -71,4 +74,53 @@ export async function decryptWebhookSecret(
   );
 
   return new TextDecoder().decode(decrypted);
+}
+
+/**
+ * 現在のキーで復号を試み、失敗時に旧キーでフォールバックする
+ *
+ * キーローテーション中、一部のデータがまだ旧キーで暗号化されている場合に使用。
+ * 旧キーでの復号に成功した場合、usedOldKey: true を返す。
+ *
+ * @param encrypted 暗号化されたデータ（Base64）
+ * @param iv 初期化ベクトル（Base64）
+ * @param currentKey 現在の暗号化キー
+ * @param oldKey 旧暗号化キー（ローテーション前のキー）
+ * @returns 復号結果と使用したキーの情報
+ */
+export async function decryptWithKeyFallback(
+  encrypted: string,
+  iv: string,
+  currentKey: string,
+  oldKey?: string
+): Promise<{ decrypted: string; usedOldKey: boolean }> {
+  try {
+    const decrypted = await decryptWebhookSecret(encrypted, iv, currentKey);
+    return { decrypted, usedOldKey: false };
+  } catch {
+    if (!oldKey) {
+      throw new Error('復号に失敗しました。暗号化キーが正しくありません。');
+    }
+    const decrypted = await decryptWebhookSecret(encrypted, iv, oldKey);
+    return { decrypted, usedOldKey: true };
+  }
+}
+
+/**
+ * データを旧キーから現在のキーに再暗号化する
+ *
+ * @param encrypted 旧キーで暗号化されたデータ（Base64）
+ * @param iv 旧キーの初期化ベクトル（Base64）
+ * @param oldKey 旧暗号化キー
+ * @param newKey 新しい暗号化キー
+ * @returns 新キーで暗号化されたデータ
+ */
+export async function reEncrypt(
+  encrypted: string,
+  iv: string,
+  oldKey: string,
+  newKey: string
+): Promise<{ encrypted: string; iv: string }> {
+  const plaintext = await decryptWebhookSecret(encrypted, iv, oldKey);
+  return encryptWebhookSecret(plaintext, newKey);
 }

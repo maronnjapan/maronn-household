@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
 import {
   encryptWebhookSecret,
-  decryptWebhookSecret,
+  decryptWithKeyFallback,
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
 import { ulid } from 'ulidx';
@@ -28,7 +28,13 @@ import {
   buildDefaultEventPayload,
   buildEventPayloadFromTemplate,
   calculateNextExecution,
+  getWebhookTemplatePreset,
+  validateWebhookTemplateUrl,
+  applyHeaderValues,
+  applyBodyTemplateValues,
+  listWebhookTemplatePresets as listTemplatePresets,
   type ScheduleConfig,
+  type WebhookServiceType,
 } from '@maronn/domain';
 
 /**
@@ -39,10 +45,8 @@ interface Env {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   WEBHOOK_SECRET_KEY: string;
-  // AWS SES設定（将来の切り替え用に残す）
-  // AWS_ACCESS_KEY_ID?: string;
-  // AWS_SECRET_ACCESS_KEY?: string;
-  // AWS_REGION?: string;
+  /** キーローテーション時の旧キー。ローテーション完了後に削除する */
+  WEBHOOK_SECRET_KEY_OLD?: string;
 }
 
 /**
@@ -194,6 +198,19 @@ const deleteWebhookBatchScheduleInputSchema = z.object({
   id: z.string(),
 });
 
+const createWebhookFromTemplateInputSchema = z.object({
+  service: z.enum(['line', 'slack', 'spreadsheet']),
+  url: z.string().url(),
+  /** ヘッダーのプレースホルダー値（例: LINE_CHANNEL_ACCESS_TOKEN） */
+  headerValues: z.record(z.string()).optional(),
+  /** ボディテンプレートのプレースホルダー値（例: LINE_USER_ID） */
+  bodyTemplateValues: z.record(z.string()).optional(),
+  /** HMAC署名用シークレット */
+  secret: z.string().optional(),
+});
+
+const listWebhookTemplatePresetsInputSchema = z.object({}).optional();
+
 const createSubBudgetInputSchema = z.object({
   name: z.string().min(1),
   amount: z.number().min(0),
@@ -225,18 +242,6 @@ async function encryptCustomHeaders(
   secretKey: string
 ): Promise<{ encrypted: string; iv: string }> {
   return encryptWebhookSecret(JSON.stringify(headers), secretKey);
-}
-
-/**
- * 暗号化されたカスタムヘッダーを復号する
- */
-async function decryptCustomHeaders(
-  encrypted: string,
-  iv: string,
-  secretKey: string
-): Promise<Record<string, string>> {
-  const json = await decryptWebhookSecret(encrypted, iv, secretKey);
-  return JSON.parse(json) as Record<string, string>;
 }
 
 async function deliverExpenseWebhooks(params: {
@@ -285,30 +290,33 @@ async function deliverExpenseWebhooks(params: {
         'X-Household-Webhook-Id': target.id,
       });
 
-      // カスタムヘッダーを復号してマージ（カスタムがデフォルトを上書き）
+      // カスタムヘッダーを復号してマージ（キーフォールバック対応）
       if (target.customHeaders && target.customHeadersIv && env?.WEBHOOK_SECRET_KEY) {
-        const custom = await decryptCustomHeaders(
+        const { decrypted: headersJson } = await decryptWithKeyFallback(
           target.customHeaders,
           target.customHeadersIv,
-          env.WEBHOOK_SECRET_KEY
+          env.WEBHOOK_SECRET_KEY,
+          env.WEBHOOK_SECRET_KEY_OLD
         );
+        const custom = JSON.parse(headersJson) as Record<string, string>;
         for (const [key, value] of Object.entries(custom)) {
           headers.set(key, value);
         }
       }
 
-      // HMAC署名
+      // HMAC署名（キーフォールバック対応）
       if (target.secretEncrypted && target.secretIv) {
         if (!env?.WEBHOOK_SECRET_KEY) {
           console.error('[Webhook] Missing WEBHOOK_SECRET_KEY for signing');
           return;
         }
-        const secret = await decryptWebhookSecret(
+        const { decrypted: webhookSecret } = await decryptWithKeyFallback(
           target.secretEncrypted,
           target.secretIv,
-          env.WEBHOOK_SECRET_KEY
+          env.WEBHOOK_SECRET_KEY,
+          env.WEBHOOK_SECRET_KEY_OLD
         );
-        const signature = await createWebhookSignature(secret, payload);
+        const signature = await createWebhookSignature(webhookSecret, payload);
         headers.set('X-Household-Webhook-Signature', signature);
       }
 
@@ -735,16 +743,19 @@ export const appRouter = router({
       .all();
 
     const secretKey = opts.ctx.env?.WEBHOOK_SECRET_KEY;
+    const oldKey = opts.ctx.env?.WEBHOOK_SECRET_KEY_OLD;
 
     const webhookResults = await Promise.all(
       targets.map(async (target) => {
         let customHeaders: Record<string, string> | null = null;
         if (target.customHeaders && target.customHeadersIv && secretKey) {
-          customHeaders = await decryptCustomHeaders(
+          const { decrypted } = await decryptWithKeyFallback(
             target.customHeaders,
             target.customHeadersIv,
-            secretKey
+            secretKey,
+            oldKey
           );
+          customHeaders = JSON.parse(decrypted) as Record<string, string>;
         }
         return {
           id: target.id,
@@ -1240,16 +1251,19 @@ export const appRouter = router({
       .all();
 
     const secretKey = opts.ctx.env?.WEBHOOK_SECRET_KEY;
+    const oldSecretKey = opts.ctx.env?.WEBHOOK_SECRET_KEY_OLD;
 
     const scheduleResults = await Promise.all(
       schedules.map(async (s) => {
         let customHeaders: Record<string, string> | null = null;
         if (s.customHeaders && s.customHeadersIv && secretKey) {
-          customHeaders = await decryptCustomHeaders(
+          const { decrypted } = await decryptWithKeyFallback(
             s.customHeaders,
             s.customHeadersIv,
-            secretKey
+            secretKey,
+            oldSecretKey
           );
+          customHeaders = JSON.parse(decrypted) as Record<string, string>;
         }
         return {
           id: s.id,
@@ -1493,6 +1507,127 @@ export const appRouter = router({
         .run();
 
       return { success: true };
+    }),
+
+  // Webhookテンプレートプリセット一覧取得
+  listWebhookTemplatePresets: publicProcedure.query(() => {
+    return { presets: listTemplatePresets() };
+  }),
+
+  // テンプレートからWebhookを作成（認証必須）
+  createWebhookFromTemplate: protectedProcedure
+    .input(createWebhookFromTemplateInputSchema)
+    .mutation(async (opts) => {
+      const userId = opts.ctx.user.id;
+      const { service, url, headerValues, bodyTemplateValues, secret } = opts.input;
+      const createdAt = new Date().toISOString();
+
+      // テンプレートプリセットを取得
+      const preset = getWebhookTemplatePreset(service);
+      if (!preset) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `不明なサービス種別: ${service}`,
+        });
+      }
+
+      // URL バリデーション
+      const urlValidation = validateWebhookTemplateUrl(service as WebhookServiceType, url);
+      if (!urlValidation.valid) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: urlValidation.message ?? 'URLが不正です',
+        });
+      }
+
+      const database = opts.ctx.env?.DB
+        ? drizzle(opts.ctx.env.DB)
+        : opts.ctx.db;
+
+      // 上限チェック
+      const existingCount = await database
+        .select({ count: sql<number>`count(*)` })
+        .from(webhooks)
+        .where(eq(webhooks.userId, userId))
+        .get();
+
+      if ((existingCount?.count ?? 0) >= 5) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Webhookは最大5件まで登録できます。',
+        });
+      }
+
+      // ヘッダーを構築（プレースホルダーをユーザー値で置換）
+      const customHeaders = applyHeaderValues(preset, headerValues ?? {});
+
+      // ボディテンプレートを構築（ユーザー固有値を埋め込み）
+      const eventBodyTemplate = applyBodyTemplateValues(
+        preset.eventBodyTemplate,
+        bodyTemplateValues ?? {}
+      );
+
+      // シークレット暗号化
+      let secretEncrypted: string | null = null;
+      let secretIv: string | null = null;
+
+      if (secret) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+        const encrypted = await encryptWebhookSecret(
+          secret,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        secretEncrypted = encrypted.encrypted;
+        secretIv = encrypted.iv;
+      }
+
+      // カスタムヘッダー暗号化
+      let encryptedHeaders: string | null = null;
+      let headersIv: string | null = null;
+
+      if (Object.keys(customHeaders).length > 0) {
+        if (!opts.ctx.env?.WEBHOOK_SECRET_KEY) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Webhook secret key is not configured',
+          });
+        }
+        const encrypted = await encryptCustomHeaders(
+          customHeaders,
+          opts.ctx.env.WEBHOOK_SECRET_KEY
+        );
+        encryptedHeaders = encrypted.encrypted;
+        headersIv = encrypted.iv;
+      }
+
+      const id = ulid();
+      await database
+        .insert(webhooks)
+        .values({
+          id,
+          userId,
+          url,
+          secretEncrypted,
+          secretIv,
+          customHeaders: encryptedHeaders,
+          customHeadersIv: headersIv,
+          bodyTemplate: eventBodyTemplate,
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .run();
+
+      return {
+        id,
+        url,
+        service,
+        createdAt,
+      };
     }),
 
   // アカウントデータ削除（D1の家計データのみ、認証必須）

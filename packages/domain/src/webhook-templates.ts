@@ -26,6 +26,8 @@ export interface WebhookTemplatePreset {
   defaultHeaders: Record<string, string>;
   /** ユーザーが設定すべきヘッダーキーの一覧（トークン等） */
   requiredHeaderKeys: string[];
+  /** ユーザーが入力すべきヘッダーの説明（キー: ヘッダーキー、値: 説明文） */
+  headerDescriptions: Record<string, string>;
   /** イベントWebhook用デフォルトボディテンプレート */
   eventBodyTemplate: string;
   /** バッチWebhook用デフォルトボディテンプレート */
@@ -50,6 +52,11 @@ const lineTemplate: WebhookTemplatePreset = {
     Authorization: 'Bearer {{LINE_CHANNEL_ACCESS_TOKEN}}',
   },
   requiredHeaderKeys: ['Authorization'],
+  headerDescriptions: {
+    'Content-Type': 'リクエストのコンテンツタイプ（application/json固定）',
+    Authorization:
+      'LINEチャネルアクセストークン（LINE Developers Consoleから取得）',
+  },
   eventBodyTemplate: JSON.stringify(
     {
       to: '{{LINE_USER_ID}}',
@@ -95,6 +102,10 @@ const slackTemplate: WebhookTemplatePreset = {
     'Content-Type': 'application/json',
   },
   requiredHeaderKeys: [],
+  headerDescriptions: {
+    'Content-Type':
+      'リクエストのコンテンツタイプ（application/json固定）',
+  },
   eventBodyTemplate: JSON.stringify(
     {
       blocks: [
@@ -164,6 +175,10 @@ const spreadsheetTemplate: WebhookTemplatePreset = {
     'Content-Type': 'application/json',
   },
   requiredHeaderKeys: [],
+  headerDescriptions: {
+    'Content-Type':
+      'リクエストのコンテンツタイプ（application/json固定）',
+  },
   eventBodyTemplate: JSON.stringify(
     {
       type: 'expense',

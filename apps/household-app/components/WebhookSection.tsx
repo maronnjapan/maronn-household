@@ -1,5 +1,10 @@
 import { useState, useRef } from 'react';
 import { trpc } from '../trpc/client';
+import {
+  WEBHOOK_TEMPLATE_PRESETS,
+  type WebhookServiceType,
+  type WebhookTemplatePreset,
+} from '@maronn-household/domain/webhook-templates';
 
 const MAX_WEBHOOKS = 5;
 
@@ -144,6 +149,38 @@ function CustomHeadersEditor(props: {
       <button type="button" onClick={handleAdd} className="webhook-header-add">
         + ヘッダーを追加
       </button>
+    </div>
+  );
+}
+
+/**
+ * サービステンプレート選択ボタン
+ * テンプレートを選択すると、URL、ヘッダー、ボディテンプレートが一括設定される
+ */
+function ServiceTemplateSelector(props: {
+  notificationType: NotificationType;
+  onApplyTemplate: (template: WebhookTemplatePreset) => void;
+}) {
+  const templates = Object.values(WEBHOOK_TEMPLATE_PRESETS);
+
+  return (
+    <div className="webhook-service-template-selector">
+      <label className="webhook-field-label">サービステンプレート</label>
+      <p className="webhook-field-hint">
+        テンプレートを選択すると、URL例、ヘッダー、ボディテンプレートが自動設定されます。
+      </p>
+      <div className="webhook-service-template-buttons">
+        {templates.map((template) => (
+          <button
+            key={template.service}
+            type="button"
+            onClick={() => props.onApplyTemplate(template)}
+            className="webhook-service-template-button"
+          >
+            {template.displayName}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -497,6 +534,28 @@ export function WebhookSection() {
     }
   }
 
+  /**
+   * サービステンプレートを適用する
+   * URL例、ヘッダー、ボディテンプレートを一括設定
+   */
+  function applyServiceTemplate(template: WebhookTemplatePreset) {
+    // URL例を設定
+    setUrl(template.urlExample);
+
+    // ヘッダーを設定（Record<string, string> → Array<{key, value}>）
+    const headersArray = Object.entries(template.defaultHeaders).map(
+      ([key, value]) => ({ key, value })
+    );
+    setCustomHeaders(headersArray);
+
+    // ボディテンプレートを設定
+    if (notificationType === 'event') {
+      setEventBodyTemplate(template.eventBodyTemplate);
+    } else {
+      setBatchBodyTemplate(template.batchBodyTemplate);
+    }
+  }
+
   function formatSchedule(s: {
     scheduleType: string;
     hour: number | null;
@@ -631,6 +690,12 @@ export function WebhookSection() {
               </label>
             </div>
           </div>
+
+          {/* サービステンプレート選択 */}
+          <ServiceTemplateSelector
+            notificationType={notificationType}
+            onApplyTemplate={applyServiceTemplate}
+          />
 
           {/* URL + シークレット */}
           <label className="webhook-form-label">

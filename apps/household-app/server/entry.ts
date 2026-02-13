@@ -2,6 +2,7 @@ import { dbMiddleware } from "./db-middleware";
 import { trpcHandler } from "./trpc-handler";
 import { authHandler } from "./auth-handler";
 import { exportApiHandler } from "./export-api-handler";
+import { adminRotateSecretKeyHandler } from "./admin-rotate-secret-key-handler";
 import { apply, serve } from "@photonjs/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -38,6 +39,9 @@ function startApp() {
 
     // Export API endpoints (token-based authentication)
     exportApiHandler("/api/v1/export"),
+
+    // Admin: secret key rotation (admin-only, requires WEBHOOK_SECRET_KEY_OLD)
+    adminRotateSecretKeyHandler("/api/admin/rotate-secret-key"),
   ]);
 
   // グローバルエラーハンドラー

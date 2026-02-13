@@ -10,6 +10,8 @@
 interface Env {
 	DB: D1Database;
 	WEBHOOK_SECRET_KEY?: string;
+	/** キーローテーション時の旧キー */
+	WEBHOOK_SECRET_KEY_OLD?: string;
 }
 
 interface WebhookBatchScheduleRow {
@@ -221,6 +223,23 @@ async function decryptWebhookSecret(
 	return new TextDecoder().decode(decrypted);
 }
 
+/**
+ * 現在のキーで復号を試み、失敗時に旧キーでフォールバックする
+ */
+async function decryptWithKeyFallback(
+	encrypted: string,
+	iv: string,
+	currentKey: string,
+	oldKey?: string
+): Promise<string> {
+	try {
+		return await decryptWebhookSecret(encrypted, iv, currentKey);
+	} catch {
+		if (!oldKey) throw new Error('復号に失敗しました');
+		return decryptWebhookSecret(encrypted, iv, oldKey);
+	}
+}
+
 // --- メイン処理 ---
 
 async function processDueSchedules(db: D1Database, env: Env): Promise<number> {
@@ -369,34 +388,37 @@ async function processSchedule(
 		'X-Household-Webhook-Schedule-Id': schedule.id,
 	};
 
-	// Webhookのカスタムヘッダーを復号してマージ
+	// Webhookのカスタムヘッダーを復号してマージ（キーフォールバック対応）
 	if (schedule.webhook_custom_headers && schedule.webhook_custom_headers_iv && env.WEBHOOK_SECRET_KEY) {
-		const webhookHeadersJson = await decryptWebhookSecret(
+		const webhookHeadersJson = await decryptWithKeyFallback(
 			schedule.webhook_custom_headers,
 			schedule.webhook_custom_headers_iv,
-			env.WEBHOOK_SECRET_KEY
+			env.WEBHOOK_SECRET_KEY,
+			env.WEBHOOK_SECRET_KEY_OLD
 		);
 		const webhookHeaders = JSON.parse(webhookHeadersJson) as Record<string, string>;
 		Object.assign(headers, webhookHeaders);
 	}
 
-	// スケジュールのカスタムヘッダーを復号して上書き
+	// スケジュールのカスタムヘッダーを復号して上書き（キーフォールバック対応）
 	if (schedule.custom_headers && schedule.custom_headers_iv && env.WEBHOOK_SECRET_KEY) {
-		const scheduleHeadersJson = await decryptWebhookSecret(
+		const scheduleHeadersJson = await decryptWithKeyFallback(
 			schedule.custom_headers,
 			schedule.custom_headers_iv,
-			env.WEBHOOK_SECRET_KEY
+			env.WEBHOOK_SECRET_KEY,
+			env.WEBHOOK_SECRET_KEY_OLD
 		);
 		const scheduleHeaders = JSON.parse(scheduleHeadersJson) as Record<string, string>;
 		Object.assign(headers, scheduleHeaders);
 	}
 
-	// HMAC署名
+	// HMAC署名（キーフォールバック対応）
 	if (schedule.secret_encrypted && schedule.secret_iv && env.WEBHOOK_SECRET_KEY) {
-		const secret = await decryptWebhookSecret(
+		const secret = await decryptWithKeyFallback(
 			schedule.secret_encrypted,
 			schedule.secret_iv,
-			env.WEBHOOK_SECRET_KEY
+			env.WEBHOOK_SECRET_KEY,
+			env.WEBHOOK_SECRET_KEY_OLD
 		);
 		const signature = await createWebhookSignature(secret, payload);
 		headers['X-Household-Webhook-Signature'] = signature;

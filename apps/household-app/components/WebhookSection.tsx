@@ -4,7 +4,7 @@ import {
   WEBHOOK_TEMPLATE_PRESETS,
   type WebhookServiceType,
   type WebhookTemplatePreset,
-} from '@maronn-household/domain/webhook-templates';
+} from '@maronn/domain/webhook-templates';
 
 const MAX_WEBHOOKS = 5;
 

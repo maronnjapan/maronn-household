@@ -2,15 +2,16 @@
  * 管理者専用: Webhookシークレットキーのローテーションハンドラー
  *
  * Cloudflareダッシュボードにアクセスできる管理者のみが実行可能。
- * 認証方式: WEBHOOK_SECRET_KEY_OLD の値を Authorization ヘッダーで送信
+ * 認証方式: ADMIN_API_KEY の値を Authorization ヘッダーで送信
  *
  * 手順:
- * 1. Cloudflareダッシュボードで WEBHOOK_SECRET_KEY に新しいキーを設定
- * 2. 旧キーを WEBHOOK_SECRET_KEY_OLD に設定
- * 3. curl でこのエンドポイントを実行:
+ * 1. Cloudflareダッシュボードで ADMIN_API_KEY を設定（未設定の場合）
+ * 2. WEBHOOK_SECRET_KEY に新しいキーを設定
+ * 3. 旧キーを WEBHOOK_SECRET_KEY_OLD に設定
+ * 4. curl でこのエンドポイントを実行:
  *    curl -X POST https://your-domain.com/api/admin/rotate-secret-key \
- *      -H "Authorization: Bearer <WEBHOOK_SECRET_KEY_OLDの値>"
- * 4. 完了後、WEBHOOK_SECRET_KEY_OLD を削除
+ *      -H "Authorization: Bearer <ADMIN_API_KEYの値>"
+ * 5. 完了後、WEBHOOK_SECRET_KEY_OLD を削除
  *
  * 全ユーザーの暗号化データ（webhooks, webhookBatchSchedules）を
  * 旧キーから新キーに一括再暗号化する。
@@ -34,6 +35,7 @@ import {
 
 interface Env {
   DB: D1Database;
+  ADMIN_API_KEY?: string;
   WEBHOOK_SECRET_KEY?: string;
   WEBHOOK_SECRET_KEY_OLD?: string;
 }
@@ -83,19 +85,27 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
         );
       }
 
-      // 認証: Authorization ヘッダーが WEBHOOK_SECRET_KEY_OLD と一致するか確認
-      // ダッシュボードの環境変数を知っている管理者のみ実行可能
+      // 認証: ADMIN_API_KEY で管理者を確認
+      // WEBHOOK_SECRET_KEY_OLD とは独立した認証キー
+      const adminKey = env.ADMIN_API_KEY;
+      if (!adminKey) {
+        return jsonResponse(
+          { error: 'ADMIN_API_KEY が設定されていません。Cloudflareダッシュボードで設定してください。' },
+          500
+        );
+      }
+
       const authHeader = request.headers.get('Authorization');
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return jsonResponse(
-          { error: 'Authorization ヘッダーが必要です。Bearer <WEBHOOK_SECRET_KEY_OLD> を指定してください。' },
+          { error: 'Authorization ヘッダーが必要です。Bearer <ADMIN_API_KEY> を指定してください。' },
           401
         );
       }
 
       const providedKey = authHeader.slice('Bearer '.length);
-      if (providedKey !== oldKey) {
-        return jsonResponse({ error: '認証失敗。正しい旧キーを指定してください。' }, 403);
+      if (providedKey !== adminKey) {
+        return jsonResponse({ error: '認証失敗' }, 403);
       }
 
       // 新旧キーが同じ場合はエラー

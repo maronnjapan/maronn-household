@@ -4,14 +4,20 @@
  * Cloudflareダッシュボードにアクセスできる管理者のみが実行可能。
  * 認証方式: ADMIN_API_KEY の値を Authorization ヘッダーで送信
  *
+ * リクエストボディに新しいキーを渡すと、サーバー側で現在の
+ * WEBHOOK_SECRET_KEY を旧キーとして使い、全データを再暗号化する。
+ * 呼び出し側は現在のキーの値を知る必要がない。
+ *
  * 手順:
- * 1. Cloudflareダッシュボードで ADMIN_API_KEY を設定（未設定の場合）
- * 2. WEBHOOK_SECRET_KEY に新しいキーを設定
- * 3. 旧キーを WEBHOOK_SECRET_KEY_OLD に設定
- * 4. curl でこのエンドポイントを実行:
+ * 1. ローテーションスクリプトを実行:
+ *    bash scripts/rotate-webhook-secret.sh --env production
+ *
+ *    または手動で:
  *    curl -X POST https://your-domain.com/api/admin/rotate-secret-key \
- *      -H "Authorization: Bearer <ADMIN_API_KEYの値>"
- * 5. 完了後、WEBHOOK_SECRET_KEY_OLD を削除
+ *      -H "Authorization: Bearer <ADMIN_API_KEYの値>" \
+ *      -H "Content-Type: application/json" \
+ *      -d '{"newKey": "<新しいキー>"}'
+ * 2. 成功後、wrangler secret put で WEBHOOK_SECRET_KEY を新キーに更新
  *
  * 全ユーザーの暗号化データ（webhooks, webhookBatchSchedules）を
  * 旧キーから新キーに一括再暗号化する。
@@ -37,7 +43,6 @@ interface Env {
   DB: D1Database;
   ADMIN_API_KEY?: string;
   WEBHOOK_SECRET_KEY?: string;
-  WEBHOOK_SECRET_KEY_OLD?: string;
 }
 
 const jsonResponse = (data: unknown, status: number) =>
@@ -65,28 +70,7 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
         return jsonResponse({ error: 'Method not allowed' }, 405);
       }
 
-      const newKey = env.WEBHOOK_SECRET_KEY;
-      const oldKey = env.WEBHOOK_SECRET_KEY_OLD;
-
-      if (!newKey) {
-        return jsonResponse(
-          { error: 'WEBHOOK_SECRET_KEY が設定されていません' },
-          500
-        );
-      }
-
-      if (!oldKey) {
-        return jsonResponse(
-          {
-            error:
-              'WEBHOOK_SECRET_KEY_OLD が設定されていません。Cloudflareダッシュボードで旧キーを WEBHOOK_SECRET_KEY_OLD に設定してください。',
-          },
-          400
-        );
-      }
-
       // 認証: ADMIN_API_KEY で管理者を確認
-      // WEBHOOK_SECRET_KEY_OLD とは独立した認証キー
       const adminKey = env.ADMIN_API_KEY;
       if (!adminKey) {
         return jsonResponse(
@@ -108,10 +92,38 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
         return jsonResponse({ error: '認証失敗' }, 403);
       }
 
+      // 現在のキー（env）を旧キーとして使用
+      const oldKey = env.WEBHOOK_SECRET_KEY;
+      if (!oldKey) {
+        return jsonResponse(
+          { error: 'WEBHOOK_SECRET_KEY が設定されていません' },
+          500
+        );
+      }
+
+      // リクエストボディから新キーを取得
+      let body: { newKey?: string };
+      try {
+        body = await request.json() as { newKey?: string };
+      } catch {
+        return jsonResponse(
+          { error: 'リクエストボディが不正です。JSON形式で { "newKey": "..." } を送信してください。' },
+          400
+        );
+      }
+
+      const newKey = body.newKey;
+      if (!newKey || typeof newKey !== 'string' || newKey.length < 16) {
+        return jsonResponse(
+          { error: 'newKey が不正です。16文字以上の文字列を指定してください。' },
+          400
+        );
+      }
+
       // 新旧キーが同じ場合はエラー
       if (newKey === oldKey) {
         return jsonResponse(
-          { error: 'WEBHOOK_SECRET_KEY と WEBHOOK_SECRET_KEY_OLD が同じです。新しいキーを設定してください。' },
+          { error: '新しいキーが現在のキーと同じです。異なるキーを指定してください。' },
           400
         );
       }
@@ -119,6 +131,8 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
       const database = drizzle(env.DB);
 
       // 1. webhooks テーブルの全暗号化データを再暗号化
+      // oldKey（現在のenv値）で暗号化されたデータを newKey（ボディから取得）で再暗号化
+      // 既に newKey で暗号化済みのデータ（リトライ時）はスキップ
       const allWebhooks = await database.select().from(webhooks).all();
       let rotatedWebhookCount = 0;
       const errors: string[] = [];
@@ -130,13 +144,15 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
         // シークレットの再暗号化
         if (webhook.secretEncrypted && webhook.secretIv) {
           try {
+            // oldKey（現在のenv値）で復号を試み、失敗したら newKey で試す
             const result = await decryptWithKeyFallback(
               webhook.secretEncrypted,
               webhook.secretIv,
-              newKey,
-              oldKey
+              oldKey,
+              newKey
             );
-            if (result.usedOldKey) {
+            // oldKey で復号できた → 再暗号化が必要
+            if (!result.usedOldKey) {
               const reEncrypted = await reEncrypt(
                 webhook.secretEncrypted,
                 webhook.secretIv,
@@ -147,6 +163,7 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
               updates.secretIv = reEncrypted.iv;
               needsUpdate = true;
             }
+            // usedOldKey === true → newKey で復号できた → 既に再暗号化済み
           } catch (e) {
             errors.push(`webhook ${webhook.id} secret: ${String(e)}`);
           }
@@ -158,10 +175,10 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
             const result = await decryptWithKeyFallback(
               webhook.customHeaders,
               webhook.customHeadersIv,
-              newKey,
-              oldKey
+              oldKey,
+              newKey
             );
-            if (result.usedOldKey) {
+            if (!result.usedOldKey) {
               const reEncrypted = await reEncrypt(
                 webhook.customHeaders,
                 webhook.customHeadersIv,
@@ -201,10 +218,10 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
             const result = await decryptWithKeyFallback(
               schedule.customHeaders,
               schedule.customHeadersIv,
-              newKey,
-              oldKey
+              oldKey,
+              newKey
             );
-            if (result.usedOldKey) {
+            if (!result.usedOldKey) {
               const reEncrypted = await reEncrypt(
                 schedule.customHeaders,
                 schedule.customHeadersIv,
@@ -238,7 +255,7 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
           errors: errors.length > 0 ? errors : undefined,
           message:
             errors.length === 0
-              ? `ローテーション完了。Webhook: ${rotatedWebhookCount}件、スケジュール: ${rotatedScheduleCount}件を再暗号化しました。Cloudflareダッシュボードから WEBHOOK_SECRET_KEY_OLD を削除してください。`
+              ? `ローテーション完了。Webhook: ${rotatedWebhookCount}件、スケジュール: ${rotatedScheduleCount}件を再暗号化しました。wrangler secret put で WEBHOOK_SECRET_KEY を新キーに更新してください。`
               : `一部エラーあり。成功: Webhook ${rotatedWebhookCount}件、スケジュール ${rotatedScheduleCount}件。エラー: ${errors.length}件。`,
         },
         errors.length === 0 ? 200 : 207

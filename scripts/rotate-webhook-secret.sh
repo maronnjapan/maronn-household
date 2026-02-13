@@ -7,11 +7,11 @@
 #
 # 処理フロー:
 #   1. 新しいシークレットキーを生成
-#   2. 現在の WEBHOOK_SECRET_KEY を WEBHOOK_SECRET_KEY_OLD に退避
-#   3. 新キーを WEBHOOK_SECRET_KEY として設定（household-app + webhook-batch-cron）
-#   4. Workers をデプロイして新シークレットを反映
-#   5. /api/admin/rotate-secret-key を呼び出してDB内の暗号化データを再暗号化
-#   6. WEBHOOK_SECRET_KEY_OLD を削除
+#   2. ローテーションAPIを呼び出し（サーバーが現在のキーでDBを再暗号化）
+#   3. 新キーを WEBHOOK_SECRET_KEY として全Workerに設定
+#
+# 現在のキーの値を知る必要はない（サーバーの env から取得される）。
+# 必要な入力は ADMIN_API_KEY のみ。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +39,7 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Webhook シークレットキーをローテーションします。
+ADMIN_API_KEY の入力だけで完了します。
 
 OPTIONS:
     -e, --env <env>        環境 (dev or production)。デフォルト: dev
@@ -158,7 +159,7 @@ if [[ -z "${ADMIN_KEY}" ]]; then
     fi
 fi
 
-# wrangler secret put のヘルパー（環境対応）
+# wrangler secret put のヘルパー
 wrangler_secret_put() {
     local worker_dir="$1"
     local secret_name="$2"
@@ -172,113 +173,26 @@ wrangler_secret_put() {
     echo "${secret_value}" | wrangler secret put "${secret_name}" --config "${worker_dir}/wrangler.jsonc"
 }
 
-# wrangler secret delete のヘルパー（環境対応）
-wrangler_secret_delete() {
-    local worker_dir="$1"
-    local secret_name="$2"
-
-    if [[ "${DRY_RUN}" == true ]]; then
-        log_info "[DRY RUN] wrangler secret delete ${secret_name} (in $(basename "${worker_dir}"))"
-        return 0
-    fi
-
-    # --force で確認プロンプトをスキップ
-    wrangler secret delete "${secret_name}" --config "${worker_dir}/wrangler.jsonc" --force 2>/dev/null || true
-}
-
 # ステップ1: 新しいキーを生成
 log_step "Step 1: 新しいシークレットキーを生成"
 NEW_KEY=$(openssl rand -base64 32)
 log_success "新しいキーを生成しました (${#NEW_KEY} chars)"
 
-# ステップ2: 現在のキーを取得（wrangler secret list で存在確認）
-log_step "Step 2: 現在のキーの存在を確認"
-
-CURRENT_SECRETS=$(wrangler secret list --config "${APP_DIR}/wrangler.jsonc" 2>/dev/null || echo "")
-if echo "${CURRENT_SECRETS}" | grep -q "WEBHOOK_SECRET_KEY"; then
-    log_success "WEBHOOK_SECRET_KEY が設定済みです"
-    HAS_CURRENT_KEY=true
-else
-    log_warning "WEBHOOK_SECRET_KEY が未設定です。初回設定として新キーのみ設定します。"
-    HAS_CURRENT_KEY=false
-fi
-
-# ステップ3: 現在のキーを OLD に退避 + 新キーを設定
-if [[ "${HAS_CURRENT_KEY}" == true ]]; then
-    log_step "Step 3: 現在のキーを WEBHOOK_SECRET_KEY_OLD に退避"
-    log_info "現在のキーの値を入力してください（wrangler secret list では値を取得できないため）"
-    read -sp "現在の WEBHOOK_SECRET_KEY の値: " CURRENT_KEY
-    echo ""
-
-    if [[ -z "${CURRENT_KEY}" ]]; then
-        log_error "現在のキーが空です"
-        exit 1
-    fi
-
-    # household-app に OLD キーを設定
-    log_info "household-app: WEBHOOK_SECRET_KEY_OLD を設定中..."
-    wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY_OLD" "${CURRENT_KEY}"
-    log_success "household-app: WEBHOOK_SECRET_KEY_OLD 設定完了"
-
-    # webhook-batch-cron に OLD キーを設定
-    log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY_OLD を設定中..."
-    wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY_OLD" "${CURRENT_KEY}"
-    log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY_OLD 設定完了"
-else
-    log_step "Step 3: 初回設定（OLD キーの退避なし）"
-fi
-
-# ステップ4: 新キーを WEBHOOK_SECRET_KEY に設定
-log_step "Step 4: 新しいキーを WEBHOOK_SECRET_KEY に設定"
-
-log_info "household-app: WEBHOOK_SECRET_KEY を設定中..."
-wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
-log_success "household-app: WEBHOOK_SECRET_KEY 設定完了"
-
-log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY を設定中..."
-wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
-log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY 設定完了"
-
-# 初回設定の場合はここで完了
-if [[ "${HAS_CURRENT_KEY}" == false ]]; then
-    echo ""
-    log_step "完了"
-    log_success "WEBHOOK_SECRET_KEY を初回設定しました"
-    log_info "新しいキー: ${NEW_KEY}"
-    log_warning "このキーは安全な場所に保管してください（次回ローテーション時に必要です）"
-    exit 0
-fi
-
-# ステップ5: Workers をデプロイ（シークレット変更を反映）
-log_step "Step 5: Workers をデプロイ（シークレット反映）"
-
-if [[ "${DRY_RUN}" == true ]]; then
-    log_info "[DRY RUN] wrangler deploy (household-app)"
-    log_info "[DRY RUN] wrangler deploy (webhook-batch-cron)"
-else
-    log_info "household-app をデプロイ中..."
-    cd "${APP_DIR}"
-    wrangler deploy
-    log_success "household-app デプロイ完了"
-
-    log_info "webhook-batch-cron をデプロイ中..."
-    cd "${CRON_DIR}"
-    wrangler deploy
-    log_success "webhook-batch-cron デプロイ完了"
-fi
-
-# ステップ6: 再暗号化APIを呼び出し
-log_step "Step 6: DB内の暗号化データを再暗号化"
+# ステップ2: ローテーションAPIを呼び出し
+# サーバーが現在の env.WEBHOOK_SECRET_KEY を旧キーとして使い、
+# リクエストボディの newKey で全データを再暗号化する
+log_step "Step 2: DB内の暗号化データを再暗号化（ローテーションAPI）"
 
 ROTATE_URL="${APP_URL}/api/admin/rotate-secret-key"
 log_info "POST ${ROTATE_URL}"
 
 if [[ "${DRY_RUN}" == true ]]; then
-    log_info "[DRY RUN] curl -X POST ${ROTATE_URL} -H 'Authorization: Bearer ***'"
+    log_info "[DRY RUN] curl -X POST ${ROTATE_URL} -H 'Authorization: Bearer ***' -d '{\"newKey\": \"***\"}'"
 else
     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ROTATE_URL}" \
         -H "Authorization: Bearer ${ADMIN_KEY}" \
-        -H "Content-Type: application/json")
+        -H "Content-Type: application/json" \
+        -d "{\"newKey\": \"${NEW_KEY}\"}")
 
     HTTP_CODE=$(echo "${RESPONSE}" | tail -n1)
     BODY=$(echo "${RESPONSE}" | sed '$d')
@@ -289,36 +203,30 @@ else
     elif [[ "${HTTP_CODE}" == "207" ]]; then
         log_warning "一部エラーあり (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "エラーを確認してください。WEBHOOK_SECRET_KEY_OLD はまだ削除しません。"
-        log_info "問題を解決後、再度このスクリプトを実行するか、手動で以下を実行:"
-        echo "  curl -X POST ${ROTATE_URL} -H 'Authorization: Bearer <ADMIN_API_KEY>'"
+        log_error "エラーを確認してください。WEBHOOK_SECRET_KEY はまだ更新しません。"
         exit 1
     else
         log_error "再暗号化APIの呼び出しに失敗 (HTTP ${HTTP_CODE})"
         echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
-        log_error "WEBHOOK_SECRET_KEY_OLD はまだ削除しません。"
-        log_info "問題を解決後、手動で再暗号化を実行してください:"
-        echo "  curl -X POST ${ROTATE_URL} -H 'Authorization: Bearer <ADMIN_API_KEY>'"
+        log_error "WEBHOOK_SECRET_KEY はまだ更新しません。"
         exit 1
     fi
 fi
 
-# ステップ7: WEBHOOK_SECRET_KEY_OLD を削除
-log_step "Step 7: WEBHOOK_SECRET_KEY_OLD を削除"
+# ステップ3: 新キーを WEBHOOK_SECRET_KEY に設定
+# DBの再暗号化が成功した後、Workerの環境変数を新キーに更新
+log_step "Step 3: 新しいキーを WEBHOOK_SECRET_KEY に設定"
 
-log_info "household-app: WEBHOOK_SECRET_KEY_OLD を削除中..."
-wrangler_secret_delete "${APP_DIR}" "WEBHOOK_SECRET_KEY_OLD"
-log_success "household-app: WEBHOOK_SECRET_KEY_OLD 削除完了"
+log_info "household-app: WEBHOOK_SECRET_KEY を更新中..."
+wrangler_secret_put "${APP_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
+log_success "household-app: WEBHOOK_SECRET_KEY 更新完了"
 
-log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY_OLD を削除中..."
-wrangler_secret_delete "${CRON_DIR}" "WEBHOOK_SECRET_KEY_OLD"
-log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY_OLD 削除完了"
+log_info "webhook-batch-cron: WEBHOOK_SECRET_KEY を更新中..."
+wrangler_secret_put "${CRON_DIR}" "WEBHOOK_SECRET_KEY" "${NEW_KEY}"
+log_success "webhook-batch-cron: WEBHOOK_SECRET_KEY 更新完了"
 
 # 完了
 echo ""
 log_step "ローテーション完了"
 log_success "全ステップが正常に完了しました"
-echo ""
-log_info "新しいキー: ${NEW_KEY}"
-log_warning "このキーは安全な場所に保管してください（次回ローテーション時に必要です）"
 echo ""

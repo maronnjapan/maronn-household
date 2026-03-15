@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
-import * as authSchema from "../database/drizzle/schema/auth";
+import * as authSchema from "@maronn/db-schema/auth";
 
 /**
  * Better Authインスタンスの型

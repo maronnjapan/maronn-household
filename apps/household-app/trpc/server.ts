@@ -1,4 +1,4 @@
-import type { dbD1 } from '../database/drizzle/db';
+import type { dbD1 } from '@maronn/db-schema/db';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
@@ -11,7 +11,7 @@ import {
   webhookBatchSchedules,
   subBudgets,
   subBudgetMonthlyAmounts,
-} from '../database/drizzle/schema/household';
+} from '@maronn/db-schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
 import {

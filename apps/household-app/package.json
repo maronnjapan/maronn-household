@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.750.0",
+    "@maronn/db-schema": "workspace:*",
     "@maronn/domain": "workspace:*",
     "@photonjs/cloudflare": "^0.1.12",
     "@photonjs/hono": "^0.1.11",

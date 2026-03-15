@@ -29,7 +29,7 @@ import { eq } from 'drizzle-orm';
 import {
   webhooks,
   webhookBatchSchedules,
-} from '../database/drizzle/schema/household';
+} from '@maronn/db-schema/household';
 import {
   decryptWithKeyFallback,
   reEncrypt,

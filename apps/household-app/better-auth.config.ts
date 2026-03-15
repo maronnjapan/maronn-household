@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import * as authSchema from "./database/drizzle/schema/auth";
+import * as authSchema from "@maronn/db-schema/auth";
 
 /**
  * Better Auth CLI用の設定ファイル

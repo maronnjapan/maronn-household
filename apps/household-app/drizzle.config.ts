@@ -28,14 +28,14 @@ if (target === "auth") {
   // 認証用テーブル（D1 / SQLite）
   config = defineConfig({
     dialect: "sqlite",
-    schema: "./database/drizzle/schema/auth.ts",
+    schema: "../../packages/db-schema/src/auth.ts",
     out: "./database/migrations/auth/",
   });
 } else {
   // 支出・予算データ（D1 / SQLite）
   config = defineConfig({
     dialect: "sqlite",
-    schema: "./database/drizzle/schema/household.ts",
+    schema: "../../packages/db-schema/src/household.ts",
     out: "./database/migrations/",
   });
 }

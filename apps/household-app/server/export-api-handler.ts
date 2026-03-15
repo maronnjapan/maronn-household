@@ -7,7 +7,7 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { enhance, type Get, type Post, type Put, type UniversalHandler } from '@universal-middleware/core';
-import { expenses, budgets, apiTokens, apiUsage } from '../database/drizzle/schema/household';
+import { expenses, budgets, apiTokens, apiUsage } from '@maronn/db-schema/household';
 import { hashToken } from '../lib/api-token';
 import { ulid } from 'ulidx';
 

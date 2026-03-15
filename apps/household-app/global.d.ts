@@ -1,4 +1,4 @@
-import { dbD1 } from "./database/drizzle/db";
+import { dbD1 } from "@maronn/db-schema/db";
 declare global {
   namespace Vike {
     interface PageContextServer {

@@ -1,5 +1,5 @@
 import { getDbFromRuntime } from "../database/d1/helpers";
-import { dbD1 } from "../database/drizzle/db";
+import { dbD1 } from "@maronn/db-schema/db";
 import { enhance, type UniversalMiddleware } from "@universal-middleware/core";
 
 declare global {

@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mcp-server",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-01-03",
+  "build": {
+    "command": "node build.mjs"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  // household-appと同じD1データベースを使用
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "household-db",
+      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+    }
+  ],
+  // 同じドメインの /mcp パスで配信
+  "routes": [
+    {
+      "pattern": "maronn-household-budget.com/mcp",
+      "zone_name": "maronn-household-budget.com"
+    }
+  ]
+}

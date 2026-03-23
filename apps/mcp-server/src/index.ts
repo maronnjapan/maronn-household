@@ -117,7 +117,7 @@ function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id, Mcp-Protocol-Version',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id, Mcp-Session-Id, Mcp-Protocol-Version',
     'Access-Control-Expose-Headers': 'Mcp-Session-Id',
   };
 }
@@ -137,8 +137,14 @@ export default {
     }
 
     // TODO: OAuth2による認可を別途実装予定
-    // 現時点ではuserIdは認可実装後に設定される想定
-    const userId = 'anonymous';
+    // 現時点ではリクエストヘッダーのuserIdを信用する
+    const userId = request.headers.get('X-User-Id');
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'X-User-Id header is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
 
     // MCPサーバーを作成
     const mcpServer = createMcpServer(env.DB, userId);

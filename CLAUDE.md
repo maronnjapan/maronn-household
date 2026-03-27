@@ -1,4 +1,77 @@
-# 家計簿アプリ - CLAUDE.md
+# 家計簿アプリ — CLAUDE.md
+
+## ツール役割分担
+
+| ツール | 担当 |
+|---|---|
+| Claude Code | 全フェーズの進行・最終判断 |
+| Codex CLI | 設計協議・コードレビュー（セカンドオピニオン） |
+| Gemini CLI | 技術仕様調査・外部ドキュメント調査 |
+
+## 開発ワークフロー
+
+機能追加・修正の依頼を受けたとき、以下のフェーズを順番に自律的に実行する。
+ユーザーへの確認は⑦の完了レポートまで行わない。
+
+### ① 調査フェーズ
+- 関連する既存コードをすべて読む
+- Vikeの制約・Honoのルーティング・D1のスキーマを確認する
+- 技術的に不明な仕様があれば `/tech-research` スキルでGeminiに調査させる
+
+### ② 設計フェーズ（Claude起案）
+- 実装方針のドラフトを作る
+- ファイル構成・関数の責務・データの流れを箇条書きで言語化する
+
+### ③ 設計協議フェーズ（Claude × Codex）
+- `/design-discussion` スキルを使ってCodexに設計ドラフトを渡す
+- Codexの意見をもとにClaudeが設計を再評価する
+- 合意できた方針を「確定設計」として記録してから実装に進む
+
+### ④ テスト先行実装フェーズ
+- テストを先に書いてから実装する（TDD / Red → Green → Refactor）
+- モックは原則使わない
+- テストが通ることを確認してから次に進む
+- テストが3回修正しても通らなければ実装を止め、⑦で報告する
+
+### ⑤ コードレビュー（Claude × Codex）
+- `/design-discussion` スキルを使ってCodexに実装済みコードを渡す
+- Codexの指摘をClaudeが評価し、修正する箇所・しない箇所を判断する
+- 修正がある場合はテストを再実行して通ることを確認する
+
+### ⑥ セルフレビューフェーズ
+- 設計との整合・可読性・エラーハンドリングを最終確認する
+
+### ⑦ 完了レポート
+
+```
+## 実装内容
+（何を実装したか、1〜3行で）
+
+## 変更ファイル
+- path/to/file.ts: （変更内容）
+- path/to/test.ts: （テスト内容）
+
+## テスト結果
+（通過したテスト数）
+
+## 設計協議の結果
+- Codexの主な意見: （要約）
+- 採用した意見: （内容）
+- 採用しなかった意見: （内容と理由）
+
+## 判断が必要な点（あれば）
+（AIだけでは解決できなかった点）
+```
+
+## AIだけでは解決しないこと
+
+以下の状況になったら実装を止めて⑦に記載する:
+- Vikeの挙動が不明で調査しても解決しない
+- D1のスキーマ変更がデータ移行を伴う
+- 認証まわりの設計判断が必要
+- テストが3回修正しても通らない
+
+---
 
 ## プロジェクト概要
 
@@ -70,58 +143,6 @@ BETTER_AUTH_URL=<アプリのベースURL（例: https://example.com）>
 GOOGLE_CLIENT_ID=<Google Cloud Consoleで取得>
 GOOGLE_CLIENT_SECRET=<Google Cloud Consoleで取得>
 ```
-
-#### Google Cloud Console での OAuth 設定手順
-
-1. **Google Cloud Console にアクセス**
-   - https://console.cloud.google.com/ にアクセス
-   - プロジェクトを選択（または新規作成）
-
-2. **OAuth 同意画面の設定**
-   - 左メニュー「APIとサービス」→「OAuth 同意画面」
-   - User Type: 「外部」を選択（内部は Google Workspace 組織のみ）
-   - アプリ情報を入力:
-     - アプリ名: 家計簿アプリ
-     - ユーザーサポートメール: 自分のメールアドレス
-     - デベロッパーの連絡先情報: 自分のメールアドレス
-   - スコープ: `email`, `profile`, `openid` を追加
-   - テストユーザー: 開発中は自分のGoogleアカウントを追加
-
-3. **OAuth 2.0 クライアント ID の作成**
-   - 左メニュー「APIとサービス」→「認証情報」
-   - 「認証情報を作成」→「OAuth クライアント ID」
-   - アプリケーションの種類: 「ウェブ アプリケーション」
-   - 名前: 任意（例: 家計簿アプリ - 本番）
-   - **承認済みの JavaScript 生成元**:
-     ```
-     http://localhost:5173          # ローカル開発
-     https://your-domain.com        # 本番環境
-     ```
-   - **承認済みのリダイレクト URI**:
-     ```
-     http://localhost:5173/api/auth/callback/google    # ローカル開発
-     https://your-domain.com/api/auth/callback/google  # 本番環境
-     ```
-   - 「作成」をクリック
-
-4. **クライアント ID とシークレットを取得**
-   - 作成後に表示されるダイアログから:
-     - クライアント ID → `GOOGLE_CLIENT_ID`
-     - クライアント シークレット → `GOOGLE_CLIENT_SECRET`
-
-5. **Cloudflare Workers への環境変数設定**
-   ```bash
-   # wrangler secret で設定（本番環境）
-   wrangler secret put GOOGLE_CLIENT_ID
-   wrangler secret put GOOGLE_CLIENT_SECRET
-   wrangler secret put BETTER_AUTH_SECRET
-   ```
-
-#### 本番公開時の注意
-
-- OAuth 同意画面が「テスト」モードの場合、テストユーザーのみログイン可能
-- 一般公開するには「本番環境に公開」が必要（Google の審査あり）
-- 審査では、プライバシーポリシーと利用規約のURLが必要
 
 #### ファイル構成
 
@@ -214,13 +235,10 @@ export const budgets = sqliteTable('budgets', {
 
 ### マージ方式（両方の入力を残す）
 
-同じ月の支出を複数デバイスで編集した場合、すべての入力を保持する。
-
 ```typescript
-// packages/domain/src/sync.ts
 interface SyncResult {
-  toUpload: Expense[];      // ローカル → サーバー
-  toDownload: Expense[];    // サーバー → ローカル
+  toUpload: Expense[];
+  toDownload: Expense[];
   conflicts: ConflictPair[];
 }
 
@@ -272,56 +290,25 @@ twada 流 TDD を全レイヤーで適用する。
 
 #### ドメインロジック（packages/domain）
 
-純粋関数としてテストしやすく設計。外部依存なし。
-
 ```typescript
-// packages/domain/tests/budget.test.ts
-import { describe, it, expect } from 'vitest';
-import { calculateRemaining } from '../src/budget';
-
 describe('calculateRemaining', () => {
   it('予算から支出合計を引いた残額を返す', () => {
     const budget = 100000;
-    const expenses = [
-      { amount: 3000 },
-      { amount: 5000 },
-    ];
-    
+    const expenses = [{ amount: 3000 }, { amount: 5000 }];
     expect(calculateRemaining(budget, expenses)).toBe(92000);
-  });
-
-  it('支出がない場合は予算全額を返す', () => {
-    expect(calculateRemaining(100000, [])).toBe(100000);
-  });
-
-  it('支出が予算を超えた場合は負の値を返す', () => {
-    const budget = 10000;
-    const expenses = [{ amount: 15000 }];
-    
-    expect(calculateRemaining(budget, expenses)).toBe(-5000);
   });
 });
 ```
 
 #### UIコンポーネント（apps/web）
 
-Testing Library でユーザー視点のテスト。
-
 ```typescript
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { ExpenseInput } from '../../components/ExpenseInput';
-
 describe('ExpenseInput', () => {
   it('金額を入力して追加すると残額が減る', async () => {
     const user = userEvent.setup();
     render(<ExpenseInput initialBudget={100000} />);
-    
-    expect(screen.getByText('残り: ¥100,000')).toBeInTheDocument();
-    
     await user.type(screen.getByPlaceholderText('金額'), '3000');
     await user.click(screen.getByRole('button', { name: '追加' }));
-    
     expect(screen.getByText('残り: ¥97,000')).toBeInTheDocument();
   });
 });
@@ -329,51 +316,24 @@ describe('ExpenseInput', () => {
 
 #### E2E（e2e/）
 
-Playwright でユーザーシナリオをテスト。
-
 ```typescript
-// e2e/budget-flow.spec.ts
-import { test, expect } from '@playwright/test';
-
 test('支出を入力すると残額がリアルタイムで更新される', async ({ page }) => {
   await page.goto('/');
-  
-  // 初期状態
-  await expect(page.getByText('残り: ¥100,000')).toBeVisible();
-  
-  // 支出入力
   await page.getByPlaceholder('金額').fill('5000');
   await page.getByRole('button', { name: '追加' }).click();
-  
-  // 即座に更新（ネットワーク待ちなし）
   await expect(page.getByText('残り: ¥95,000')).toBeVisible();
 });
 
 test('オフラインでも支出入力ができる', async ({ page, context }) => {
   await page.goto('/');
-  
-  // オフラインにする
   await context.setOffline(true);
-  
   await page.getByPlaceholder('金額').fill('3000');
   await page.getByRole('button', { name: '追加' }).click();
-  
-  // ローカルで処理されるので動作する
   await expect(page.getByText('残り: ¥97,000')).toBeVisible();
 });
 ```
 
 ### テストピラミッド
-
-```
-        /\
-       /  \  E2E（少数・重要フロー）
-      /----\
-     /      \  コンポーネント（UIの振る舞い）
-    /--------\
-   /          \  ユニット（ドメインロジック・多数）
-  --------------
-```
 
 ドメインロジックのユニットテストを厚く、E2Eは重要なユーザーフローに絞る。
 
@@ -384,203 +344,50 @@ test('オフラインでも支出入力ができる', async ({ page, context }) 
 - TypeScript strict モード必須
 - 関数は可能な限り純粋関数として実装
 - 副作用は hooks または専用モジュールに分離
-- any 禁止、unknown + 型ガードを使用
+- `any` 禁止、`unknown` + 型ガードを使用
 
 ### CSS / スタイリング
 
-**相対単位を優先使用**
-
-レスポンシブデザインとアクセシビリティ向上のため、CSSでは相対単位を基本とする。
-
-```css
-/* ✅ 推奨: 相対単位 */
-padding: 1rem;
-margin: 0.5rem 1.25rem;
-font-size: 1.2rem;
-width: 3.5rem;
-max-width: min(25rem, 90vw);
-border-radius: 1rem;
-gap: 0.75rem;
-
-/* ❌ 非推奨: 固定ピクセル */
-padding: 16px;
-margin: 8px 20px;
-font-size: 19px;
-width: 56px;
-max-width: 400px;
-border-radius: 16px;
-gap: 12px;
-```
-
-**単位の使い分け**
+相対単位を優先使用。
 
 | 単位 | 用途 |
 |------|------|
-| `rem` | フォントサイズ、余白、サイズ全般（基本はこれを使用） |
+| `rem` | フォントサイズ、余白、サイズ全般（基本） |
 | `em` | 親要素のフォントサイズに比例させたい場合 |
 | `%` | 親要素に対する相対的な幅・高さ |
 | `vw` / `vh` | ビューポート基準のサイズ |
-| `min()` / `max()` | 上限・下限の設定（例: `min(25rem, 90vw)`） |
+| `min()` / `max()` | 上限・下限の設定 |
 
-**例外: px使用が許可される場合**
-
-- `border-width`: 1pxの細い線は相対単位にすると表示が不安定になる
-- box-shadow のぼかし半径: デザイン意図を正確に表現するため
-- 非常に小さな値（1-2px程度）で相対単位だと意図しない表示になる場合
-
-```css
-/* 例外的にpxが許可されるケース */
-border: 1px solid #ccc;
-box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
-```
-
-**メディアクエリはpxで指定**
-
-メディアクエリはデバイスの画面幅に基づくため、px指定が直感的。
-
-```css
-/* ✅ 推奨 */
-@media (min-width: 640px) { ... }
-```
+例外的に `px` が許可される場合: `border-width`、`box-shadow` のぼかし半径、メディアクエリ。
 
 ### 命名規則
 
 ```typescript
 // ファイル名: kebab-case
 expense-input.tsx
-use-remaining-budget.ts
 
 // 関数・変数: camelCase
 function calculateRemaining() {}
-const totalSpent = 0;
 
 // 型・インターフェース: PascalCase
 interface Expense {}
-type SyncStatus = 'pending' | 'synced';
 
 // 定数: UPPER_SNAKE_CASE
 const MAX_RETRY_COUNT = 3;
 ```
 
-### コンポーネント設計
-
-```typescript
-// Props は明示的に定義
-interface ExpenseInputProps {
-  onSubmit: (amount: number) => void;
-  initialBudget?: number;
-}
-
-// デフォルトエクスポートは使わない
-export function ExpenseInput({ onSubmit, initialBudget = 0 }: ExpenseInputProps) {
-  // ...
-}
-```
-
 ### React パターン
 
-**useEffect 使用禁止**
+**useEffect 使用禁止**。副作用の管理は以下を優先する:
 
-副作用の管理には以下のパターンを優先する：
+1. データフェッチ: TanStack Query の `useQuery`, `useMutation`
+2. モジュールレベル初期化: ブラウザ環境チェック付きでモジュールロード時に実行
 
-1. **データフェッチ**: TanStack Query の `useQuery`, `useMutation` を使用
-2. **サブスクリプション**: TanStack Query の subscription 機能
-3. **ライフサイクル制御**: Suspense + ErrorBoundary
-4. **モジュールレベル初期化**: ブラウザ環境チェック付きでモジュールロード時に実行
-
-```typescript
-// ❌ 悪い例
-function Component() {
-  useEffect(() => {
-    startSync();
-  }, []);
-}
-
-// ✅ 良い例1: モジュールレベル初期化
-// sync.ts
-if (typeof window !== 'undefined') {
-  startBackgroundSync();
-}
-
-// ✅ 良い例2: TanStack Query
-function Component() {
-  const { data } = useQuery({
-    queryKey: ['expenses'],
-    queryFn: fetchExpenses,
-  });
-}
-```
-
-**useCallback / useMemo は原則使用しない**
-
-React 19 以降、React Compiler による自動メモ化が推奨されるため、手動でのメモ化は原則不要。
-
-**使用禁止のケース**:
-- 単純なイベントハンドラー（`onClick`, `onChange` 等）
-- コンポーネント内で定義する通常の関数
-- 特に理由なく「念のため」使用するケース
-
-**使用が許可されるケース（明確な理由がある場合のみ）**:
-1. **ref として渡す場合**: `useRef` と組み合わせて安定した参照が必要な場合
-2. **計測済みのパフォーマンス問題**: プロファイラで実際に問題を確認した場合
-3. **外部ライブラリの要件**: ライブラリが安定した参照を要求する場合
-
-```typescript
-// ❌ 悪い例: 不要な useCallback
-function Component() {
-  const handleClick = useCallback(() => {
-    console.log('clicked');
-  }, []);
-
-  return <button onClick={handleClick}>Click</button>;
-}
-
-// ✅ 良い例: 通常の関数定義
-function Component() {
-  function handleClick() {
-    console.log('clicked');
-  }
-
-  return <button onClick={handleClick}>Click</button>;
-}
-```
+**useCallback / useMemo は原則使用しない**。React Compiler による自動メモ化を使う。
 
 ### エラーハンドリング
 
-**try-catch は最小限に**
-
-- try-catch はエラーを隠蔽しデバッグを困難にする
-- 原則として、予期しないエラーはそのまま上位に伝播させる
-- グローバルエラーハンドラー（Hono の `onError`, React ErrorBoundary）で一元管理
-
-**使用が許可される場合**:
-
-1. **外部API呼び出し**: リトライロジックが必要な場合
-2. **ユーザー入力のパース**: JSON.parse など明示的に失敗が予想される場合
-3. **リソースクリーンアップ**: finally でのクリーンアップが必須の場合
-
-```typescript
-// ❌ 悪い例: エラーを隠蔽
-try {
-  await db.insert(data);
-} catch (error) {
-  console.error(error);
-  return { success: false };
-}
-
-// ✅ 良い例: エラーをそのまま伝播
-await db.insert(data); // エラーはグローバルハンドラーで処理
-
-// ✅ 許可される例: リトライロジック
-async function fetchWithRetry(url: string, retries = 3) {
-  try {
-    return await fetch(url);
-  } catch (error) {
-    if (retries > 0) return fetchWithRetry(url, retries - 1);
-    throw error;
-  }
-}
-```
+try-catch は最小限に。予期しないエラーはそのまま上位に伝播させ、グローバルエラーハンドラー（Hono の `onError`、React ErrorBoundary）で一元管理する。
 
 ## パフォーマンス目標
 
@@ -593,200 +400,47 @@ async function fetchWithRetry(url: string, retries = 3) {
 
 ### /household ページの表示速度優先ルール
 
-**最優先事項**: 金額入力フィールドの即座表示とIndexedDB保存
+**最優先**: 金額入力フィールドの即座表示とIndexedDB保存。
 
-`/household` ページは本アプリの核心機能であり、爆速表示を最優先する。
-
-#### 表示速度の定義
-
-「表示完了」とは以下の状態を指す：
-
-1. **金額入力フィールドが表示されている**
-2. **入力内容がIndexedDBに即座に保存できる状態にある**
-
-この2つが達成されれば、以下の要素の表示は後回しでよい：
-
-- 予算額の表示
-- 今月の支出合計の表示
-- 残額の表示
-- その他の補助的な情報
-
-#### CSS読み込みの原則
-
-**`global.css` には `/household` ページ以外のスタイルを含めない**
-
-理由：
-- `global.css` はすべてのページで読み込まれる
-- 不要なスタイルの読み込みは `/household` ページの表示速度を低下させる
-- 特別な事情がない限り、各ページ専用のCSSファイルを使用する
-
-```typescript
-// ❌ 悪い例: global.css に予算設定ページのスタイルを含める
-// apps/household-app/styles/global.css
-.budget-page { ... }  // /household では使用しないスタイル
-
-// ✅ 良い例: ページ専用のCSSファイルを作成
-// apps/household-app/pages/household/budget/budget.css
-.budget-page { ... }
-
-// apps/household-app/pages/household/budget/+Page.tsx
-import './budget.css';
-```
-
-#### 優先順位
-
-1. **最優先**: 金額入力フィールドの表示とIndexedDB保存機能
-2. **次点**: 支出一覧の表示（useLiveQuery経由）
-3. **最後**: 予算・支出合計・残額の表示（サーバーから取得が必要な場合）
-
-オフラインでも金額入力と保存ができることが絶対条件。
+- `global.css` には `/household` ページ以外のスタイルを含めない
+- 予算・残額の表示は後回しでよい。入力フィールドが表示されれば「表示完了」
 
 ## 開発コマンド
 
 ```bash
-# 開発サーバー起動
-pnpm dev
-
-# テスト実行
-pnpm test              # ユニット + コンポーネント
-pnpm test:e2e          # E2E
-
-# テスト（ウォッチモード）
-pnpm test:watch
-
-# 型チェック
-pnpm typecheck
-
-# リント
-pnpm lint
-
-# ビルド
-pnpm build
-
-# Cloudflare Workers へデプロイ
-pnpm deploy
+pnpm dev          # 開発サーバー起動
+pnpm test         # ユニット + コンポーネント
+pnpm test:e2e     # E2E
+pnpm test:watch   # ウォッチモード
+pnpm typecheck    # 型チェック
+pnpm lint         # リント
+pnpm build        # ビルド
+pnpm deploy       # Cloudflare Workers へデプロイ
 ```
 
 ## 実装済み機能
 
 ### 月次予算設定機能
 
-月ごとの予算を設定・更新できる機能。支出記録機能と異なり、予算はサーバーのみで管理する。
-
 #### 設計方針
 
-- **支出記録**: ローカルファースト（IndexedDB → サーバー同期）→ 爆速動作
-- **予算設定**: サーバーのみで管理 → データ整合性優先、IndexedDBとの二重管理を避ける
+- **支出記録**: ローカルファースト（IndexedDB → サーバー同期）
+- **予算設定**: サーバーのみで管理（IndexedDBとの二重管理を避ける）
 
-予算は頻繁に変更されないため、サーバー同期の待ち時間は許容範囲内と判断。
-ネットワーク環境が悪く予算が読み込めない場合は、デフォルト予算（120,000円）を使用し、支出記録の表示はブロックしない。
+ネットワークエラー時はデフォルト予算（120,000円）を使用し、支出記録の表示はブロックしない。
 
 #### API エンドポイント
 
 ```typescript
-// apps/household-app/trpc/server.ts
-
 // 予算取得
 getBudget: publicProcedure
   .input(z.object({ month: z.string() }))
-  .query(async (opts) => {
-    // D1 から指定月の予算を取得
-    // 存在しない場合は null を返す
-  });
+  .query(async (opts) => { /* D1 から指定月の予算を取得 */ });
 
 // 予算更新
 updateBudget: publicProcedure
-  .input(z.object({
-    month: z.string(),
-    amount: z.number()
-  }))
-  .mutation(async (opts) => {
-    // D1 に予算を保存（既存なら UPDATE、なければ INSERT）
-    // 更新日時（updatedAt）を記録
-  });
-```
-
-#### フロントエンド実装
-
-**フック（apps/household-app/hooks/use-set-budget.ts）**
-
-```typescript
-export function useSetBudget() {
-  const mutation = trpc.updateBudget.useMutation();
-
-  const updateBudget = async (month: string, amount: number) => {
-    // サーバーのみに保存（IndexedDBには保存しない）
-    await mutation.mutateAsync({ month, amount });
-  };
-
-  return { updateBudget, isUpdating: mutation.isPending };
-}
-
-export function useGetBudget(month: string) {
-  const query = trpc.getBudget.useQuery({ month });
-  return { budget: query.data?.budget, isLoading: query.isLoading };
-}
-```
-
-**フック（apps/household-app/hooks/use-remaining-budget.ts）**
-
-```typescript
-export function useRemainingBudget(month: string) {
-  // 予算をサーバーから取得（ネットワーク環境に依存）
-  const budgetQuery = trpc.getBudget.useQuery({ month });
-
-  // 支出をIndexedDBからリアルタイム取得（ローカルファースト）
-  const expensesData = useLiveQuery(async () => {
-    const expenses = await getExpensesByMonth(month);
-    const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
-    return { expenses, spent };
-  }, [month]);
-
-  // 予算額を決定（サーバーから取得できない場合はデフォルト値）
-  const budgetAmount = budgetQuery.data?.budget?.amount ?? DEFAULT_BUDGET_AMOUNT;
-
-  return {
-    budget: budgetAmount,
-    spent: expensesData?.spent ?? 0,
-    remaining: calculateRemaining(budgetAmount, expensesData?.expenses ?? []),
-    isLoading: !expensesData,
-    isBudgetLoading: budgetQuery.isLoading,
-  };
-}
-```
-
-**コンポーネント（apps/household-app/components/BudgetInput.tsx）**
-
-- 予算読込中: スケルトン表示「読込中...」
-- 予算未設定時: 「設定」ボタンを表示
-- 予算設定済み: 金額を表示 + 「変更」ボタン
-- 編集モード: 金額入力フィールド + 「保存」「キャンセル」ボタン
-
-#### 動作フロー
-
-```
-1. ページ読み込み
-   └── サーバーから予算を取得（並列処理、支出表示はブロックしない）
-   └── 予算読込中はデフォルト予算（120,000円）を使用
-   └── ネットワークエラー時もデフォルト予算で動作可能
-
-2. 予算読込完了
-   └── tRPCキャッシュに保存
-   └── 残額が自動で再計算される
-
-3. 予算設定ボタンをクリック
-   └── 入力フォームを表示
-   └── 金額を入力して「保存」
-
-4. 保存処理
-   └── tRPC で サーバーに送信
-   └── 成功したら tRPCキャッシュが自動更新
-   └── 残額表示が自動更新される
-
-5. 支出記録（並列動作）
-   └── IndexedDB に即座に保存（< 50ms）
-   └── useLiveQuery が検知して残額表示が即座に更新
-   └── 予算の読込状態に関わらず、支出記録は常に動作
+  .input(z.object({ month: z.string(), amount: z.number() }))
+  .mutation(async (opts) => { /* D1 に予算を保存 */ });
 ```
 
 #### ファイル構成
@@ -794,30 +448,21 @@ export function useRemainingBudget(month: string) {
 ```
 apps/household-app/
 ├── components/
-│   ├── BudgetInput.tsx          # 予算設定UI（ローディング状態対応）
-│   ├── RemainingDisplay.tsx     # 残額表示（予算を使用）
+│   ├── BudgetInput.tsx          # 予算設定UI
+│   ├── RemainingDisplay.tsx     # 残額表示
 │   └── ExpenseInput.tsx         # 支出入力
 ├── hooks/
 │   ├── use-set-budget.ts        # 予算設定フック（tRPC経由）
-│   └── use-remaining-budget.ts  # 残額計算フック（予算はtRPC、支出はIndexedDB）
+│   └── use-remaining-budget.ts  # 残額計算フック
 ├── pages/
 │   └── household/
-│       └── +Page.tsx            # 家計簿ページ（予算設定UIを統合）
+│       └── +Page.tsx
 └── trpc/
-    └── server.ts                # tRPCエンドポイント（getBudget, updateBudget）
+    └── server.ts
 ```
 
 #### 注意事項
 
-- **予算はサーバーのみで管理**: IndexedDBには保存せず、tRPCキャッシュで管理
-- **支出記録はブロックしない**: 予算読込中でも支出記録は即座に動作
-- **オフライン対応**: ネットワークエラー時はデフォルト予算（120,000円）を使用
-- **月単位管理**: 予算は月単位（YYYY-MM形式）で管理
-- **競合解決**: 同じ月の予算を複数デバイスで同時編集した場合、`updatedAt` が新しい方を採用（Last Write Wins）
-
-## 今後の拡張予定
-
-1. **カテゴリ管理**: 支出のカテゴリ分類・集計
-2. **グラフ表示**: 月別・カテゴリ別の支出可視化
-3. **予算アラート**: 残額が少なくなったら通知
-4. **CSV エクスポート**: データのバックアップ・分析用
+- 予算はサーバーのみで管理（IndexedDBには保存しない）
+- 月単位（YYYY-MM形式）で管理
+- 競合解決: `updatedAt` が新しい方を採用（Last Write Wins）

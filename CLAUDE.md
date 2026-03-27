@@ -56,6 +56,10 @@
 ## テスト結果
 （通過したテスト数）
 
+## 省略したフェーズ（省略がない場合も「なし」と明記すること）
+- フェーズ名: 省略した理由
+  例) ① /tech-research: 既存コードに仕様が実装済みのため調査不要と判断
+
 ## 設計協議の結果
 - Codexの主な意見: （要約）
 - 採用した意見: （内容）
@@ -424,8 +428,11 @@ try-catch は最小限に。予期しないエラーはそのまま上位に伝�
 ## 開発コマンド
 
 ```bash
-# 開発
-pnpm dev              # 開発サーバー起動（household-app）
+# 開発（各アプリは個別に起動）
+pnpm dev              # 開発サーバー起動（household-app、port 3000）
+# auth-server と mcp-server は apps/ 内で個別に起動:
+#   cd apps/auth-server && pnpm dev   # port 3001
+#   cd apps/mcp-server  && pnpm dev   # port 8787（wrangler デフォルト）
 pnpm test             # ユニット + コンポーネント（Vitest）
 pnpm test:e2e         # E2Eテスト（Playwright）
 pnpm test:watch       # ウォッチモード
@@ -449,6 +456,48 @@ pnpm deploy:quick     # ビルド・DBスキップの高速デプロイ
 ```
 
 ## 実装済み機能
+
+### MCP OAuth 認可サーバー（`apps/auth-server/`）
+
+household-app から切り出した独立した Cloudflare Worker。MCP クライアント（Claude Desktop 等）専用の認証基盤。
+
+#### 設計方針
+
+- household-app の Web ログインとは**独立したセッション**を持つ（MCP OAuth フロー専用）
+- 同じ D1（`household-db`）を共有するため、同一 Google アカウントで認証すると同じ `user_id` を持つ
+- D1 マイグレーションは `apps/household-app/database/migrations/` で一元管理
+
+#### エンドポイント
+
+| パス | 説明 |
+|------|------|
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 AS メタデータ |
+| `POST /oauth/register` | RFC 7591 動的クライアント登録 |
+| `GET /oauth/authorize` | 認可エンドポイント（PKCE 必須）|
+| `POST /oauth/token` | トークンエンドポイント |
+| `/api/auth/*` | Better Auth（Google OAuth） |
+
+#### 環境変数（`.dev.vars`）
+
+```
+AUTH_SERVER_URL=http://localhost:3001
+BETTER_AUTH_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+#### 本番デプロイ前の追加作業
+
+- Google Cloud Console に `https://auth.maronn-household-budget.com/api/auth/callback/google` を追加
+- `wrangler.jsonc` に `routes`（`auth.maronn-household-budget.com`）を追加
+
+### MCP サーバー（`apps/mcp-server/`）
+
+OAuth Resource Server として Bearer トークンを検証し、MCP Protocol（Streamable HTTP）でツールを提供する。
+
+- 認可サーバーは `apps/auth-server/` を参照（環境変数 `AUTH_SERVER_URL`）
+- `/.well-known/oauth-protected-resource` で RFC 9728 準拠のメタデータを返す
+- ローカル開発: `AUTH_SERVER_URL=http://localhost:3001`（auth-server と別ポートで起動）
 
 ### 月次予算設定機能
 

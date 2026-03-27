@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Console]::Beep(800, 700); [System.Windows.Forms.MessageBox]::Show('Claude Codeが作業を完了しました。')\""
+            "command": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Console]::Beep(800, 700); [System.Windows.Forms.MessageBox]::Show('Claude Codeが確認を求めています')\""
           }
         ]
       }

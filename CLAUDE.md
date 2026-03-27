@@ -75,6 +75,39 @@
 
 ---
 
+## モノレポ構造
+
+```
+apps/
+├── household-app/         # メインアプリ（Vike + Hono + Cloudflare Workers）
+│   ├── server/            # Honoサーバーエントリ・ハンドラー群
+│   ├── pages/             # Vikeページ（+Page.tsx, +Layout.tsx）
+│   ├── components/        # Reactコンポーネント
+│   ├── hooks/             # カスタムフック
+│   ├── trpc/              # tRPCルーター定義
+│   ├── auth/              # Better Auth設定
+│   └── database/migrations/ # D1マイグレーションSQL
+├── mcp-server/            # MCP（Model Context Protocol）サーバー（Cloudflare Workers）
+├── delete-expired-session-cron/   # セッション削除バッチ
+├── delete-no-user-household-data-cron/ # 孤立データ削除バッチ
+└── webhook-batch-cron/    # Webhookバッチ実行cron
+
+packages/
+├── db-schema/             # @maronn/db-schema: Drizzle ORMスキーマ（全アプリ共通）
+└── domain/                # @maronn/domain: ドメインロジック（純粋関数）
+```
+
+### サーバーアーキテクチャ
+
+`household-app` は **Photon.js**（`@photonjs/hono`）を使ってVike（SSR）とHonoを統合している。`server/entry.ts` がエントリポイントで、`apply()` でミドルウェア・ハンドラーを登録し `serve()` でCloudflare Workers向けにエクスポートする。
+
+ルーティング:
+- `/api/auth/*` → Better Auth（認証）
+- `/api/trpc/*` → tRPCハンドラー
+- `/api/v1/export/*` → エクスポートAPI（トークン認証）
+- `/oauth/*` → MCP用 OAuth 2.1 認可サーバー
+- それ以外 → Vikeが処理（SSR）
+
 ## プロジェクト概要
 
 月々の予算に対して支出を記録し、残り使える金額をリアルタイムで確認できる家計簿アプリ。通信環境が悪くても爆速で表示・操作できることを最優先とする。
@@ -203,35 +236,16 @@ interface SyncMeta {
 
 ### サーバー（D1 / Drizzle）
 
-```typescript
-// packages/api/src/db/schema.ts
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+スキーマは `packages/db-schema/src/` で管理し、`@maronn/db-schema` パッケージとして各アプリから参照する。
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  createdAt: text('created_at').notNull(),
-});
+主なテーブル（`packages/db-schema/src/household.ts`）:
+- `expenses`: 支出記録（`subBudgetId` フィールドあり）
+- `budgets`: 月次予算
+- `subBudgets` / `subBudgetMonthlyAmounts`: サブ予算
+- `apiTokens` / `apiUsage`: エクスポートAPI用トークン管理
+- `webhooks` / `webhookBatchSchedules`: Webhook設定
 
-export const expenses = sqliteTable('expenses', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id),
-  amount: integer('amount').notNull(),
-  category: text('category'),
-  memo: text('memo'),
-  date: text('date').notNull(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-  deviceId: text('device_id').notNull(),
-});
-
-export const budgets = sqliteTable('budgets', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id),
-  month: text('month').notNull(),
-  amount: integer('amount').notNull(),
-  updatedAt: text('updated_at').notNull(),
-});
-```
+Better Auth 関連テーブルは `packages/db-schema/src/auth.ts`、MCP OAuth は `packages/db-schema/src/mcp-oauth.ts` で管理。
 
 ## 同期戦略
 
@@ -410,14 +424,28 @@ try-catch は最小限に。予期しないエラーはそのまま上位に伝�
 ## 開発コマンド
 
 ```bash
-pnpm dev          # 開発サーバー起動
-pnpm test         # ユニット + コンポーネント
-pnpm test:e2e     # E2E
-pnpm test:watch   # ウォッチモード
-pnpm typecheck    # 型チェック
-pnpm lint         # リント
-pnpm build        # ビルド
-pnpm deploy       # Cloudflare Workers へデプロイ
+# 開発
+pnpm dev              # 開発サーバー起動（household-app）
+pnpm test             # ユニット + コンポーネント（Vitest）
+pnpm test:e2e         # E2Eテスト（Playwright）
+pnpm test:watch       # ウォッチモード
+pnpm typecheck        # 全パッケージの型チェック
+pnpm lint             # ESLintリント
+pnpm lint:fix         # ESLintリント + 自動修正
+pnpm format           # Prettierフォーマット
+
+# DBマイグレーション（apps/household-app 内で実行）
+pnpm drizzle:generate:household  # household テーブルのマイグレーション生成
+pnpm drizzle:generate:auth       # Better Auth テーブルのマイグレーション生成
+pnpm drizzle:migrate             # ローカルD1にマイグレーション適用
+pnpm drizzle:migrate:remote      # リモートD1にマイグレーション適用
+pnpm drizzle:studio              # Drizzle Studio（DB GUI）
+
+# デプロイ
+pnpm deploy           # デプロイ（スクリプト経由）
+pnpm deploy:prod      # 本番環境デプロイ
+pnpm deploy:dev       # 開発環境デプロイ
+pnpm deploy:quick     # ビルド・DBスキップの高速デプロイ
 ```
 
 ## 実装済み機能
@@ -431,7 +459,7 @@ pnpm deploy       # Cloudflare Workers へデプロイ
 
 ネットワークエラー時はデフォルト予算（120,000円）を使用し、支出記録の表示はブロックしない。
 
-#### API エンドポイント
+#### API エンドポイント（`apps/household-app/trpc/`）
 
 ```typescript
 // 予算取得
@@ -443,24 +471,6 @@ getBudget: publicProcedure
 updateBudget: publicProcedure
   .input(z.object({ month: z.string(), amount: z.number() }))
   .mutation(async (opts) => { /* D1 に予算を保存 */ });
-```
-
-#### ファイル構成
-
-```
-apps/household-app/
-├── components/
-│   ├── BudgetInput.tsx          # 予算設定UI
-│   ├── RemainingDisplay.tsx     # 残額表示
-│   └── ExpenseInput.tsx         # 支出入力
-├── hooks/
-│   ├── use-set-budget.ts        # 予算設定フック（tRPC経由）
-│   └── use-remaining-budget.ts  # 残額計算フック
-├── pages/
-│   └── household/
-│       └── +Page.tsx
-└── trpc/
-    └── server.ts
 ```
 
 #### 注意事項

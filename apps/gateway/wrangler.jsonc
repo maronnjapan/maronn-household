@@ -1,27 +1,28 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // 全リクエストの入口。ドメインのルートはこの Worker だけが持つ（他の Worker はルートなし）
-  "name": "gateway",
+  // 全リクエストの入口。ドメインのルート（maronn-household-budget.com/* と www.maronn-household-budget.com/*）は
+  // デプロイ時に scripts/cloudflare/cutover-routes.mjs が Cloudflare API でこの Worker に割り当てる
+  // （wrangler.jsonc に書くと、他の Worker に付いているルートがあると deploy が失敗するため）
+  "name": "household-gateway",
   "main": "src/index.ts",
   "compatibility_date": "2026-01-03",
   "observability": {
     "enabled": true
   },
   "workers_dev": false,
+  "preview_urls": false,
   // 振り分け先（src/routes.ts の Service と対応）
   "services": [
-    { "binding": "AUTH", "service": "auth-server" },
-    { "binding": "MCP", "service": "mcp-server" },
+    { "binding": "AUTH", "service": "household-auth" },
+    { "binding": "MCP", "service": "household-mcp" },
     { "binding": "APP", "service": "household-app" }
   ],
-  "routes": [
+  // 認可リクエストと動的クライアント登録の IP ごとのレート制限（src/rate-limit.ts）
+  "ratelimits": [
     {
-      "pattern": "maronn-household-budget.com/*",
-      "zone_name": "maronn-household-budget.com"
-    },
-    {
-      "pattern": "www.maronn-household-budget.com/*",
-      "zone_name": "maronn-household-budget.com"
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 }
     }
   ]
 }

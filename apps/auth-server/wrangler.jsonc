@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // 認証基盤（OpenID Provider）。gateway から service binding で呼ばれるのでルートは持たない
+  "name": "household-auth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-03",
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    // 公開オリジン（生成OPのルートはオリジン直下に固定なので、issuer はベアオリジン）
+    "ISSUER": "https://maronn-household-budget.com"
+  },
+  // secrets（GitHub Actions のデプロイが投入する。scripts/cloudflare/ensure-secrets.mjs）:
+  //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OIDC_SIGNING_KEY, (任意) OIDC_SIGNING_KEY_PREVIOUS,
+  //   HOUSEHOLD_CLIENT_SECRET（household-app と同じ値）
+  // 期限切れのトークン・セッション・未使用の動的登録クライアントの削除（src/cleanup.ts）
+  "triggers": {
+    "crons": ["0 20 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "household-db",
+      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+    }
+  ]
+}

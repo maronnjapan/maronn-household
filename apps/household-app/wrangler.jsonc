@@ -23,19 +23,16 @@
   "limits": {
     "cpu_ms": 60000, // default is 30000 (30 seconds)
   },
-  // 環境変数（シークレット）の設定方法:
-  // ローカル開発: .dev.vars.example をコピーして .dev.vars を作成
-  // 本番環境: wrangler secret put コマンドまたはCloudflare Dashboardで設定
-  // 詳細は AUTH_SETUP.md および .dev.vars.example を参照
-  // カスタムドメイン設定
-  "routes": [
-    {
-      "pattern": "maronn-household-budget.com/*",
-      "zone_name": "maronn-household-budget.com"
-    },
-    {
-      "pattern": "www.maronn-household-budget.com/*",
-      "zone_name": "maronn-household-budget.com"
-    }
-  ]
+  // シークレット: HOUSEHOLD_CLIENT_SECRET（household-auth と同じ値。デプロイが投入）、WEBHOOK_SECRET_KEY など
+  // BETTER_AUTH_SECRET は移行期間だけ旧 Better Auth のセッション Cookie の検証に使う
+  // ローカル開発は .dev.vars.example をコピーして .dev.vars を作成
+  // gateway（household-gateway）から service binding で呼ばれる。ルートと workers.dev は持たない
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    // 認証基盤の issuer（= 公開オリジン）
+    "OIDC_ISSUER": "https://maronn-household-budget.com"
+  },
+  // 認証基盤（トークン交換・JWKS・アカウント削除）。同じゾーンの URL への fetch は Worker を経由しないため service binding で呼ぶ
+  "services": [{ "binding": "AUTH", "service": "household-auth" }]
 }

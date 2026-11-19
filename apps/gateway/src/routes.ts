@@ -66,12 +66,12 @@ function isPathOrChild(path: string, base: string): boolean {
   return path === base || path.startsWith(`${base}/`);
 }
 
-/** IP ごとにレート制限するパス（未認証で認証基盤の D1 に書き込ませるもの） */
-const RATE_LIMITED_PATHS = new Set(['/register', '/authorize']);
+/** IP ごとにレート制限するパス（未認証で D1 に書き込ませるもの） */
+const RATE_LIMITED_PATHS = new Set(['/register', '/authorize', '/api/session/login']);
 
 /**
  * レート制限のキー（対象外のパスは null）
- * 動的クライアント登録の乱発と、認可リクエスト（トランザクションの書き込み）の乱発を抑える
+ * 動的クライアント登録・認可リクエスト・アプリのログイン開始（いずれも D1 への書き込み）の乱発を抑える
  */
 export function rateLimitKey(url: URL, clientIp: string): string | null {
   return RATE_LIMITED_PATHS.has(url.pathname) ? `${clientIp}:${url.pathname}` : null;

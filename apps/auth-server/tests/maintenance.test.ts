@@ -52,7 +52,7 @@ async function insertAccessToken(id: string, sub: string, clientId: string, exp:
 }
 
 describe('cleanupExpiredRecords', () => {
-  it('期限切れのトランザクション・認可コード・トークン・セッションを消し、有効なものは残す', async () => {
+  it('期限切れのトランザクション・認可コード・トークン・セッション・ログイン途中の記録を消し、有効なものは残す', async () => {
     await insertUser('u1');
     await run("INSERT INTO transactions (transaction_id, status, created_at, expired_at, payload) VALUES ('tx-old', 'requested', 0, ?, '{}')", NOW - 1);
     await run("INSERT INTO transactions (transaction_id, status, created_at, expired_at, payload) VALUES ('tx-new', 'requested', 0, ?, '{}')", NOW + 600);
@@ -68,8 +68,12 @@ describe('cleanupExpiredRecords', () => {
     await run("INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('s-old', ?, 't-old', 'x', 'x', 'u1')", iso(NOW - 1));
     await run("INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('s-new', ?, 't-new', 'x', 'x', 'u1')", iso(NOW + DAY));
 
+    await run("INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at) VALUES ('v-old', 'household-login:a', '{}', ?, 'x', 'x')", iso(NOW - 1));
+    await run("INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at) VALUES ('v-new', 'household-login:b', '{}', ?, 'x', 'x')", iso(NOW + 600));
+
     await cleanupExpiredRecords(testDb.db, NOW);
 
+    expect(await ids('verification')).toEqual(['v-new']);
     expect(await ids('transactions', 'transaction_id')).toEqual(['tx-new']);
     expect(await ids('codes')).toEqual(['code-new']);
     expect(await ids('access_tokens')).toEqual(['at-new']);

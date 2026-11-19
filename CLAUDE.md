@@ -120,7 +120,7 @@ packages/
 | `/mcp` `/.well-known/oauth-protected-resource/*` | household-mcp |
 | それ以外 | household-app |
 
-`/register` と `/authorize` は IP ごとにレート制限する。`www.` は apex に 301。
+`/register` `/authorize` `/api/session/login` は IP ごとにレート制限する。`www.` は apex に 301。
 
 `household-app` は **Photon.js**（`@photonjs/hono`）を使ってVike（SSR）とHonoを統合している。`server/entry.ts` がエントリポイントで、`apply()` でミドルウェア・ハンドラーを登録し `serve()` でCloudflare Workers向けにエクスポートする。
 

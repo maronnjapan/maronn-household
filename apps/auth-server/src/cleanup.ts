@@ -19,8 +19,9 @@ export async function cleanupExpiredRecords(db: D1Database, nowSeconds: number):
     browserSessions: db
       .prepare('DELETE FROM browser_sessions WHERE auth_time <= ?')
       .bind(nowSeconds - BROWSER_SESSION_LIFETIME_SECONDS),
-    // 家計簿アプリのセッション（expires_at は ISO 8601）
+    // 家計簿アプリのセッションと、ログイン途中で放棄された記録（expires_at は ISO 8601）
     appSessions: db.prepare('DELETE FROM session WHERE expires_at <= ?').bind(new Date(nowSeconds * 1000).toISOString()),
+    verifications: db.prepare('DELETE FROM verification WHERE expires_at <= ?').bind(new Date(nowSeconds * 1000).toISOString()),
     // 登録から24時間たっても、同意も発行したトークンもない動的登録クライアント（登録だけで使われなかったもの）
     unusedDynamicClients: db
       .prepare(

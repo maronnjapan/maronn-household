@@ -75,7 +75,7 @@ describe('resolveRoute', () => {
 });
 
 describe('レート制限の対象', () => {
-  it.each(['/register', '/authorize'])('%s は IP ごとのレート制限の対象', (path) => {
+  it.each(['/register', '/authorize', '/api/session/login'])('%s は IP ごとのレート制限の対象', (path) => {
     expect(rateLimitKey(new URL(`https://maronn-household-budget.com${path}`), '203.0.113.1')).toBe(`203.0.113.1:${path}`);
   });
 

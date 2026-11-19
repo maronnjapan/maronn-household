@@ -44,6 +44,12 @@ export const MCP_SCOPE = 'household';
 export const mcpResource = (issuer: string) => `${issuer}/mcp`;
 /** JWT のアクセストークンは失効を即時に反映しにくいので短くする（MCP クライアントはリフレッシュする） */
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+/**
+ * ID トークンの寿命は家計簿アプリのセッション（30日）に合わせる。
+ * アプリはログアウト時に保存した ID トークンを id_token_hint として渡すので、期限が切れていると
+ * 確認画面を挟むことになる。ID トークンはどの API のベアラーとしても受け付けない（MCP は typ=at+jwt のみ）。
+ */
+const ID_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SIGNING_KEY_CACHE_MS = 10 * 60 * 1000;
 /** 直近24時間の動的クライアント登録の上限（dcr-store.ts の count） */
 const MAX_DYNAMIC_CLIENTS_PER_DAY = 200;
@@ -78,6 +84,7 @@ function buildOidcApp(env: AuthEnv, options: { google?: Pick<GoogleLoginOptions,
     config: {
       issuer,
       accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      idTokenExpiresIn: ID_TOKEN_TTL_SECONDS,
       // 動的登録クライアントのロゴやポリシーの URL は、リダイレクト先と同じホストのものだけ表示する
       requireClientDisplayUriHostMatch: true,
     },

@@ -33,7 +33,7 @@ export class D1DynamicClientStore implements DynamicallyRegisteredClientStore {
   }
 
   async save(registration: ClientRegistration): Promise<void> {
-    await registerClient(this.database(), registration);
+    await registerClient(this.database(), withOfflineAccess(registration));
     // 登録日時を記録する（上限の計算と、使われなかったクライアントの掃除に使う。cleanup.ts）
     await this.database().run({
       sql: 'INSERT INTO dcr_client_registrations (client_id, created_at) VALUES (?, ?) ON CONFLICT (client_id) DO NOTHING',
@@ -63,4 +63,18 @@ export class D1DynamicClientStore implements DynamicallyRegisteredClientStore {
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+/**
+ * 登録時にスコープを指定したクライアントに offline_access を加える。
+ *
+ * MCP サーバー宛ての認可では、入口（resource-indicator.ts）が offline_access を加える。
+ * 生成OPは登録したスコープにない値を invalid_scope で拒否するので、公式の MCP SDK のように
+ * scope: "household" で登録したクライアントが認可できなくなるのを防ぐ。
+ * refresh_token のグラントを登録していないクライアントには、OP が offline_access を付与しない。
+ */
+export function withOfflineAccess(registration: ClientRegistration): ClientRegistration {
+  const { scope } = registration;
+  if (!scope || scope.includes('offline_access')) return registration;
+  return { ...registration, scope: [...scope, 'offline_access'] };
 }

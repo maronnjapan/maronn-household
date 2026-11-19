@@ -243,7 +243,11 @@ describe('家計簿アプリ（ファーストパーティ）のログイン', (
 });
 
 describe('MCP クライアント（動的クライアント登録）の認可', () => {
-  it('動的登録した public クライアントが、同意画面で許可を得て household スコープのアクセストークンを受け取る', async () => {
+  it.each<[string, string | undefined]>([
+    ['scope なしで登録', undefined],
+    // 公式の MCP SDK は、WWW-Authenticate や保護リソースのメタデータのスコープを登録に入れる
+    ['scope: household で登録（MCP SDK と同じ）', 'household'],
+  ])('動的登録した public クライアント（%s）が、同意画面で許可を得て household スコープのアクセストークンを受け取る', async (_label, registeredScope) => {
     const registration = await app.fetch(
       new Request(`${ISSUER}/register`, {
         method: 'POST',
@@ -254,6 +258,7 @@ describe('MCP クライアント（動的クライアント登録）の認可', 
           token_endpoint_auth_method: 'none',
           grant_types: ['authorization_code', 'refresh_token'],
           response_types: ['code'],
+          ...(registeredScope ? { scope: registeredScope } : {}),
         }),
       }),
       env

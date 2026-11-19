@@ -29,8 +29,8 @@ const AUTH_PATHS = new Set([
   '/api/auth/callback/google',
 ]);
 
-/** 前方一致で AUTH に渡すパス（ログイン方法ごとのサブパス） */
-const AUTH_PREFIXES = ['/login/'];
+/** 前方一致で AUTH に渡すパス（ログイン方法ごとのサブパス、ログアウトの確認 /logout/approve） */
+const AUTH_PREFIXES = ['/login/', '/logout/'];
 
 /** RFC 8414 のメタデータ。生成OPは OIDC Discovery しか持たないので、同じ文書に書き換える */
 const OAUTH_AS_METADATA_PATH = '/.well-known/oauth-authorization-server';

@@ -115,7 +115,7 @@ packages/
 
 | パス | 行き先 |
 |---|---|
-| `/authorize` `/token` `/userinfo` `/login` `/login/*` `/consent` `/register` `/revoke` `/introspect` `/logout` `/.well-known/openid-configuration` `/.well-known/jwks.json` `/api/auth/callback/google` | household-auth |
+| `/authorize` `/token` `/userinfo` `/login` `/login/*` `/consent` `/register` `/revoke` `/introspect` `/logout` `/logout/*` `/.well-known/openid-configuration` `/.well-known/jwks.json` `/api/auth/callback/google` | household-auth |
 | `/.well-known/oauth-authorization-server` | household-auth（OIDC Discovery に書き換え） |
 | `/mcp` `/.well-known/oauth-protected-resource/*` | household-mcp |
 | それ以外 | household-app |

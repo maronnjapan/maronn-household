@@ -16,6 +16,7 @@ describe('resolveRoute', () => {
     '/revoke',
     '/introspect',
     '/logout',
+    '/logout/approve',
     '/.well-known/openid-configuration',
     '/.well-known/jwks.json',
     '/api/auth/callback/google',

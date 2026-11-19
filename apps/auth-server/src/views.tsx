@@ -118,4 +118,33 @@ function errorPage(params: ErrorPageParams): JSX.Element {
   );
 }
 
-export const views: Partial<Views> = { loginPage, consentPage, errorPage };
+/** ログアウトの確認（id_token_hint がない・無効なとき。RP-Initiated Logout 1.0 §2） */
+function logoutConfirmationPage(params: { csrfToken: string }): JSX.Element {
+  return (
+    <Page title="ログアウト">
+      <h1>ログアウトしますか？</h1>
+      <p>家計簿からログアウトします。心当たりがなければ、このページを閉じてください。</p>
+      <form method="post" action="/logout/approve">
+        <input type="hidden" name="csrf_token" value={params.csrfToken} />
+        <button class="button primary" type="submit">ログアウトする</button>
+      </form>
+    </Page>
+  );
+}
+
+function logoutCompletedPage(): JSX.Element {
+  return (
+    <Page title="ログアウトしました">
+      <h1>ログアウトしました</h1>
+      <a class="button" href="/household">家計簿に戻る</a>
+    </Page>
+  );
+}
+
+export const views: Partial<Views> = {
+  loginPage,
+  consentPage,
+  errorPage,
+  logoutConfirmationPage,
+  logoutCompletedPage,
+};

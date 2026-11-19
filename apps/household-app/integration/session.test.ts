@@ -4,7 +4,7 @@
  * データベースは本物のローカル D1、認証基盤（AUTH の service binding）は本物の household-auth を使う。
  * 外部サービスの Google だけは、トークンエンドポイントと JWKS を代役に差し替える。
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from 'jose';
 import { createTestDatabase, type TestDatabase } from '@maronn/test-utils';
 import { createAuthServer } from 'auth-server/src/app';
@@ -220,6 +220,42 @@ describe('ログアウト', () => {
     const toAuthorize = await browser.request('/api/session/login');
     const toLogin = await browser.follow(toAuthorize);
     expect(new URL(toLogin.headers.get('Location')!).pathname).toBe('/login');
+  });
+
+  it('ログインから時間がたっても（ID トークンの発行から 2 時間後）、確認画面を挟まずにログアウトできる', async () => {
+    const browser = new Browser();
+    await browser.request(await signInUntilCallback(browser));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+    try {
+      const { redirectTo } = (await (
+        await browser.request('/api/session/logout', { method: 'POST', headers: { Origin: ISSUER } })
+      ).json()) as { redirectTo: string };
+
+      const back = await browser.request(redirectTo);
+
+      expect(back.status).toBe(302);
+      expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM browser_sessions').first('n')).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ヒントのないログアウトは日本語の確認画面を出し、承認すると OP のセッションを終えてアプリへ戻るリンクを出す', async () => {
+    const browser = new Browser();
+    await browser.request(await signInUntilCallback(browser));
+
+    const confirmation = await (await browser.request('/logout')).text();
+    expect(confirmation).toContain('ログアウトしますか');
+    const csrfToken = /name="csrf_token" value="([^"]+)"/.exec(confirmation)![1]!;
+    const completed = await browser.request('/logout/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ISSUER },
+      body: new URLSearchParams({ csrf_token: csrfToken }),
+    });
+
+    expect(await completed.text()).toContain('href="/household"');
+    expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM browser_sessions').first('n')).toBe(0);
   });
 
   it('他のサイトからのログアウトのリクエストは拒否する', async () => {

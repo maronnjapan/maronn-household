@@ -1,0 +1,212 @@
+# 本番デプロイ（maronn-household-budget.com）
+#
+# 1. retire-legacy: 旧 Worker（mcp-server / auth-server / delete-expired-session-cron）のルートと
+#    Custom Domain を外して削除する。後続が失敗しても、これだけは先に必ず実行する
+# 2. deploy: プリフライト → 型検査 → D1 マイグレーション → household-auth / household-mcp → secret →
+#    household-gateway → household-app のバージョンのアップロード → カットオーバー（ルートを gateway へ、
+#    household-app の新バージョンを 100%）→ スモークテスト。失敗したらルートと household-app を元に戻す
+# 3. deploy-crons: delete-no-user-household-data-cron（deploy が成功したときだけ。D1 のスキーマとユーザーの
+#    扱いがアプリと一致している状態でだけ、データを消す cron を更新するため）
+#
+# 詳しくは scripts/cloudflare/README.md
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - pnpm-lock.yaml
+      - 'scripts/cloudflare/**'
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  retire-legacy:
+    name: Retire legacy workers
+    # 本番へのデプロイは main からだけ（workflow_dispatch で他のブランチを選んでも動かさない）
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # 依存パッケージは使わない（グローバル fetch だけ）ので pnpm install は不要
+      - name: Retire legacy workers
+        run: node scripts/cloudflare/retire-legacy-workers.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy:
+    name: Deploy household workers
+    needs: retire-legacy
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # カットオーバーの変更前の状態を書くファイル（ロールバックと手動ロールバック用）
+      - name: Prepare
+        run: echo "CUTOVER_STATE=$RUNNER_TEMP/cutover-state.json" >> "$GITHUB_ENV"
+
+      # バージョンは package.json の packageManager（pnpm@10.17.0）から決まる
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      # 本番に何かを変更する前に、必要な secret と API トークンの権限を確かめる
+      - name: Preflight
+        run: node scripts/cloudflare/preflight.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_API_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm --filter ./apps/gateway --filter ./apps/auth-server --filter ./apps/mcp-server --filter @maronn/domain typecheck
+
+      - name: Apply D1 migrations
+        run: pnpm --filter household-app drizzle:migrate:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # ルートを持たない（gateway から service binding で呼ばれる）ので、デプロイしてもまだ公開されない。
+      # household-mcp は household-auth への service binding を持つので auth を先に出す
+      - name: Deploy household-auth
+        run: pnpm --filter ./apps/auth-server exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy household-mcp
+        run: pnpm --filter ./apps/mcp-server exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # household-auth をデプロイしたあとでないと secret の一覧を確かめられない。
+      # wrangler secret put はそのたびに新しいバージョンを作ってすぐ本番に反映する
+      - name: Ensure worker secrets
+        run: node scripts/cloudflare/ensure-secrets.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+
+      # wrangler.jsonc に routes は書かない（ルートは cutover-routes.mjs が API で割り当てる）
+      - name: Deploy household-gateway
+        run: pnpm --filter ./apps/gateway exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Build household-app
+        run: pnpm --filter ./apps/household-app build
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # wrangler versions upload（本番にはまだ出さない）。バージョン ID をステップ出力 version_id に書く
+      - name: Upload household-app version
+        id: upload
+        run: node scripts/cloudflare/upload-app-version.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 変更前のルートの割り当てと household-app のデプロイを CUTOVER_STATE に記録してから、
+      # ルートを household-gateway に付け替え、household-app の新バージョンを 100% で出す
+      - name: Cut over
+        id: cutover
+        run: node scripts/cloudflare/cutover-routes.mjs --state "$CUTOVER_STATE" --app-version "$APP_VERSION_ID"
+        env:
+          APP_VERSION_ID: ${{ steps.upload.outputs.version_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Smoke test
+        id: smoke
+        run: node scripts/cloudflare/smoke-test.mjs
+
+      # カットオーバーかスモークテストが失敗（または中断）したら元に戻し、ジョブは失敗のままにする。
+      # カットオーバーが何も変更する前に失敗していれば状態ファイルが無いので何もしない（--if-exists）
+      - name: Roll back
+        if: ${{ (failure() || cancelled()) && steps.cutover.outcome != 'skipped' }}
+        run: node scripts/cloudflare/cutover-routes.mjs --rollback "$CUTOVER_STATE" --if-exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 手動でロールバックするときのために、変更前の状態を残す（secret は含まない）
+      - name: Keep cutover state
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cutover-state
+          path: ${{ env.CUTOVER_STATE }}
+          if-no-files-found: ignore
+          retention-days: 30
+
+  deploy-crons:
+    name: Deploy cron workers
+    # deploy が成功したときだけ。この cron はユーザーのいないデータを削除するので、
+    # D1 のマイグレーションとアプリ・認証基盤の更新が済んだ状態でだけ新しいコードにする
+    # （deploy が失敗しても、すでにデプロイ済みの cron はそのまま動き続ける）
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # バージョンは package.json の packageManager（pnpm@10.17.0）から決まる
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy delete-no-user-household-data-cron
+        run: pnpm --filter delete-no-user-household-data-cron deploy:ci
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

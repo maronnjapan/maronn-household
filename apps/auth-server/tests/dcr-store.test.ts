@@ -50,9 +50,15 @@ describe('D1DynamicClientStore', () => {
     expect(client?.clientType).toBe('public');
   });
 
-  it('count は動的登録したクライアント（dcr- で始まる ID）だけを数える', async () => {
+  it('count は直近24時間に動的登録したクライアントの数（上限は登録の速さを抑えるもので、恒久的に塞がらない）', async () => {
+    const now = Math.floor(Date.now() / 1000);
     await store.save(MCP_CLIENT);
     await store.save({ ...MCP_CLIENT, clientId: 'dcr-BBBBBBBBBBBBBBBBBBBBBB' });
+    await store.save({ ...MCP_CLIENT, clientId: 'dcr-CCCCCCCCCCCCCCCCCCCCCC' });
+    await testDb.db
+      .prepare("UPDATE dcr_client_registrations SET created_at = ? WHERE client_id = 'dcr-CCCCCCCCCCCCCCCCCCCCCC'")
+      .bind(now - 25 * 60 * 60)
+      .run();
     await testDb.db
       .prepare("INSERT INTO clients (id, client_type, is_deleted) VALUES ('household-app', 'confidential', FALSE)")
       .run();

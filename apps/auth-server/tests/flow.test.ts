@@ -7,8 +7,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SignJWT, createLocalJWKSet, createRemoteJWKSet, customFetch, exportJWK, generateKeyPair, jwtVerify, type JWK } from 'jose';
 import { createTestDatabase, type TestDatabase } from '@maronn/test-utils';
-import { buildApp, type AuthEnv } from '../src/app';
-import { generateSigningKeysSecret } from '../src/signing-keys';
+import { createAuthServer, type AuthEnv, type AuthServer } from '../src/app';
+import { generateSigningKey } from '../src/signing-keys';
 import { codeChallengeFor } from '../src/google-oidc';
 
 const ISSUER = 'https://maronn-household-budget.com';
@@ -18,17 +18,17 @@ const CODE_VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 
 let googleKey: CryptoKey;
 let googleJwk: JWK;
-let signingKeys: string;
+let signingKey: string;
 let testDb: TestDatabase;
 let env: AuthEnv;
-let app: ReturnType<typeof buildApp>;
+let app: AuthServer;
 let googleSub: string;
 
 beforeAll(async () => {
   const pair = await generateKeyPair('RS256');
   googleKey = pair.privateKey;
   googleJwk = { ...(await exportJWK(pair.publicKey)), kid: 'google-key', alg: 'RS256' };
-  signingKeys = await generateSigningKeysSecret('op-key');
+  signingKey = await generateSigningKey('op-key');
 });
 
 beforeEach(async () => {
@@ -37,7 +37,7 @@ beforeEach(async () => {
   env = {
     DB: testDb.db,
     ISSUER,
-    OIDC_SIGNING_KEYS: signingKeys,
+    OIDC_SIGNING_KEY: signingKey,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: 'google-secret',
     HOUSEHOLD_CLIENT_SECRET: HOUSEHOLD_SECRET,
@@ -60,7 +60,7 @@ beforeEach(async () => {
       .sign(googleKey);
     return Response.json({ id_token: idToken });
   };
-  app = buildApp(env, { google: { fetch: googleFetch, jwks: createLocalJWKSet({ keys: [googleJwk] }) } });
+  app = createAuthServer(env, { google: { fetch: googleFetch, jwks: createLocalJWKSet({ keys: [googleJwk] }) } });
 });
 
 afterEach(async () => {
@@ -273,7 +273,9 @@ describe('MCP クライアント（動的クライアント登録）の認可', 
       resource: `${ISSUER}/mcp`,
     });
     expect(consentPage).toContain('Claude');
+    expect(consentPage).toContain('未確認のアプリ');
     expect(consentPage).toContain('家計簿データ（支出・予算・レシート）の参照と記録');
+    expect(consentPage).toContain('ログインしていない間の継続したアクセス');
     expect(consentPage).toContain('許可する');
     const callback = await approveConsent(browser, consentPage);
 
@@ -294,8 +296,104 @@ describe('MCP クライアント（動的クライアント登録）の認可', 
     const tokens = (await tokenResponse.json()) as { access_token: string; refresh_token?: string; expires_in: number };
     const accessToken = await verifyWithOpJwks(tokens.access_token);
     const user = await testDb.db.prepare('SELECT id FROM user').first<{ id: string }>();
-    expect(accessToken).toMatchObject({ sub: user!.id, scope: 'household', client_id: clientId });
+    expect(accessToken).toMatchObject({ sub: user!.id, scope: 'household offline_access', client_id: clientId });
+    // リソースインジケーター（resource）で求めた MCP サーバーが受信者になる
+    expect(accessToken.aud).toContain(`${ISSUER}/mcp`);
     expect(tokens.expires_in).toBe(900);
     expect(tokens.refresh_token).toBeTruthy();
+  });
+});
+
+describe('リソースインジケーターとセキュリティ', () => {
+  it('知らないリソース宛てのトークンは求められない（invalid_target）', async () => {
+    const response = await app.fetch(
+      new Request(
+        `${ISSUER}/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: 'household-app',
+          redirect_uri: `${ISSUER}/api/session/callback`,
+          scope: 'household',
+          resource: 'https://evil.example.com/mcp',
+          code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+          code_challenge_method: 'S256',
+        })}`
+      ),
+      env
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('家計簿アプリのクライアントは MCP 用の household スコープを得られない', async () => {
+    const browser = new Browser();
+    const response = await browser.request(
+      `/authorize?${new URLSearchParams({
+        response_type: 'code',
+        client_id: 'household-app',
+        redirect_uri: `${ISSUER}/api/session/callback`,
+        scope: 'openid household',
+        state: 's',
+        code_challenge: await codeChallengeFor(CODE_VERIFIER),
+        code_challenge_method: 'S256',
+      })}`
+    );
+
+    const redirect = location(response);
+    expect(redirect.pathname).toBe('/api/session/callback');
+    expect(redirect.searchParams.get('error')).toBeTruthy();
+  });
+
+  it('画面を他のサイトの枠に埋め込ませない', async () => {
+    const response = await app.fetch(new Request(`${ISSUER}/.well-known/openid-configuration`), env);
+
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+    expect(response.headers.get('Content-Security-Policy')).toBe("frame-ancestors 'none'");
+  });
+
+  it('Google でのログインをキャンセルしたらログイン画面に戻る', async () => {
+    const browser = new Browser();
+    const toLogin = location(
+      await browser.request(
+        `/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: 'household-app',
+          redirect_uri: `${ISSUER}/api/session/callback`,
+          scope: 'openid',
+          state: 's',
+          code_challenge: await codeChallengeFor(CODE_VERIFIER),
+          code_challenge_method: 'S256',
+        })}`
+      )
+    );
+    const loginPage = await (await browser.request(`${toLogin.pathname}${toLogin.search}`)).text();
+    const googleLoginPath = /href="(\/login\/google\?[^"]+)"/.exec(loginPage)![1]!.replace(/&amp;/g, '&');
+    const state = location(await browser.request(googleLoginPath)).searchParams.get('state')!;
+
+    const back = location(await browser.request(`/api/auth/callback/google?state=${state}&error=access_denied`));
+
+    expect(back.pathname).toBe('/login');
+    expect(back.searchParams.get('transaction_id')).toBe(toLogin.searchParams.get('transaction_id'));
+  });
+});
+
+describe('アカウント削除の内部エンドポイント', () => {
+  it('service binding からの呼び出しでユーザーを削除し、公開経路（CF-Connecting-IP 付き）からは見えない', async () => {
+    await testDb.db
+      .prepare("INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES ('u1', 'a', 'a@example.com', 1, 'x', 'x')")
+      .run();
+    const request = (headers: Record<string, string> = {}) =>
+      new Request(`${ISSUER}/internal/users/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ userId: 'u1' }),
+      });
+
+    const viaGateway = await app.fetch(request({ 'CF-Connecting-IP': '203.0.113.1' }), env);
+    expect(viaGateway.status).toBe(404);
+    expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM user').first('n')).toBe(1);
+
+    const internal = await app.fetch(request(), env);
+    expect(internal.status).toBe(204);
+    expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM user').first('n')).toBe(0);
   });
 });

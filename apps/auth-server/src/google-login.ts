@@ -72,33 +72,29 @@ export function googleLoginRoutes(options: GoogleLoginOptions, oidcContext: Midd
 
   routes.get(GOOGLE_CALLBACK_PATH, oidcContext, async (c) => {
     const state = c.req.query('state');
-    const code = c.req.query('code');
-    if (c.req.query('error') || !state || !code) {
-      return renderErrorPage(c, {
-        error: 'access_denied',
-        errorDescription: 'Google でのログインが完了しませんでした。もう一度お試しください。',
-        statusCode: 400,
-      });
-    }
-
-    const login = await upstreamLogins(c).find(state);
-    if (!login || login.provider !== GOOGLE_PROVIDER) {
+    const login = state ? await upstreamLogins(c).find(state) : undefined;
+    if (!state || !login || login.provider !== GOOGLE_PROVIDER) {
       return renderErrorPage(c, {
         error: 'invalid_request',
         errorDescription: 'ログインの有効期限が切れました。アプリからもう一度ログインしてください。',
         statusCode: 400,
       });
     }
-    // コールバックは一度だけ使える
-    await upstreamLogins(c).delete(state);
-
-    // ログインを始めたブラウザと同じブラウザか（攻撃者のログインを被害者のブラウザで完了させる攻撃を防ぐ）
+    // ログインを始めたブラウザと同じブラウザか（攻撃者のログインを被害者のブラウザで完了させる攻撃を防ぐ）。
+    // 照合してから消費するので、state を知っただけの第三者はログインを妨げられない
     if (parseTransactionId(c.req.header('Cookie') ?? null) !== login.transactionId) {
       return renderErrorPage(c, {
         error: 'invalid_request',
         errorDescription: 'ログインを始めたブラウザでやり直してください。',
         statusCode: 400,
       });
+    }
+
+    const code = c.req.query('code');
+    if (c.req.query('error') || !code) {
+      // キャンセルなど: ログイン画面に戻す（トランザクションは続いている）
+      await upstreamLogins(c).delete(state);
+      return c.redirect(`/login?${new URLSearchParams({ transaction_id: login.transactionId })}`);
     }
 
     const idToken = await exchangeGoogleCode({
@@ -110,6 +106,8 @@ export function googleLoginRoutes(options: GoogleLoginOptions, oidcContext: Midd
       fetch: options.fetch,
     });
     const account = await verifyGoogleIdToken(idToken, { clientId: options.clientId, nonce: state, jwks: options.jwks });
+    // 検証できたので、このコールバックを使い終える（同じ state はもう使えない）
+    await upstreamLogins(c).delete(state);
 
     const userStore: UserStorage = c.get('userStore');
     let subject: string;

@@ -13,8 +13,8 @@ import { createClientResolver, registerClient } from './oidc-provider/db/clients
 import type { ClientRegistration } from './oidc-provider/config.js';
 import type { DynamicallyRegisteredClientStore } from './oidc-provider/features/dynamic-client-registration/store.js';
 
-/** 生成コードが振る動的登録クライアントの ID の接頭辞 */
-const DCR_CLIENT_ID_PREFIX = 'dcr-';
+/** 登録数の上限（maxRegisteredClients）を数える期間。上限は登録の速さを抑えるもので、古い登録で恒久的に塞がらない */
+export const REGISTRATION_WINDOW_SECONDS = 24 * 60 * 60;
 
 export class D1DynamicClientStore implements DynamicallyRegisteredClientStore {
   private db: SqlDatabase | undefined;
@@ -34,12 +34,17 @@ export class D1DynamicClientStore implements DynamicallyRegisteredClientStore {
 
   async save(registration: ClientRegistration): Promise<void> {
     await registerClient(this.database(), registration);
+    // 登録日時を記録する（上限の計算と、使われなかったクライアントの掃除に使う。cleanup.ts）
+    await this.database().run({
+      sql: 'INSERT INTO dcr_client_registrations (client_id, created_at) VALUES (?, ?) ON CONFLICT (client_id) DO NOTHING',
+      params: [registration.clientId, nowSeconds()],
+    });
   }
 
   async count(): Promise<number> {
     const [row] = await this.database().all<{ count: number }>({
-      sql: 'SELECT COUNT(*) AS count FROM clients WHERE id LIKE ? AND is_deleted = FALSE',
-      params: [`${DCR_CLIENT_ID_PREFIX}%`],
+      sql: 'SELECT COUNT(*) AS count FROM dcr_client_registrations WHERE created_at > ?',
+      params: [nowSeconds() - REGISTRATION_WINDOW_SECONDS],
     });
     return Number(row?.count ?? 0);
   }
@@ -54,4 +59,8 @@ export class D1DynamicClientStore implements DynamicallyRegisteredClientStore {
     }
     return this.db;
   }
+}
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
 }

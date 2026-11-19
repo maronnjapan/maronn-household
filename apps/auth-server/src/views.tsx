@@ -29,6 +29,7 @@ const STYLE = `
   ul { padding-left: 1.25rem; }
   .button { display: block; width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; margin-top: 0.75rem; border-radius: 0.5rem; border: 1px solid #dadce0; background: #fff; color: #333; font-size: 1rem; text-align: center; text-decoration: none; cursor: pointer; }
   .primary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+  .client-id { color: #666; font-size: 0.8rem; word-break: break-all; }
 `;
 
 function Page(props: { title: string; children?: Child }): JSX.Element {
@@ -74,8 +75,10 @@ function consentPage(params: ConsentPageParams): JSX.Element {
         <>
           <h1>アクセスの許可</h1>
           <p>
-            <strong>{clientDisplayName(params.client)}</strong> が次のアクセスを求めています。
+            <strong>{clientDisplayName(params.client)}</strong>（未確認のアプリ）が、あなたの家計簿への次のアクセスを求めています。
+            心当たりがなければ拒否してください。
           </p>
+          <p class="client-id">クライアント ID: {params.client.clientId}</p>
           <ul>
             {params.scopes.map((scope) => (
               <li>{SCOPE_LABELS[scope] ?? scope}</li>

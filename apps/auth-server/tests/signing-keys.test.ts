@@ -1,22 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { generateSigningKeysSecret, loadSigningKeys } from '../src/signing-keys';
+import { generateSigningKey, loadSigningKeys } from '../src/signing-keys';
 
-describe('generateSigningKeysSecret', () => {
-  it('RS256 の秘密鍵 JWK を1つ含む JSON 配列を作る（kid 付き）', async () => {
-    const secret = await generateSigningKeysSecret('key-2026-11');
-    const keys = JSON.parse(secret);
+describe('generateSigningKey', () => {
+  it('RS256 の秘密鍵 JWK（kid 付き）の JSON を作る', async () => {
+    const jwk = JSON.parse(await generateSigningKey('key-2026-11'));
 
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatchObject({ kty: 'RSA', kid: 'key-2026-11', alg: 'RS256' });
-    expect(keys[0].d).toBeTruthy();
+    expect(jwk).toMatchObject({ kty: 'RSA', kid: 'key-2026-11', alg: 'RS256' });
+    expect(jwk.d).toBeTruthy();
   });
 });
 
 describe('loadSigningKeys', () => {
-  it('secret の秘密鍵を署名鍵として読み込み、公開鍵 JWK には秘密の値を含めない', async () => {
-    const secret = await generateSigningKeysSecret('key-1');
-
-    const [key] = await loadSigningKeys(secret);
+  it('現行の鍵を署名鍵として読み込み、公開鍵 JWK には秘密の値を含めない', async () => {
+    const [key] = await loadSigningKeys({ current: await generateSigningKey('key-1') });
 
     expect(key?.keyId).toBe('key-1');
     expect(key?.publicJwk).toEqual({
@@ -30,7 +26,7 @@ describe('loadSigningKeys', () => {
   });
 
   it('読み込んだ秘密鍵で署名した値を公開鍵で検証できる', async () => {
-    const [key] = await loadSigningKeys(await generateSigningKeysSecret('key-1'));
+    const [key] = await loadSigningKeys({ current: await generateSigningKey('key-1') });
     const data = new TextEncoder().encode('payload');
     const algorithm = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
 
@@ -40,18 +36,18 @@ describe('loadSigningKeys', () => {
     expect(await crypto.subtle.verify(algorithm, publicKey, signature, data)).toBe(true);
   });
 
-  it('複数の鍵は secret の順（先頭が署名に使う新しい鍵）で返す', async () => {
-    const newer = JSON.parse(await generateSigningKeysSecret('new'));
-    const older = JSON.parse(await generateSigningKeysSecret('old'));
-
-    const keys = await loadSigningKeys(JSON.stringify([...newer, ...older]));
+  it('ローテーション中は現行の鍵（署名に使う）を先頭に、前の鍵を後ろに並べる', async () => {
+    const keys = await loadSigningKeys({
+      current: await generateSigningKey('new'),
+      previous: await generateSigningKey('old'),
+    });
 
     expect(keys.map((key) => key.keyId)).toEqual(['new', 'old']);
   });
 
-  it('secret が未設定・空・不正なときはエラーにする', async () => {
-    await expect(loadSigningKeys(undefined)).rejects.toThrow(/OIDC_SIGNING_KEYS/);
-    await expect(loadSigningKeys('[]')).rejects.toThrow(/OIDC_SIGNING_KEYS/);
-    await expect(loadSigningKeys('{"kty":"RSA"}')).rejects.toThrow(/OIDC_SIGNING_KEYS/);
+  it('現行の鍵が未設定・不正なときはエラーにする', async () => {
+    await expect(loadSigningKeys({ current: undefined })).rejects.toThrow(/OIDC_SIGNING_KEY/);
+    await expect(loadSigningKeys({ current: '{"kty":"RSA"}' })).rejects.toThrow(/OIDC_SIGNING_KEY/);
+    await expect(loadSigningKeys({ current: 'not json' })).rejects.toThrow(/OIDC_SIGNING_KEY/);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRoute } from '../src/routes';
+import { rateLimitKey, resolveRoute } from '../src/routes';
 
 const route = (path: string, host = 'maronn-household-budget.com') =>
   resolveRoute(new URL(`https://${host}${path}`));
@@ -59,6 +59,8 @@ describe('resolveRoute', () => {
     '/tokens',
     '/mcpx',
     '/api/auth/session',
+    // 認証基盤の内部エンドポイント（アカウント削除）は公開経路から届かない
+    '/internal/users/delete',
   ])('それ以外のパス %s はアプリ（APP）に振り分ける', (path) => {
     expect(route(path)).toEqual({ type: 'forward', service: 'APP' });
   });
@@ -69,5 +71,15 @@ describe('resolveRoute', () => {
       location: 'https://maronn-household-budget.com/household?x=1',
       status: 301,
     });
+  });
+});
+
+describe('レート制限の対象', () => {
+  it.each(['/register', '/authorize'])('%s は IP ごとのレート制限の対象', (path) => {
+    expect(rateLimitKey(new URL(`https://maronn-household-budget.com${path}`), '203.0.113.1')).toBe(`203.0.113.1:${path}`);
+  });
+
+  it.each(['/token', '/household', '/mcp', '/login'])('%s は対象外', (path) => {
+    expect(rateLimitKey(new URL(`https://maronn-household-budget.com${path}`), '203.0.113.1')).toBeNull();
   });
 });

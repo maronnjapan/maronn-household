@@ -16,11 +16,23 @@ function createService(name: string) {
   };
 }
 
-function setup() {
+/** Workers Rate Limiting の代わり: キーごとに limit 回まで通す */
+function createLimiter(limit: number) {
+  const counts = new Map<string, number>();
+  return {
+    limit: async ({ key }: { key: string }) => {
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return { success: count <= limit };
+    },
+  } as unknown as RateLimit;
+}
+
+function setup(limit = 100) {
   const auth = createService('auth');
   const mcp = createService('mcp');
   const app = createService('app');
-  const env: Env = { AUTH: auth.fetcher, MCP: mcp.fetcher, APP: app.fetcher };
+  const env: Env = { AUTH: auth.fetcher, MCP: mcp.fetcher, APP: app.fetcher, AUTH_RATE_LIMITER: createLimiter(limit) };
   return { auth, mcp, app, env };
 }
 
@@ -83,5 +95,35 @@ describe('gateway', () => {
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe('https://maronn-household-budget.com/calendar');
     expect(app.received).toHaveLength(0);
+  });
+});
+
+describe('レート制限', () => {
+  it('動的クライアント登録は IP ごとに上限を超えると 429 で、認証基盤に届けない', async () => {
+    const { env, auth } = setup(2);
+    const register = (ip: string) =>
+      gateway.fetch(
+        new Request('https://maronn-household-budget.com/register', {
+          method: 'POST',
+          headers: { 'CF-Connecting-IP': ip },
+          body: '{}',
+        }),
+        env
+      );
+
+    const statuses = [(await register('203.0.113.1')).status, (await register('203.0.113.1')).status, (await register('203.0.113.1')).status];
+    const otherIp = await register('203.0.113.2');
+
+    expect(statuses).toEqual([200, 200, 429]);
+    expect(otherIp.status).toBe(200);
+    expect(auth.received).toHaveLength(3);
+  });
+
+  it('対象外のパスは制限しない', async () => {
+    const { env } = setup(0);
+
+    const response = await gateway.fetch(new Request('https://maronn-household-budget.com/household'), env);
+
+    expect(response.status).toBe(200);
   });
 });

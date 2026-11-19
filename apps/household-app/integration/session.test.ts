@@ -204,6 +204,24 @@ describe('ログアウト', () => {
     expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM session').first('n')).toBe(0);
   });
 
+  it('認証基盤のログアウトで OP のセッションも終わり、次のログインでは Google のログインからやり直す', async () => {
+    const browser = new Browser();
+    await browser.request(await signInUntilCallback(browser));
+    const { redirectTo } = (await (
+      await browser.request('/api/session/logout', { method: 'POST', headers: { Origin: ISSUER } })
+    ).json()) as { redirectTo: string };
+
+    const back = await browser.request(redirectTo);
+
+    expect(back.status).toBe(302);
+    expect(back.headers.get('Location')).toBe(`${ISSUER}/`);
+    expect(await testDb.db.prepare('SELECT COUNT(*) AS n FROM browser_sessions').first('n')).toBe(0);
+    // OP のセッションが残っていれば /authorize は同意やコールバックへ進むが、ログイン画面に戻る
+    const toAuthorize = await browser.request('/api/session/login');
+    const toLogin = await browser.follow(toAuthorize);
+    expect(new URL(toLogin.headers.get('Location')!).pathname).toBe('/login');
+  });
+
   it('他のサイトからのログアウトのリクエストは拒否する', async () => {
     const browser = new Browser();
     await browser.request(await signInUntilCallback(browser));

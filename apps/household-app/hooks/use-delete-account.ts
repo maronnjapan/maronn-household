@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { navigate } from "vike/client/router";
+import { useQueryClient } from "@tanstack/react-query";
 import { trpc } from "../trpc/client";
-import { deleteAccount } from "../auth/client";
+import { SESSION_QUERY_KEY, forgetUser } from "../auth/client";
 import { clearUserData, ANONYMOUS_USER_ID } from "../lib/db";
 import { useAuth } from "./use-auth";
 
@@ -14,21 +15,21 @@ interface DeleteAccountState {
  * アカウント削除処理を管理するカスタムフック
  *
  * 削除順序:
- * 1. 認証データ削除（BetterAuth経由、D1のuser/session/accountテーブル）
- * 2. 家計データ削除（tRPC経由、D1のexpenses/budgets等）
- * 3. IndexedDBクリア
- * 4. トップページへリダイレクト
+ * 1. サーバー（tRPC deleteAccount）: 家計データ → 認証基盤のユーザー・ログインの記録。セッション Cookie も消える
+ * 2. IndexedDBクリア
+ * 3. トップページへリダイレクト
  */
 export function useDeleteAccount() {
   const { userId, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const [state, setState] = useState<DeleteAccountState>({
     isDeleting: false,
     error: null,
   });
 
-  const deleteAccountMutation = trpc.deleteAccountData.useMutation();
+  const deleteAccountMutation = trpc.deleteAccount.useMutation();
 
-  const handleDeleteAccount = useCallback(async () => {
+  const handleDeleteAccount = async () => {
     if (!isAuthenticated) {
       setState({ isDeleting: false, error: "ログインが必要です" });
       return;
@@ -36,32 +37,22 @@ export function useDeleteAccount() {
 
     setState({ isDeleting: true, error: null });
 
-    // Step 1: 認証データ削除（BetterAuth経由）
-    const authResult = await deleteAccount();
-    if (authResult.error) {
-      setState({
-        isDeleting: false,
-        error: authResult.error.message ?? "アカウントの削除に失敗しました",
-      });
+    try {
+      await deleteAccountMutation.mutateAsync();
+    } catch {
+      setState({ isDeleting: false, error: "アカウントの削除に失敗しました" });
       return;
     }
 
-    // Step 2: D1データ削除
-    const d1Result = await deleteAccountMutation.mutateAsync();
-    if (!d1Result.success) {
-      setState({ isDeleting: false, error: "データの削除に失敗しました" });
-      return;
-    }
-
-    // Step 3: IndexedDBクリア（退会ユーザー + 匿名ユーザーのデータを削除）
+    // IndexedDBクリア（退会ユーザー + 匿名ユーザーのデータを削除）
     await clearUserData(userId);
     await clearUserData(ANONYMOUS_USER_ID);
+    forgetUser();
+    await queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
 
-    // Step 4: リダイレクト
     await navigate("/");
-
     setState({ isDeleting: false, error: null });
-  }, [isAuthenticated, userId, deleteAccountMutation]);
+  };
 
   return {
     deleteAccount: handleDeleteAccount,

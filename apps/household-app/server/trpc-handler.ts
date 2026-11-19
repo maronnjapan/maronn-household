@@ -4,61 +4,24 @@ import {
   type Get,
   type UniversalHandler,
 } from '@universal-middleware/core';
-import { appRouter } from '../trpc/server';
-import { createAuth } from '../auth/config';
-import type { Session, User } from 'better-auth/types';
-
-/**
- * Cloudflare Workers環境変数の型定義
- */
-interface Env {
-  DB: D1Database;
-  BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
-  WEBHOOK_SECRET_KEY: string;
-  NODE_ENV?: string;
-}
+import { appRouter, type Env } from '../trpc/server';
+import { findSessionUser } from './session/store';
 
 export const trpcHandler = ((endpoint) =>
   enhance(
     async (request, context, runtime) => {
       const env = (runtime as { runtime: 'workerd'; env?: Env })?.env;
-
-      // Better Authからセッション情報を取得
-      let session: Session | null = null;
-      let user: User | null = null;
-
       if (!env) {
         throw new Error('Environment not available');
       }
 
-      try {
-        const auth = createAuth(env);
-        const authSession = await auth.api.getSession({
-          headers: request.headers,
-        });
-
-        if (authSession) {
-          session = authSession.session;
-          user = authSession.user;
-        }
-      } catch (error) {
-        // 本番環境でも監視可能にするため、エラーを必ずログに出力
-        console.error(
-          '[Auth] Session retrieval failed. This may indicate auth misconfiguration or database connectivity issues:',
-          error
-        );
-
-        // 開発環境では予期しない設定ミスなどを検知できるようにエラーを再スロー
-        // 本番環境では未認証状態として扱う（セッション取得失敗を許容）
-        const nodeEnv =
-          (env && env.NODE_ENV) ||
-          (typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined);
-        if (nodeEnv && nodeEnv !== 'production') {
-          throw error;
-        }
-        // Note: 本番環境ではエラーログは上記で出力済み。未認証状態として処理を継続
-      }
+      // セッション（認証基盤でログインしたユーザー）を D1 から取得する
+      const current = await findSessionUser(
+        env.DB,
+        request.headers.get('Cookie'),
+        env.BETTER_AUTH_SECRET,
+        env.OIDC_ISSUER.startsWith('https://')
+      );
 
       return fetchRequestHandler({
         endpoint,
@@ -70,8 +33,8 @@ export const trpcHandler = ((endpoint) =>
             ...context,
             req,
             resHeaders,
-            session,
-            user,
+            session: current?.session ?? null,
+            user: current?.user ?? null,
             runtime,
             env,
           };

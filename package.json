@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter web dev",
+    "dev": "pnpm --filter household-app dev",
     "build": "pnpm -r build",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -19,9 +19,8 @@
     "deploy:quick": "bash scripts/deploy.sh --skip-build --skip-db",
     "setup:d1": "bash scripts/setup-d1.sh dev",
     "setup:d1:prod": "bash scripts/setup-d1.sh production",
-    "db:generate": "pnpm --filter api db:generate",
-    "db:migrate": "pnpm --filter api db:migrate",
-    "db:migrate:prod": "pnpm --filter api db:migrate:prod"
+    "db:migrate": "pnpm --filter household-app drizzle:migrate",
+    "db:migrate:prod": "pnpm --filter household-app drizzle:migrate:remote"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.0",

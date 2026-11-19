@@ -1,6 +1,6 @@
 import { dbMiddleware } from "./db-middleware";
 import { trpcHandler } from "./trpc-handler";
-import { authHandler } from "./auth-handler";
+import { sessionHandler } from "./session-handler";
 import { exportApiHandler } from "./export-api-handler";
 import { adminRotateSecretKeyHandler } from "./admin-rotate-secret-key-handler";
 import { apply, serve } from "@photonjs/hono";
@@ -31,8 +31,8 @@ function startApp() {
     // Make database available in Context as `context.db`
     dbMiddleware,
 
-    // Better Auth endpoints
-    authHandler("/api/auth"),
+    // ログイン・ログアウト（認証基盤 household-auth の RP）
+    sessionHandler("/api/session"),
 
     // tRPC route. See https://trpc.io/docs/server/adapters
     trpcHandler("/api/trpc"),

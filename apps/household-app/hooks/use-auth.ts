@@ -1,25 +1,32 @@
 import { useRef } from 'react';
-import { authClient } from "../auth/client";
-import { ANONYMOUS_USER_ID, migrateAnonymousExpenses } from "../lib/db";
-import { syncPendingExpenses } from "../lib/sync";
+import { useQuery } from '@tanstack/react-query';
+import { SESSION_QUERY_KEY, fetchSessionUser, rememberedUserId } from '../auth/client';
+import { ANONYMOUS_USER_ID, migrateAnonymousExpenses } from '../lib/db';
+import { syncPendingExpenses } from '../lib/sync';
 
 /**
- * 認証状態を管理するカスタムフック
- * Better AuthのuseSessionを使用
+ * 認証状態を管理するカスタムフック（ログインは認証基盤 household-auth、状態は /api/session/me）
  *
  * userIdはIndexedDBのデータ分離に使用:
  * - 認証時: 実際のユーザーID
- * - 未認証時 / 認証情報取得中: ANONYMOUS_USER_ID ('anonymous')
+ * - 確認中・オフライン: 最後にログインしていたユーザーID（ローカルのデータをすぐ表示するため）
+ * - 未認証: ANONYMOUS_USER_ID ('anonymous')
  *
  * セッション取得完了後、匿名データを自動的に認証ユーザーに移行
  */
 export function useAuth() {
-  const session = authClient.useSession();
-  const isAuthenticated = !!session.data?.user;
+  const session = useQuery({
+    queryKey: SESSION_QUERY_KEY,
+    queryFn: fetchSessionUser,
+    staleTime: 5 * 60 * 1000,
+  });
+  const user = session.data ?? null;
+  const isAuthenticated = user !== null;
   const wasLoadingRef = useRef<boolean>(true);
   const hasMigratedRef = useRef<boolean>(false);
 
-  const authenticatedUserId = isAuthenticated ? session.data!.user.id : null;
+  const authenticatedUserId = user?.id ?? null;
+  const unconfirmedUserId = session.isPending || session.isError ? rememberedUserId() : null;
 
   // 認証情報取得完了時のマイグレーション処理
   // wasLoading: true -> isPending: false への遷移を検知
@@ -40,10 +47,11 @@ export function useAuth() {
   wasLoadingRef.current = session.isPending;
 
   return {
-    userId: authenticatedUserId ?? ANONYMOUS_USER_ID,
+    userId: authenticatedUserId ?? unconfirmedUserId ?? ANONYMOUS_USER_ID,
+    user,
     isLoading: session.isPending,
     isAuthenticated,
-    isError: !!session.error,
+    isError: session.isError,
     error: session.error,
   };
 }

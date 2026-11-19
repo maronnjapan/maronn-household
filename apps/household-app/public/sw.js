@@ -12,8 +12,8 @@
 'use strict';
 
 // キャッシュ名（バージョン管理用）
-var CACHE_NAME = 'household-v1';
-var STATIC_CACHE_NAME = 'household-static-v1';
+var CACHE_NAME = 'household-v2';
+var STATIC_CACHE_NAME = 'household-static-v2';
 
 // 事前キャッシュ対象
 var PRECACHE_ASSETS = [

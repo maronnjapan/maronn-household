@@ -1,65 +1,65 @@
-import { createAuthClient } from "better-auth/react";
-import { navigate } from "vike/client/router";
-
 /**
- * Better Auth クライアント（React用）
- * フロントエンドでセッション管理、ログイン/ログアウトを行う
+ * ログイン状態のクライアント（認証基盤 household-auth でログインする。サーバー側は server/session/）
  */
-export const authClient = createAuthClient();
 
-/**
- * Googleでサインイン
- * OAuthフローを開始し、Google認証ページにリダイレクト
- */
-export const signInWithGoogle = async () => {
-  return await authClient.signIn.social({
-    provider: "google",
-    callbackURL: "/household",
-  });
-};
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+}
 
-/**
- * ログアウト用のヘルパー関数
- * onSuccessコールバック内でVikeのナビゲーションを実行
- */
-export const signOut = async () => {
-  await authClient.signOut({
-    fetchOptions: {
-      onSuccess: async () => {
-        // ログアウト成功後にクライアントサイドナビゲーション
-        try {
-          await navigate("/");
-        } catch (error) {
-          console.error("Navigation error after sign out:", error);
-          // ナビゲーション失敗時はページリロード
-          window.location.href = "/";
-        }
-      },
-      onError: (error) => {
-        console.error("Sign out error:", error);
-        // エラー時はリダイレクトせず、ユーザーにエラーを通知
-        if (typeof window !== "undefined") {
-          window.alert("ログアウトに失敗しました。時間をおいて再度お試しください。");
-        }
-      },
-    },
-  });
-};
+export const SESSION_QUERY_KEY = ['session'] as const;
 
-/**
- * アカウント削除用のヘルパー関数
- * BetterAuthのdeleteUser APIを呼び出す
- * D1データの削除はtRPC経由で事前に行う必要がある
- */
-export const deleteAccount = async () => {
-  return await authClient.deleteUser({
-    fetchOptions: {
-      onSuccess: () => {
-        console.log("User account deleted successfully");
-      },
-      onError: (error) => {
-        console.error("Delete account error:", error);
-      },
-    },
-  });
-};
+/** 最後にログインしていたユーザー ID（オフラインで起動しても、そのユーザーの IndexedDB のデータを表示するため） */
+const LAST_USER_ID_KEY = 'household:lastUserId';
+
+export async function fetchSessionUser(): Promise<SessionUser | null> {
+  const response = await fetch('/api/session/me', { credentials: 'same-origin' });
+  if (!response.ok) {
+    throw new Error(`Failed to load session: ${response.status}`);
+  }
+  const { user } = (await response.json()) as { user: SessionUser | null };
+  rememberUserId(user?.id ?? null);
+  return user;
+}
+
+export function rememberedUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(LAST_USER_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberUserId(userId: string | null): void {
+  try {
+    if (userId) window.localStorage.setItem(LAST_USER_ID_KEY, userId);
+    else window.localStorage.removeItem(LAST_USER_ID_KEY);
+  } catch {
+    // ストレージを使えない環境（プライベートブラウズなど）では覚えない
+  }
+}
+
+/** 認証基盤でのログイン（Google）を始める。ログイン後は returnTo に戻る */
+export function signIn(returnTo = window.location.pathname): void {
+  window.location.href = `/api/session/login?${new URLSearchParams({ return_to: returnTo })}`;
+}
+
+/** ログアウトし、認証基盤のセッションも終える */
+export async function signOut(): Promise<void> {
+  const response = await fetch('/api/session/logout', { method: 'POST', credentials: 'same-origin' });
+  if (!response.ok) {
+    window.alert('ログアウトに失敗しました。時間をおいて再度お試しください。');
+    return;
+  }
+  const { redirectTo } = (await response.json()) as { redirectTo: string };
+  rememberUserId(null);
+  window.location.href = redirectTo;
+}
+
+/** 退会後: このブラウザの記憶を消す */
+export function forgetUser(): void {
+  rememberUserId(null);
+}

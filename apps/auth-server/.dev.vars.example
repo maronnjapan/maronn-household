@@ -1,0 +1,8 @@
+# household-auth（認証基盤）のローカル開発用。.dev.vars にコピーして値を入れる
+# Google Cloud Console の OAuth クライアント（リダイレクト URI: <ISSUER>/api/auth/callback/google）
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+# 署名鍵（RSA 秘密鍵の JWK、kid 付き）。生成: node scripts/cloudflare/generate-signing-key.mjs など
+OIDC_SIGNING_KEY={"kty":"RSA","kid":"dev","alg":"RS256","n":"...","e":"AQAB","d":"...","p":"...","q":"...","dp":"...","dq":"...","qi":"..."}
+# 家計簿アプリのクライアントシークレット（apps/household-app/.dev.vars と同じ値）
+HOUSEHOLD_CLIENT_SECRET=your-household-client-secret

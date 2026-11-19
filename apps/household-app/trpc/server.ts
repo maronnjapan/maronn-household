@@ -11,6 +11,7 @@ import {
   webhookBatchSchedules,
   subBudgets,
   subBudgetMonthlyAmounts,
+  receipts,
 } from '@maronn/db-schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
@@ -20,7 +21,7 @@ import {
 } from '../lib/webhook-secret';
 import { createWebhookSignature } from '../lib/webhook-signature';
 import { ulid } from 'ulidx';
-import type { Session, User } from 'better-auth/types';
+import { clearedSessionCookies, type SessionUser } from '../server/session/store';
 import {
   calculateTotalAllocated,
   getEffectiveMonthlyAmount as getEffectiveAmount,
@@ -40,10 +41,15 @@ import {
 /**
  * Cloudflare Workers環境変数の型定義
  */
-interface Env {
+export interface Env {
   DB: D1Database;
-  BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
+  /** 認証基盤（household-auth）への service binding */
+  AUTH: Fetcher;
+  /** 認証基盤の issuer（= 公開オリジン） */
+  OIDC_ISSUER: string;
+  HOUSEHOLD_CLIENT_SECRET: string;
+  /** 移行期間だけ、Better Auth のセッション Cookie の検証に使う */
+  BETTER_AUTH_SECRET?: string;
   WEBHOOK_SECRET_KEY: string;
   /** キーローテーション時の旧キー。ローテーション完了後に削除する */
   WEBHOOK_SECRET_KEY_OLD?: string;
@@ -56,8 +62,8 @@ interface Env {
 interface Context {
   db: ReturnType<typeof dbD1>;
   env?: Env;
-  session?: Session | null;
-  user?: User | null;
+  session?: SessionUser['session'] | null;
+  user?: SessionUser['user'] | null;
   req?: Request;
   resHeaders?: Headers;
 }
@@ -343,12 +349,9 @@ export const appRouter = router({
     return { demo: true, message: 'Household app tRPC is working!' };
   }),
 
-  // セッション情報取得（認証不要）
+  // ログイン中のユーザー（認証不要）。セッションのトークンなどは返さない
   getSession: publicProcedure.query(async (opts) => {
-    return {
-      session: opts.ctx.session,
-      user: opts.ctx.user,
-    };
+    return { user: opts.ctx.user ?? null };
   }),
 
   // 支出を保存（認証必須）
@@ -1630,38 +1633,43 @@ export const appRouter = router({
       };
     }),
 
-  // アカウントデータ削除（D1の家計データのみ、認証必須）
-  // 認証データ（user, session, account）の削除はBetterAuth経由で行う
-  deleteAccountData: protectedProcedure.mutation(async (opts) => {
+  // アカウント削除（認証必須）
+  // 家計データを消してから、認証基盤（household-auth）にユーザーとログインの記録の削除を依頼する
+  deleteAccount: protectedProcedure.mutation(async (opts) => {
     const userId = opts.ctx.user.id;
+    const env = opts.ctx.env;
+    if (!env) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Environment not available' });
+    }
+    const database = drizzle(env.DB);
 
-    // DBを取得（D1を使用）
-    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+    // 家計データ（レシートの明細は receipts の削除で cascade される）
+    await database.batch([
+      database.delete(expenses).where(eq(expenses.userId, userId)),
+      database.delete(receipts).where(eq(receipts.userId, userId)),
+      database.delete(budgets).where(eq(budgets.userId, userId)),
+      database.delete(apiTokens).where(eq(apiTokens.userId, userId)),
+      database.delete(apiUsage).where(eq(apiUsage.userId, userId)),
+      database.delete(webhookBatchSchedules).where(eq(webhookBatchSchedules.userId, userId)),
+      database.delete(webhooks).where(eq(webhooks.userId, userId)),
+      database.delete(subBudgetMonthlyAmounts).where(eq(subBudgetMonthlyAmounts.userId, userId)),
+      database.delete(subBudgets).where(eq(subBudgets.userId, userId)),
+    ]);
 
-    // expensesを削除
-    await database.delete(expenses).where(eq(expenses.userId, userId)).run();
+    // ユーザー（account / session は cascade）と認証基盤の同意・トークン・セッション
+    const response = await env.AUTH.fetch(`${env.OIDC_ISSUER}/internal/users/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    if (!response.ok) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Failed to delete user: ${response.status}` });
+    }
 
-    // budgetsを削除
-    await database.delete(budgets).where(eq(budgets.userId, userId)).run();
-
-    // apiTokensを削除
-    await database.delete(apiTokens).where(eq(apiTokens.userId, userId)).run();
-
-    // apiUsageを削除
-    await database.delete(apiUsage).where(eq(apiUsage.userId, userId)).run();
-
-    // webhookBatchSchedulesを削除
-    await database.delete(webhookBatchSchedules).where(eq(webhookBatchSchedules.userId, userId)).run();
-
-    // webhooksを削除
-    await database.delete(webhooks).where(eq(webhooks.userId, userId)).run();
-
-    // subBudgetMonthlyAmountsを削除
-    await database.delete(subBudgetMonthlyAmounts).where(eq(subBudgetMonthlyAmounts.userId, userId)).run();
-
-    // subBudgetsを削除
-    await database.delete(subBudgets).where(eq(subBudgets.userId, userId)).run();
-
+    // このブラウザのセッション Cookie も消す
+    for (const cookie of clearedSessionCookies(env.OIDC_ISSUER.startsWith('https://'))) {
+      opts.ctx.resHeaders?.append('Set-Cookie', cookie);
+    }
     return { success: true };
   }),
 

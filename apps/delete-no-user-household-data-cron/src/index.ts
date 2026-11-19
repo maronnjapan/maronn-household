@@ -21,15 +21,17 @@ async function getOrphanedUserIds(
 	db: D1Database,
 	validUserIds: Set<string>
 ): Promise<Set<string>> {
-	// expenses と budgets から DISTINCT user_id を取得
-	const [expenseUsers, budgetUsers] = await Promise.all([
+	// expenses・budgets・receipts から DISTINCT user_id を取得
+	const [expenseUsers, budgetUsers, receiptUsers] = await Promise.all([
 		db.prepare('SELECT DISTINCT user_id FROM expenses').all<{ user_id: string }>(),
 		db.prepare('SELECT DISTINCT user_id FROM budgets').all<{ user_id: string }>(),
+		db.prepare('SELECT DISTINCT user_id FROM receipts').all<{ user_id: string }>(),
 	]);
 
 	const allHouseholdUserIds = new Set([
 		...expenseUsers.results.map((r) => r.user_id),
 		...budgetUsers.results.map((r) => r.user_id),
+		...receiptUsers.results.map((r) => r.user_id),
 	]);
 
 	// userテーブルに存在しないuser_idを返す
@@ -53,14 +55,15 @@ async function getOrphanedUserIds(
 async function deleteOrphanedData(
 	db: D1Database,
 	orphanedUserIds: Set<string>
-): Promise<{ expenses: number; budgets: number }> {
+): Promise<{ expenses: number; budgets: number; receipts: number }> {
 	if (orphanedUserIds.size === 0) {
-		return { expenses: 0, budgets: 0 };
+		return { expenses: 0, budgets: 0, receipts: 0 };
 	}
 
 	// json_eachで配列を展開してIN句を構成し、テーブルごとに1リクエストで削除する
 	const userIdsJson = JSON.stringify(Array.from(orphanedUserIds));
-	const deleteForTable = async (tableName: 'expenses' | 'budgets'): Promise<number> => {
+	// receipts を消すと receipt_items は外部キーの cascade で消える
+	const deleteForTable = async (tableName: 'expenses' | 'budgets' | 'receipts'): Promise<number> => {
 		const statement = `
 			WITH target_ids AS (
 				SELECT value AS user_id FROM json_each(?1)
@@ -72,16 +75,17 @@ async function deleteOrphanedData(
 		return result.meta.changes ?? 0;
 	};
 
-	const [expensesDeleted, budgetsDeleted] = await Promise.all([
+	const [expensesDeleted, budgetsDeleted, receiptsDeleted] = await Promise.all([
 		deleteForTable('expenses'),
 		deleteForTable('budgets'),
+		deleteForTable('receipts'),
 	]);
 
 	console.log(
-		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}) in single batches`
+		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}, receipts: ${receiptsDeleted}) in single batches`
 	);
 
-	return { expenses: expensesDeleted, budgets: budgetsDeleted };
+	return { expenses: expensesDeleted, budgets: budgetsDeleted, receipts: receiptsDeleted };
 }
 
 /**

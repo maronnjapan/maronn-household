@@ -1,11 +1,14 @@
 # Cloudflare Workers ローカル開発用環境変数の例
-# wrangler dev でアプリを実行する際に読み込まれます
 # このファイルを .dev.vars にコピーして、実際の値を設定してください
 
-# Better Auth設定
-# openssl rand -base64 32 などで生成した32文字以上のランダム文字列
+# 認証基盤（apps/auth-server、household-auth）の issuer。ローカルでは household-app の開発サーバーのオリジン
+# （http のときはセッション Cookie に Secure / __Host- を付けない）
+OIDC_ISSUER=http://localhost:3000
+# 認証基盤に登録する家計簿アプリのクライアントシークレット（apps/auth-server/.dev.vars と同じ値）
+HOUSEHOLD_CLIENT_SECRET=your-household-client-secret
+
+# 移行期間だけ: 旧 Better Auth のセッション Cookie の検証に使う（本番の値を使い続ける）
 BETTER_AUTH_SECRET=your-random-secret-string-min-32-chars
-BETTER_AUTH_URL=http://localhost:3000
 
 # Webhook設定
 # Webhookシークレットの暗号化に使用する鍵
@@ -18,5 +21,4 @@ NODE_ENV=development
 # メール送信設定（Resend）
 # https://resend.com/ のダッシュボードでAPIキーを発行
 RESEND_API_KEY=your-resend-api-key
-# パスワードリセットメールの送信元アドレス
 EMAIL_FROM=noreply@yourdomain.com

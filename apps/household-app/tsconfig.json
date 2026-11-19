@@ -21,6 +21,7 @@
     "jsxImportSource": "react"
   },
   "exclude": [
-    "dist"
+    "dist",
+    "integration"
   ]
 }

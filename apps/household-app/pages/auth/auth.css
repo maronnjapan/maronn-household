@@ -158,6 +158,8 @@
 }
 
 .google-login-button {
+  box-sizing: border-box;
+  text-decoration: none;
   width: 100%;
   padding: 0.75rem 1rem;
   background-color: #fff;

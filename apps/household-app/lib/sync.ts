@@ -2,7 +2,7 @@ import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
 import { db, updateSyncStatus, getCurrentMonth, type LocalExpenseEntity } from './db';
 import { vanillaTrpc } from '../trpc/client';
-import { authClient } from '../auth/client';
+import { fetchSessionUser } from '../auth/client';
 
 /**
  * 現在の認証済みユーザーIDを取得
@@ -10,8 +10,7 @@ import { authClient } from '../auth/client';
  */
 async function getAuthenticatedUserId(): Promise<string | null> {
   try {
-    const session = await authClient.getSession();
-    return session.data?.user?.id ?? null;
+    return (await fetchSessionUser())?.id ?? null;
   } catch {
     return null;
   }

@@ -1,24 +1,13 @@
-import { useState } from "react";
-import { signInWithGoogle } from "../../../auth/client";
+import { usePageContext } from "vike-react/usePageContext";
 import "../auth.css";
 
+/**
+ * ログインページ
+ * 「Googleでログイン」で認証基盤（household-auth）のログインへ進む
+ */
 export function Page() {
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleGoogleLogin = async () => {
-    setError(null);
-    setIsLoading(true);
-
-    const result = await signInWithGoogle();
-
-    if (result.error) {
-      setError(result.error.message ?? "ログインに失敗しました");
-      setIsLoading(false);
-    }
-    // 成功時はGoogleの認証ページにリダイレクトされるため、
-    // setIsLoading(false)は不要
-  };
+  const { urlParsed } = usePageContext();
+  const failed = urlParsed.search.error !== undefined;
 
   return (
     <div className="auth-container">
@@ -26,15 +15,17 @@ export function Page() {
       <p className="auth-description">
         Googleアカウントでログインしてください
       </p>
-      {error && <p className="error-message">{error}</p>}
-      <button
-        type="button"
-        onClick={handleGoogleLogin}
-        disabled={isLoading}
+      {failed && (
+        <p className="error-message">
+          ログインできませんでした。もう一度お試しください。
+        </p>
+      )}
+      <a
+        href="/api/session/login?return_to=%2Fhousehold"
         className="google-login-button"
       >
-        {isLoading ? "ログイン中..." : "Googleでログイン"}
-      </button>
+        Googleでログイン
+      </a>
     </div>
   );
 }

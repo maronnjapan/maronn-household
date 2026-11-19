@@ -117,14 +117,17 @@ function buildMemo(storeName: string, names: string[]): string {
  * 購入日時から支出日（YYYY-MM-DD）を取り出す
  */
 export function receiptDate(purchasedAt: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(purchasedAt.trim());
-  const date = match?.[0];
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(purchasedAt.trim());
+  const date = match?.[0].slice(0, 10);
   if (!match || !date) {
     throw new Error(`Invalid purchase date: ${purchasedAt}`);
   }
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) {
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const calendar = new Date(Date.UTC(year, month - 1, day));
+  const validDate =
+    calendar.getUTCFullYear() === year && calendar.getUTCMonth() === month - 1 && calendar.getUTCDate() === day;
+  const validTime = match[4] === undefined || (Number(match[4]) < 24 && Number(match[5]) < 60);
+  if (!validDate || !validTime) {
     throw new Error(`Invalid purchase date: ${purchasedAt}`);
   }
   return date;

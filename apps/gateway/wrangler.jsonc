@@ -17,12 +17,19 @@
     { "binding": "MCP", "service": "household-mcp" },
     { "binding": "APP", "service": "household-app" }
   ],
-  // 認可リクエストと動的クライアント登録の IP ごとのレート制限（src/rate-limit.ts）
+  // IP ごとのレート制限（src/routes.ts の rateLimitKey）
   "ratelimits": [
     {
+      // 認可リクエスト・アプリのログイン開始
       "name": "AUTH_RATE_LIMITER",
       "namespace_id": "1001",
       "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      // 動的クライアント登録
+      "name": "REGISTER_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 3, "period": 60 }
     }
   ]
 }

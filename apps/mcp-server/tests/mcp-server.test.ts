@@ -158,6 +158,14 @@ describe('アクセストークンの検証', () => {
     expect((await rpc('tools/list', {}, token)).status).toBe(401);
   });
 
+  it('検証できないトークンには error="invalid_token" を返す（RFC 6750 §3）', async () => {
+    const response = await rpc('tools/list', {}, await accessToken({ revoked: true }));
+
+    expect(response.headers.get('WWW-Authenticate')).toBe(
+      `Bearer error="invalid_token", resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp", scope="household"`
+    );
+  });
+
   it('household スコープのないトークンは 403 insufficient_scope', async () => {
     const response = await rpc('tools/list', {}, await accessToken({ scope: 'openid profile' }));
 
@@ -284,6 +292,23 @@ describe('ツール', () => {
     expect(data.receipts).toBeUndefined();
     expect(withItems.data.receipts).toHaveLength(1);
     expect(withItems.data.receipts[0].items.map((item: { name: string }) => item.name)).toEqual(['米', 'ティッシュ']);
+  });
+
+  it('list_records の includeItems は、アプリで支出をすべて消して取り消したレシートを含めない', async () => {
+    const cancelled = await callTool('record_receipt', RECEIPT);
+    await callTool('record_receipt', { ...RECEIPT, totalAmount: 2000, items: undefined, category: 'food' });
+    await testDb.db.prepare('DELETE FROM expenses WHERE receipt_id = ?').bind(cancelled.data.receiptId).run();
+
+    const { data } = await callTool('list_records', { month: '2026-11', includeItems: true });
+
+    expect(data.receipts.map((r: { totalAmount: number }) => r.totalAmount)).toEqual([2000]);
+  });
+
+  it('暦にない購入日は記録しない', async () => {
+    const { isError } = await callTool('record_receipt', { ...RECEIPT, purchasedAt: '2026-02-31' });
+
+    expect(isError).toBe(true);
+    expect(await count('receipts')).toBe(0);
   });
 
   it('get_budget_summary は月の予算（なければ直近の過去月、それもなければ 120,000円）に対する残額と内訳を返し、サブ予算の支出は含めない', async () => {

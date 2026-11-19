@@ -28,11 +28,17 @@ function createLimiter(limit: number) {
   } as unknown as RateLimit;
 }
 
-function setup(limit = 100) {
+function setup(limit = 100, registerLimit = limit) {
   const auth = createService('auth');
   const mcp = createService('mcp');
   const app = createService('app');
-  const env: Env = { AUTH: auth.fetcher, MCP: mcp.fetcher, APP: app.fetcher, AUTH_RATE_LIMITER: createLimiter(limit) };
+  const env: Env = {
+    AUTH: auth.fetcher,
+    MCP: mcp.fetcher,
+    APP: app.fetcher,
+    AUTH_RATE_LIMITER: createLimiter(limit),
+    REGISTER_RATE_LIMITER: createLimiter(registerLimit),
+  };
   return { auth, mcp, app, env };
 }
 
@@ -100,7 +106,7 @@ describe('gateway', () => {
 
 describe('レート制限', () => {
   it('動的クライアント登録は IP ごとに上限を超えると 429 で、認証基盤に届けない', async () => {
-    const { env, auth } = setup(2);
+    const { env, auth } = setup(100, 2);
     const register = (ip: string) =>
       gateway.fetch(
         new Request('https://maronn-household-budget.com/register', {

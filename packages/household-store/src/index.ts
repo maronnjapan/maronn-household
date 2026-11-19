@@ -4,7 +4,7 @@
  * 1 人のユーザーのデータだけを扱う。MCP サーバーなどのアダプターは、認証したユーザーでこのストアを作る。
  * 計算などの純粋なロジックは @maronn/domain に置く。
  */
-import { and, asc, desc, eq, gte, isNull, lt, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   budgets,
@@ -107,9 +107,13 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         .all();
     },
 
-    /** 月に購入したレシートと明細 */
+    /** 月に購入したレシートと明細（アプリで支出をすべて消して取り消したレシートは含めない） */
     async listReceipts(month: string) {
       const { start, end } = monthDateRange(month);
+      const active = and(
+        receiptsBetween(start, end),
+        sql`exists (select 1 from ${expenses} where ${expenses.receiptId} = ${receipts.id})`
+      );
       const found = await db
         .select({
           id: receipts.id,
@@ -120,7 +124,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
           paymentMethod: receipts.paymentMethod,
         })
         .from(receipts)
-        .where(receiptsBetween(start, end))
+        .where(active)
         .orderBy(asc(receipts.purchasedAt))
         .all();
       const items = await db
@@ -133,7 +137,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         })
         .from(receiptItems)
         .innerJoin(receipts, eq(receipts.id, receiptItems.receiptId))
-        .where(receiptsBetween(start, end))
+        .where(active)
         .orderBy(asc(receiptItems.position))
         .all();
       return found.map((receipt) => ({

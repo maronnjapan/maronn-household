@@ -149,11 +149,22 @@ async function sessionTokenFromCookies(
   const token = cookies.get(cookieNames(secure).session);
   if (token) return sha256(token);
   if (!legacySecret) return null;
-  for (const name of LEGACY_SESSION_COOKIES) {
-    const value = cookies.get(name);
-    if (value) return verifyLegacySessionCookie(decodeURIComponent(value), legacySecret);
+  // https では Better Auth も __Secure- 付きの名前だけを使っていた
+  const names = secure ? LEGACY_SESSION_COOKIES.filter((name) => name.startsWith('__Secure-')) : LEGACY_SESSION_COOKIES;
+  for (const name of names) {
+    const value = safeDecode(cookies.get(name));
+    if (value) return verifyLegacySessionCookie(value, legacySecret);
   }
   return null;
+}
+
+function safeDecode(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 }
 
 /** Better Auth の Cookie の値（`<token>.<base64(HMAC-SHA256(secret, token))>`）を検証し、トークンを返す */

@@ -297,6 +297,22 @@ describe('セッションの判定', () => {
     expect(forged).toBeNull();
   });
 
+  it('本番（https）ではプレフィックスのない旧 Cookie を読まず、壊れた Cookie でもエラーにしない', async () => {
+    await insertUser();
+    const expires = new Date(Date.now() + 60_000).toISOString();
+    await testDb.db
+      .prepare("INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id) VALUES ('s1', ?, 'legacy-token', 'x', 'x', 'u1')")
+      .bind(expires)
+      .run();
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(BETTER_AUTH_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const signature = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('legacy-token')))));
+    const value = encodeURIComponent(`legacy-token.${signature}`);
+
+    expect(await findSessionUser(testDb.db, `better-auth.session_token=${value}`, BETTER_AUTH_SECRET, true)).toBeNull();
+    expect(await findSessionUser(testDb.db, `__Secure-better-auth.session_token=%E0%A4%A`, BETTER_AUTH_SECRET, true)).toBeNull();
+    expect(await findSessionUser(testDb.db, `__Host-hh_session=%%%`, BETTER_AUTH_SECRET, true)).toBeNull();
+  });
+
   it('期限切れのセッションはログインしていない扱い', async () => {
     await insertUser();
     const browser = new Browser();

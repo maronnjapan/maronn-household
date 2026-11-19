@@ -90,6 +90,34 @@ describe('prepareAuthorizationRequest', () => {
     expect(p.get('client_id')).toBe('dcr-x');
   });
 
+  it('Content-Type の大文字小文字やパラメータの違いでは素通りできない', async () => {
+    const request = new Request(`${ISSUER}/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'Application/X-WWW-Form-Urlencoded; charset=UTF-8' },
+      body: new URLSearchParams({ client_id: 'dcr-x', scope: 'household', resource: 'https://evil.example.com' }),
+    });
+
+    const result = await prepareAuthorizationRequest(request, options);
+
+    expect((result as Response).status).toBe(400);
+  });
+
+  it('フォーム以外の本文の POST は 400 にする', async () => {
+    const request = new Request(`${ISSUER}/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resource: 'https://evil.example.com' }),
+    });
+
+    expect(((await prepareAuthorizationRequest(request, options)) as Response).status).toBe(400);
+  });
+
+  it.each(['constructor', 'toString', '__proto__'])('オブジェクトのプロパティ名（%s）を resource にしても許可リストに一致しない', async (resource) => {
+    const result = await prepareAuthorizationRequest(authorize({ scope: 'household', resource }), options);
+
+    expect((result as Response).status).toBe(400);
+  });
+
   it('/authorize 以外のリクエストはそのまま通す', async () => {
     const request = new Request(`${ISSUER}/token`, { method: 'POST', body: 'audience=x' });
 

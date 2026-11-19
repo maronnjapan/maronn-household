@@ -76,8 +76,18 @@ describe('resolveRoute', () => {
 });
 
 describe('レート制限の対象', () => {
-  it.each(['/register', '/authorize', '/api/session/login'])('%s は IP ごとのレート制限の対象', (path) => {
-    expect(rateLimitKey(new URL(`https://maronn-household-budget.com${path}`), '203.0.113.1')).toBe(`203.0.113.1:${path}`);
+  it.each(['/authorize', '/api/session/login'])('%s は IP ごとのレート制限（AUTH_RATE_LIMITER）の対象', (path) => {
+    expect(rateLimitKey(new URL(`https://maronn-household-budget.com${path}`), '203.0.113.1')).toEqual({
+      limiter: 'AUTH_RATE_LIMITER',
+      key: `203.0.113.1:${path}`,
+    });
+  });
+
+  it('動的クライアント登録はより厳しい制限（REGISTER_RATE_LIMITER）の対象', () => {
+    expect(rateLimitKey(new URL('https://maronn-household-budget.com/register'), '203.0.113.1')).toEqual({
+      limiter: 'REGISTER_RATE_LIMITER',
+      key: '203.0.113.1:/register',
+    });
   });
 
   it.each(['/token', '/household', '/mcp', '/login'])('%s は対象外', (path) => {

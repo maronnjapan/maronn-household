@@ -79,6 +79,15 @@
     return time + rand;
   }
 
+  // useAuth（hooks/use-auth.ts）と同じ規則: 最後にログインしていたユーザー（auth/client.ts の LAST_USER_ID_KEY）、なければ匿名
+  function getUserId() {
+    try {
+      return localStorage.getItem('household:lastUserId') || 'anonymous';
+    } catch (e) {
+      return 'anonymous';
+    }
+  }
+
   function getDeviceId() {
     var key = 'maronn-household-device-id', id = localStorage.getItem(key);
     if (!id) { id = ulid(); localStorage.setItem(key, id); }
@@ -142,7 +151,7 @@
         var dateStr = jst.toISOString().split('T')[0];
         var expense = {
           id: id,
-          userId: 'anonymous',
+          userId: getUserId(),
           amount: amount,
           category: category || undefined,
           memo: memo || undefined,

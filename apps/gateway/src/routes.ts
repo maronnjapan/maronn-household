@@ -66,13 +66,17 @@ function isPathOrChild(path: string, base: string): boolean {
   return path === base || path.startsWith(`${base}/`);
 }
 
-/** IP ごとにレート制限するパス（未認証で D1 に書き込ませるもの） */
-const RATE_LIMITED_PATHS = new Set(['/register', '/authorize', '/api/session/login']);
+/** IP ごとのレート制限（wrangler.jsonc の ratelimits） */
+export type RateLimiterName = 'AUTH_RATE_LIMITER' | 'REGISTER_RATE_LIMITER';
 
-/**
- * レート制限のキー（対象外のパスは null）
- * 動的クライアント登録・認可リクエスト・アプリのログイン開始（いずれも D1 への書き込み）の乱発を抑える
- */
-export function rateLimitKey(url: URL, clientIp: string): string | null {
-  return RATE_LIMITED_PATHS.has(url.pathname) ? `${clientIp}:${url.pathname}` : null;
+/** 未認証で D1 に書き込ませるパス（認可リクエスト・アプリのログイン開始） */
+const RATE_LIMITED_PATHS = new Set(['/authorize', '/api/session/login']);
+/** 動的クライアント登録は、1 つの IP で登録数の上限を使い切れないよう、より厳しく制限する */
+const REGISTER_PATH = '/register';
+
+/** レート制限に使うリミッターとキー（対象外のパスは null） */
+export function rateLimitKey(url: URL, clientIp: string): { limiter: RateLimiterName; key: string } | null {
+  const key = `${clientIp}:${url.pathname}`;
+  if (url.pathname === REGISTER_PATH) return { limiter: 'REGISTER_RATE_LIMITER', key };
+  return RATE_LIMITED_PATHS.has(url.pathname) ? { limiter: 'AUTH_RATE_LIMITER', key } : null;
 }

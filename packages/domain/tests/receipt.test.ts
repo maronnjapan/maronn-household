@@ -158,6 +158,13 @@ describe('receiptDate', () => {
     expect(() => receiptDate('11/19')).toThrow();
     expect(() => receiptDate('2026-13-01')).toThrow();
   });
+
+  it('暦にない日付や時刻はエラーにする', () => {
+    expect(() => receiptDate('2026-02-31')).toThrow();
+    expect(() => receiptDate('2026-11-19T25:00')).toThrow();
+    expect(() => receiptDate('2026-11-19T12:60')).toThrow();
+    expect(receiptDate('2028-02-29T23:59')).toBe('2028-02-29');
+  });
 });
 
 describe('summarizeSpending', () => {

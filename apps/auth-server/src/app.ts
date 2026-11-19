@@ -52,7 +52,7 @@ const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const ID_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SIGNING_KEY_CACHE_MS = 10 * 60 * 1000;
 /** 直近24時間の動的クライアント登録の上限（dcr-store.ts の count） */
-const MAX_DYNAMIC_CLIENTS_PER_DAY = 200;
+const MAX_DYNAMIC_CLIENTS_PER_DAY = 1000;
 
 type OidcApp = Hono<{ Bindings: AuthEnv; Variables: Record<string, unknown> }>;
 

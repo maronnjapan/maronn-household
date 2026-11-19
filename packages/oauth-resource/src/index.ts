@@ -35,9 +35,10 @@ export function protectedResource(options: { path: string; scope: string }) {
   const metadataUrl = (env: ResourceEnv) =>
     `${env.ISSUER}/.well-known/oauth-protected-resource${options.path}`;
 
-  const challenge = (c: Context<ResourceContext>, status: 401 | 403) => {
+  // トークンがないときは error を付けず、検証できないトークンとスコープ不足には付ける（RFC 6750 §3）
+  const challenge = (c: Context<ResourceContext>, status: 401 | 403, tokenPresent: boolean) => {
     const error = status === 401 ? 'invalid_token' : 'insufficient_scope';
-    const detail = status === 403 ? `error="${error}", ` : '';
+    const detail = tokenPresent ? `error="${error}", ` : '';
     const header = `Bearer ${detail}resource_metadata="${metadataUrl(c.env)}", scope="${options.scope}"`;
     return c.json({ error }, status, { 'WWW-Authenticate': header });
   };
@@ -70,9 +71,9 @@ export function protectedResource(options: { path: string; scope: string }) {
       (await DB.prepare('SELECT 1 FROM access_tokens WHERE id = ? AND exp > ?')
         .bind(jti, Math.floor(Date.now() / 1000))
         .first());
-    if (!sub || !issued) return challenge(c, 401);
+    if (!sub || !issued) return challenge(c, 401, token !== undefined);
     if (!String(scope).split(' ').includes(options.scope)) {
-      return challenge(c, 403);
+      return challenge(c, 403, true);
     }
     c.set('caller', { userId: sub, clientId: String(clientId) });
     await next();

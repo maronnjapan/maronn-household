@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { updateExpense, deleteExpense } from '../lib/db';
+import { updateExpense, deleteExpense, ANONYMOUS_USER_ID } from '../lib/db';
 import { trpc, vanillaTrpc } from '../trpc/client';
 import { getDeviceId } from '../lib/device';
 import { useAuth } from './use-auth';
@@ -94,6 +94,13 @@ export function useExpenseActions(): UseExpenseActionsResult {
 
   const handleDeleteExpense = useCallback(
     async (id: string): Promise<boolean> => {
+      // ログインを確認できない間（オフラインで最後のユーザーのデータを表示している間）は削除しない。
+      // 削除はサーバーに送れず、オンラインに戻ったときの同期で支出が復活してしまうため
+      if (!isAuthenticated && userId !== ANONYMOUS_USER_ID) {
+        window.alert('オフラインの間は支出を削除できません。オンラインになってからもう一度お試しください。');
+        return false;
+      }
+
       // 1. IndexedDB から即座に削除（< 50ms）
       const deleted = await deleteExpense(id, userId);
 

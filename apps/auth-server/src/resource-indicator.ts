@@ -27,13 +27,20 @@ export async function prepareAuthorizationRequest(
   const url = new URL(request.url);
   if (url.pathname !== AUTHORIZATION_PATH) return request;
 
-  const isForm =
-    request.method === 'POST' &&
-    (request.headers.get('Content-Type') ?? '').startsWith('application/x-www-form-urlencoded');
+  // POST の認可リクエストはフォームだけを受け付ける（OP と同じく、メディアタイプは大文字小文字とパラメータを無視して比べる）
+  const isForm = request.method === 'POST';
+  const mediaType = (request.headers.get('Content-Type') ?? '').split(';')[0]?.trim().toLowerCase();
+  if (isForm && mediaType !== 'application/x-www-form-urlencoded') {
+    return Response.json(
+      { error: 'invalid_request', error_description: 'Authorization requests must be form-encoded' },
+      { status: 400 }
+    );
+  }
   const params = isForm ? new URLSearchParams(await request.clone().text()) : url.searchParams;
 
+  const known = new Map(Object.entries(options.resources));
   const requested = params.getAll('resource');
-  const unknown = requested.filter((resource) => !(resource in options.resources));
+  const unknown = requested.filter((resource) => !known.has(resource));
   if (unknown.length > 0) {
     return Response.json(
       { error: 'invalid_target', error_description: `Unknown resource: ${unknown.join(' ')}` },
@@ -43,7 +50,7 @@ export async function prepareAuthorizationRequest(
 
   params.delete('audience');
   const scopes = (params.get('scope') ?? '').split(' ').filter(Boolean);
-  const audiences = Object.entries(options.resources)
+  const audiences = [...known]
     .filter(([resource, scope]) => requested.includes(resource) || (requested.length === 0 && scopes.includes(scope)))
     .map(([resource]) => resource);
   if (audiences.length > 0) {

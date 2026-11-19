@@ -31,6 +31,18 @@ export const WORKER_DIRS = Object.freeze({
 });
 
 /**
+ * デプロイ前に現在のデプロイ（バージョン）を記録し、失敗したらそこへ戻す Worker。
+ * household-auth / household-mcp / household-gateway は wrangler deploy で即時に 100% になる。
+ * household-app も記録する（secret をデプロイ前の時点にそろえて戻すため。household-auth だけを戻すと
+ * HOUSEHOLD_CLIENT_SECRET が household-app と食い違うことがある）
+ */
+export const RECORDED_WORKERS = Object.freeze([AUTH_WORKER, MCP_WORKER, GATEWAY_WORKER, APP_WORKER]);
+
+/** Google のトークンエンドポイントと、household-auth が使うリダイレクト URI（Google Cloud Console に登録済み） */
+export const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+export const GOOGLE_REDIRECT_URI = `${PUBLIC_ORIGIN}/api/auth/callback/google`;
+
+/**
  * 退役させる旧 Worker（この順に処理する）
  * - mcp-server: X-User-Id ヘッダーを信用する安全でない旧 MCP サーバー。最初に必ず消す
  * - auth-server: 旧認証サーバー（auth.maronn-household-budget.com の Custom Domain を持つ可能性がある）

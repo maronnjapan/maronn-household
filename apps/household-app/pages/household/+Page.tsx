@@ -9,6 +9,15 @@ import type { CreateExpenseParams } from '@maronn/domain';
 import './household.css';
 
 /**
+ * 'YYYY-MM' を「YYYY年M月」に整形する（形式が違う場合はそのまま返す）
+ */
+function formatMonthLabel(month: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return month;
+  return `${match[1]}年${Number(match[2])}月`;
+}
+
+/**
  * 家計簿ページ - 爆速表示の家計簿
  * IndexedDB からローカルファースト取得 (< 500ms)
  * 入力後の残額更新は瞬時 (< 50ms)
@@ -44,16 +53,14 @@ export function Page() {
         />
       )}
 
-      <header>
-        <p className="month">{month}</p>
-      </header>
-
+      {/* 金額入力を最初に表示する（最優先で描画・IndexedDB保存） */}
       <section className="input-section">
         <h2>支出を記録</h2>
         <ExpenseInput onAdd={handleAdd} />
       </section>
 
       <section className="remaining-section">
+        <p className="remaining-month">{formatMonthLabel(month)}</p>
         <RemainingDisplay
           budget={budget}
           spent={spent}
@@ -69,12 +76,6 @@ export function Page() {
       <section className="sub-budget-section">
         <SubBudgetDisplay />
       </section>
-
-      <footer>
-        <p className="performance-note">
-          ローカルファースト - オフラインでも爆速動作
-        </p>
-      </footer>
     </main>
   );
 }

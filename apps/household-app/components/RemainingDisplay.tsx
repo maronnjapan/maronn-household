@@ -16,9 +16,14 @@ function formatCurrency(amount: number): string {
   return `¥${amount.toLocaleString('ja-JP')}`;
 }
 
+function negativeClass(amount: number): string | undefined {
+  return amount < 0 ? 'negative' : undefined;
+}
+
 /**
  * 残額表示コンポーネント
- * 予算、支出、残額をリアルタイムで表示
+ * 「残り」を大きく1つだけ見せ、その他の数値は小さな 2x2 のグリッドにまとめる。
+ * 補助的な数値（一日平均・予算ペース対比）は「詳しく」の中に入れる。
  */
 export function RemainingDisplay({
   budget,
@@ -40,49 +45,50 @@ export function RemainingDisplay({
 
   return (
     <div className="remaining-display">
-      <div className="summary">
-        <div className="budget-info">
-          <span className="label">予算:</span>
-          <span className="value">{formatCurrency(budget)}</span>
-        </div>
-        <div className="spent-info">
-          <span className="label">支出:</span>
-          <span className="value">{formatCurrency(spent)}</span>
-        </div>
-      </div>
+      <h2 className="remaining-label">残り</h2>
+      <p className={`remaining-value ${remaining < 0 ? 'negative' : ''}`}>
+        {formatCurrency(remaining)}
+      </p>
 
-      <div className="remaining-info">
-        <h2 className="remaining-label">残り</h2>
-        <p className={`remaining-value ${remaining < 0 ? 'negative' : ''}`}>
-          {formatCurrency(remaining)}
-        </p>
-      </div>
-
-      <div className="daily-info">
-        <div className="daily-average">
-          <span className="label">一日平均:</span>
-          <span className="value">{formatCurrency(Math.floor(dailyAverage))}</span>
+      <dl className="remaining-stats">
+        <div className="remaining-stat">
+          <dt>予算</dt>
+          <dd>{formatCurrency(budget)}</dd>
         </div>
-        <div className="daily-limit">
-          <span className="label">一日使用可能額:</span>
-          <span className="value">{formatCurrency(Math.floor(dailyLimit))}</span>
+        <div className="remaining-stat">
+          <dt>支出</dt>
+          <dd>{formatCurrency(spent)}</dd>
         </div>
-      </div>
-
-      <div className="today-info">
-        <div className="today-remaining">
-          <span className="label">今日の残り:</span>
-          <span className={`value ${todayRemaining < 0 ? 'negative' : ''}`}>
+        <div className="remaining-stat">
+          <dt>今日の残り</dt>
+          <dd className={negativeClass(todayRemaining)}>
             {formatCurrency(Math.floor(todayRemaining))}
-          </span>
+          </dd>
         </div>
-        <div className="budget-pace">
-          <span className="label">予算ペース対比:</span>
-          <span className={`value ${budgetPaceComparison < 0 ? 'negative' : 'positive'}`}>
-            {budgetPaceComparison >= 0 ? '+' : ''}{formatCurrency(Math.floor(budgetPaceComparison))}
-          </span>
+        <div className="remaining-stat">
+          <dt>1日の目安</dt>
+          <dd className={negativeClass(dailyLimit)}>
+            {formatCurrency(Math.floor(dailyLimit))}
+          </dd>
         </div>
-      </div>
+      </dl>
+
+      <details className="remaining-details">
+        <summary>詳しく</summary>
+        <dl className="remaining-stats">
+          <div className="remaining-stat">
+            <dt>1日平均の支出</dt>
+            <dd>{formatCurrency(Math.floor(dailyAverage))}</dd>
+          </div>
+          <div className="remaining-stat">
+            <dt>予算ペース対比</dt>
+            <dd className={negativeClass(budgetPaceComparison)}>
+              {budgetPaceComparison >= 0 ? '+' : ''}
+              {formatCurrency(Math.floor(budgetPaceComparison))}
+            </dd>
+          </div>
+        </dl>
+      </details>
     </div>
   );
 }

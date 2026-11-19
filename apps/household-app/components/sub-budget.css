@@ -1,7 +1,18 @@
 /* サブ予算コンポーネント専用スタイル */
 
+/* /household の他のカード（.input-section / .remaining-section）と揃えた見た目 */
 .sub-budget-display {
-  margin-top: 1.5rem;
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 0.0625rem 0.25rem rgba(0, 0, 0, 0.08);
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 640px) {
+  .sub-budget-display {
+    padding: 1.25rem;
+  }
 }
 
 .sub-budget-title-row {
@@ -12,8 +23,9 @@
 }
 
 .sub-budget-title-row h2 {
-  font-size: 1.1rem;
+  font-size: 0.85rem;
   font-weight: 600;
+  color: #7f8c8d;
 }
 
 .btn-add-sub-budget {
@@ -76,7 +88,7 @@
 }
 
 .sub-budget-card {
-  border: 1px solid #ddd;
+  border: 1px solid #ecf0f1;
   border-radius: 0.5rem;
   padding: 0.75rem;
 }
@@ -139,7 +151,13 @@
 }
 
 .sub-budget-row .label {
-  color: #666;
+  color: #7f8c8d;
+}
+
+.sub-budget-row .value {
+  font-weight: 600;
+  color: #2c3e50;
+  font-variant-numeric: tabular-nums;
 }
 
 .sub-budget-row .value.negative {

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../styles/global.css";
 
@@ -22,117 +21,62 @@ const queryClient = new QueryClient({
 const trpcClient = getTRPCClient();
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
-  };
-
-  const closeMenu = () => {
-    setIsMenuOpen(false);
-  };
-
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <HamburgerButton isOpen={isMenuOpen} onClick={toggleMenu} />
-        <Logo />
-        <AuthButtonContainer />
-        <SidebarOverlay isOpen={isMenuOpen} onClick={closeMenu} />
-        <Sidebar isOpen={isMenuOpen} onLinkClick={closeMenu}>
-          <Link href="/household">Household</Link>
-          <Link href="/household/budget">Budget</Link>
-          <Link href="/calendar">Calendar</Link>
-          <Link href="/settings">Settings</Link>
-          <Link href="/guide">Guide</Link>
-          <Link href="/contact">Contact</Link>
-        </Sidebar>
-        <Content>{children}</Content>
+        <div id="page-container">
+          <AppHeader />
+          <div id="page-content">{children}</div>
+          <AppFooter />
+        </div>
         <ClientOnly fallback={null}>
           <FloatingExpenseContainer />
         </ClientOnly>
-
       </QueryClientProvider>
     </trpc.Provider>
   );
 }
 
-function HamburgerButton({
-  isOpen,
-  onClick,
-}: {
-  isOpen: boolean;
-  onClick: () => void;
-}) {
+/**
+ * 上部ヘッダー（通常フロー。固定・重なりなし）
+ * 1段目: ブランド（左）+ 認証ボタン（右）
+ * 2段目: 主要ページへのタブ
+ */
+function AppHeader() {
   return (
-    <button
-      className={`hamburger-button ${isOpen ? "open" : ""}`}
-      onClick={onClick}
-      aria-label="Toggle menu"
-    >
-      <div className="hamburger-icon">
-        <span></span>
-        <span></span>
-        <span></span>
+    <header className="app-header">
+      <div className="app-header-bar">
+        <a href="/household" className="app-brand">
+          <img src={logoUrl} width={28} height={28} alt="" />
+          <span>家計簿</span>
+        </a>
+        {/* 認証状態はクライアントでしか確定しないため、枠の大きさを先に確保してレイアウトのずれを防ぐ */}
+        <div className="app-header-auth">
+          <AuthButton />
+        </div>
       </div>
-    </button>
+      <nav className="app-nav" aria-label="メインメニュー">
+        <Link href="/household">記録</Link>
+        <Link href="/household/budget">予算</Link>
+        <Link href="/calendar">カレンダー</Link>
+        <Link href="/settings">設定</Link>
+      </nav>
+    </header>
   );
 }
 
-function SidebarOverlay({
-  isOpen,
-  onClick,
-}: {
-  isOpen: boolean;
-  onClick: () => void;
-}) {
+/**
+ * 下部フッター（補助的なリンク）
+ */
+function AppFooter() {
   return (
-    <div
-      className={`sidebar-overlay ${isOpen ? "open" : ""}`}
-      onClick={onClick}
-    />
-  );
-}
-
-function Sidebar({
-  children,
-  isOpen,
-  onLinkClick,
-}: {
-  children: React.ReactNode;
-  isOpen: boolean;
-  onLinkClick: () => void;
-}) {
-  return (
-    <div id="sidebar" className={isOpen ? "open" : ""} onClick={onLinkClick}>
-      {children}
-    </div>
-  );
-}
-
-function Content({ children }: { children: React.ReactNode }) {
-  return (
-    <div id="page-container">
-      <div id="page-content">{children}</div>
-    </div>
-  );
-}
-
-function Logo() {
-  return (
-    <div className="logo">
-      <a href="/">
-        <img src={logoUrl} height={64} width={64} alt="logo" />
-      </a>
-    </div>
-  );
-}
-
-function AuthButtonContainer() {
-  return (
-    <div className="auth-button-container">
-      <AuthButton />
-    </div>
+    <footer className="app-footer">
+      <nav className="app-footer-links" aria-label="その他のリンク">
+        <a href="/guide">使い方</a>
+        <a href="/contact">お問い合わせ</a>
+        <a href="/privacy">プライバシー</a>
+        <a href="/terms">利用規約</a>
+      </nav>
+    </footer>
   );
 }

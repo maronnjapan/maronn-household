@@ -1,7 +1,129 @@
 /**
  * /household ページ専用スタイル
- * 電卓スタイルは global.css に移動済み（全ページでフローティングモーダルから利用可能にするため）
+ * 電卓UI（ExpenseInput）のスタイルは styles/global.css にある
+ * （全ページのフローティングモーダルからも使うため）
  */
 
-/* 現在このファイルにはページ固有のスタイルはありません */
-/* 電卓UI（ExpenseInput）のスタイルは styles/global.css に定義されています */
+/* 幅はヘッダー（.app-header-bar）の中身の幅と揃える */
+.home-page {
+  max-width: 37.5rem;
+  margin: 0 auto;
+}
+
+.input-section,
+.remaining-section {
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 0.0625rem 0.25rem rgba(0, 0, 0, 0.08);
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 640px) {
+  .input-section,
+  .remaining-section {
+    padding: 1.25rem;
+  }
+}
+
+.input-section h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #7f8c8d;
+  margin-bottom: 0.75rem;
+}
+
+/* ===========================================
+ * 残額カード（RemainingDisplay）
+ * =========================================== */
+
+.remaining-section {
+  position: relative;
+}
+
+/* 右上に小さく表示する対象月 */
+.remaining-month {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 0.8rem;
+  color: #95a5a6;
+}
+
+@media (min-width: 640px) {
+  .remaining-month {
+    top: 1.25rem;
+    right: 1.25rem;
+  }
+}
+
+.remaining-display.loading {
+  color: #95a5a6;
+  font-size: 0.9rem;
+}
+
+.remaining-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #7f8c8d;
+}
+
+.remaining-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #27ae60;
+  font-variant-numeric: tabular-nums;
+}
+
+.remaining-value.negative {
+  color: #e74c3c;
+}
+
+/* 予算 / 支出 / 今日の残り / 1日の目安 の 2x2 */
+.remaining-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ecf0f1;
+}
+
+.remaining-stat dt {
+  font-size: 0.75rem;
+  color: #7f8c8d;
+}
+
+.remaining-stat dd {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2c3e50;
+  font-variant-numeric: tabular-nums;
+}
+
+.remaining-stat dd.negative {
+  color: #e74c3c;
+}
+
+/* 「詳しく」（ネイティブの details 要素） */
+.remaining-details {
+  margin-top: 0.75rem;
+}
+
+.remaining-details summary {
+  width: fit-content;
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  cursor: pointer;
+}
+
+.remaining-details summary:hover {
+  color: #2c3e50;
+}
+
+.remaining-details .remaining-stats {
+  margin-top: 0.5rem;
+  padding-top: 0;
+  border-top: none;
+}

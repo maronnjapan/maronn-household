@@ -14,8 +14,14 @@
  * 「Worker が無い」と「secret が無い」を区別できるよう API を直接呼ぶ。一覧が読めなければ失敗する
  * （失敗を「secret が無い」と見なすと署名鍵を作り直してしまう）。
  *
- * 値は標準入力で `wrangler secret put <NAME> --name <worker>` に渡す（ログにも引数にも出さない）。
- * `wrangler secret put` は Worker の新しいバージョンを作ってすぐに本番へ反映する。
+ * 値は標準入力で wrangler に渡す（ログにも引数にも出さない）:
+ * - household-auth: `wrangler secret put <NAME> --name household-auth`。新しいバージョンを作ってすぐ本番に反映する
+ *   （直前に wrangler deploy しているので、最新のバージョン＝本番のバージョン）
+ * - household-app: `wrangler versions secret put <NAME> --name household-app --message ...`。最新のバージョンに secret を
+ *   足した新しいバージョンを作るだけで、本番には出さない。あとの `wrangler versions upload` がこの secret を引き継ぎ、
+ *   カットオーバーで本番に出る。カットオーバー前の household-app を変えないので、失敗時にデプロイ前のバージョンへ戻しても
+ *   次の実行で `secret put` が「最新のバージョンが本番に出ていない」（10215）で止まることがない。
+ *   household-app がまだ無い（バージョンが 1 つもない）ときだけ `wrangler secret put`（仮の Worker を作る）
  */
 import { clientFromEnv } from './cloudflare-api.mjs';
 import { APP_WORKER, AUTH_WORKER, WORKER_DIRS } from './config.mjs';
@@ -41,14 +47,16 @@ const USAGE = `使い方:
  * どの secret をどこに入れるか（純粋関数）
  * @param {string[]} existingAuthNames household-auth にある secret 名
  * @param {string[]} existingAppNames household-app にある secret 名
- * @returns {{ puts: { worker: string, name: string, source: { type: 'env', env: string } | { type: 'generate', generator: 'oidc-signing-key' | 'household-client-secret' } }[], kept: { worker: string, name: string }[] }}
+ * @param {{ appExists?: boolean }} [options] household-app がまだ無いときは false
+ * @returns {{ puts: { worker: string, name: string, command: 'secret-put' | 'versions-secret-put', source: { type: 'env', env: string } | { type: 'generate', generator: 'oidc-signing-key' | 'household-client-secret' } }[], kept: { worker: string, name: string }[] }}
  *   puts はこの順に実行する（household-auth が先）。同じ generator の値は同じ値を使う
  */
-export function decideSecretActions(existingAuthNames, existingAppNames) {
+export function decideSecretActions(existingAuthNames, existingAppNames, { appExists = true } = {}) {
   const auth = new Set(existingAuthNames);
   const app = new Set(existingAppNames);
-  const fromEnv = (name) => ({ worker: AUTH_WORKER, name, source: { type: 'env', env: name } });
-  const generated = (worker, name, generator) => ({ worker, name, source: { type: 'generate', generator } });
+  const commandFor = (worker) => (worker === APP_WORKER && appExists ? 'versions-secret-put' : 'secret-put');
+  const fromEnv = (name) => ({ worker: AUTH_WORKER, name, command: 'secret-put', source: { type: 'env', env: name } });
+  const generated = (worker, name, generator) => ({ worker, name, command: commandFor(worker), source: { type: 'generate', generator } });
 
   const puts = [fromEnv(GOOGLE_CLIENT_ID), fromEnv(GOOGLE_CLIENT_SECRET)];
   const kept = [];
@@ -65,6 +73,15 @@ export function decideSecretActions(existingAuthNames, existingAppNames) {
     );
   }
   return { puts, kept };
+}
+
+/** secret を入れる wrangler の引数（値は標準入力で渡す。純粋関数） */
+export function secretPutArgs(put) {
+  if (put.command === 'secret-put') return ['secret', 'put', put.name, '--name', put.worker];
+  if (put.command === 'versions-secret-put') {
+    return ['versions', 'secret', 'put', put.name, '--name', put.worker, '--message', `deploy: set ${put.name}`];
+  }
+  throw new Error(`未知のコマンド: ${put.command}`);
 }
 
 /** 署名鍵の kid（UTC の日付で key-YYYYMMDD） */
@@ -132,9 +149,11 @@ function maskValue(value) {
 }
 
 function describePut(put) {
-  return put.source.type === 'env'
-    ? `${put.worker}: ${put.name} を GitHub secret ${put.source.env} の値で設定`
-    : `${put.worker}: ${put.name} を新しく生成して設定`;
+  const what =
+    put.source.type === 'env'
+      ? `${put.worker}: ${put.name} を GitHub secret ${put.source.env} の値で設定`
+      : `${put.worker}: ${put.name} を新しく生成して設定`;
+  return put.command === 'versions-secret-put' ? `${what}（新しいバージョンに入れるだけで、本番にはカットオーバーで出る）` : what;
 }
 
 async function listSecretNames(client) {
@@ -142,14 +161,8 @@ async function listSecretNames(client) {
   if (authNames === null) {
     throw new Error(`${AUTH_WORKER} がありません。secret より先に wrangler deploy でデプロイしてください`);
   }
-  let appNames = await client.listScriptSecretNames(APP_WORKER);
-  if (appNames === null) {
-    logWarning(
-      `${APP_WORKER} がまだありません。wrangler secret put が仮の Worker を作り、あとの versions upload で置き換わります`
-    );
-    appNames = [];
-  }
-  return { authNames, appNames };
+  const appNames = await client.listScriptSecretNames(APP_WORKER);
+  return { authNames, appNames: appNames ?? [], appExists: appNames !== null };
 }
 
 export async function main(argv) {
@@ -170,8 +183,11 @@ export async function main(argv) {
   if (args.kid) throw new Error('--kid は --generate-signing-key と一緒にだけ使えます');
 
   const client = clientFromEnv();
-  const { authNames, appNames } = await listSecretNames(client);
-  const { puts, kept } = decideSecretActions(authNames, appNames);
+  const { authNames, appNames, appExists } = await listSecretNames(client);
+  if (!appExists) {
+    logWarning(`${APP_WORKER} がまだありません。wrangler secret put が仮の Worker を作り、あとの versions upload で置き換わります`);
+  }
+  const { puts, kept } = decideSecretActions(authNames, appNames, { appExists });
   for (const put of puts) console.log(`- ${describePut(put)}`);
   for (const { worker, name } of kept) console.log(`- ${worker}: ${name} は設定済みなので変更しません`);
   if (args['dry-run']) {
@@ -183,13 +199,14 @@ export async function main(argv) {
   for (const { value } of resolved) maskValue(value);
   for (const { put, value } of resolved) {
     console.log(`${describePut(put)}...`);
-    runWrangler(['secret', 'put', put.name, '--name', put.worker], { appDir: WORKER_DIRS[put.worker], input: value });
+    runWrangler(secretPutArgs(put), { appDir: WORKER_DIRS[put.worker], input: value });
   }
 
-  // 入れた secret が実際に一覧に現れることを確かめる
+  // 本番に反映した secret（secret put）が実際に一覧に現れることを確かめる
+  // （versions secret put はまだ本番に出ていないバージョンに入れるだけなので、wrangler の成功で判断する）
   const after = await listSecretNames(client);
   const byWorker = { [AUTH_WORKER]: new Set(after.authNames), [APP_WORKER]: new Set(after.appNames) };
-  const absent = puts.filter((put) => !byWorker[put.worker].has(put.name));
+  const absent = puts.filter((put) => put.command === 'secret-put' && !byWorker[put.worker].has(put.name));
   if (absent.length > 0) {
     throw new Error(`設定したはずの secret が見つかりません: ${absent.map((p) => `${p.worker}/${p.name}`).join(', ')}`);
   }

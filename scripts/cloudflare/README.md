@@ -8,16 +8,17 @@
 1. **retire-legacy**（後続の成否に関係なく最初に実行）
    旧 Worker `mcp-server` → `auth-server` → `delete-expired-session-cron` の順に、ゾーンのルートを削除し、Workers Custom Domain を外し、Worker を削除する。無ければ何もしない。許可リスト以外の Worker には触れない。
 2. **deploy**
-   1. プリフライト（`preflight.mjs`）: GitHub secret がそろっているか、API トークンでゾーンとルートを読めるか、household-app の現在のデプロイを読めるか。ここで失敗すれば本番は何も変わらない
+   1. プリフライト（`preflight.mjs`）: GitHub secret がそろっているか、`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` を Google が受け付けるか（Google のトークンエンドポイントにダミーの認可コードを送り、`invalid_grant` なら正しい、`invalid_client` / `unauthorized_client` なら誤り。確かめられない応答も失敗にする）、API トークンでゾーンとルートを読めるか、household-app の現在のデプロイを読めるか。ここで失敗すれば本番は何も変わらない
    2. 型検査（gateway / auth-server / mcp-server / @maronn/domain）
    3. D1 マイグレーション（`CLOUDFLARE_D1_API_TOKEN`）
-   4. `household-auth` → `household-mcp` を `wrangler deploy`（ルートを持たないので、まだ公開されない）
-   5. secret をそろえる（`ensure-secrets.mjs`）
-   6. `household-gateway` を `wrangler deploy`（ルートは書かない）
-   7. household-app を `vike build` し、`wrangler versions upload`（`upload-app-version.mjs`。まだ本番には出さない）
-   8. カットオーバー（`cutover-routes.mjs`）: 変更前の状態を記録してから、`maronn-household-budget.com/*` と `www.maronn-household-budget.com/*` を `household-gateway` に割り当て（既存のルートは PUT で付け替えるので未割り当ての時間はない）、household-app の新バージョンを 100% で出す
-   9. スモークテスト（`smoke-test.mjs`）。反映待ちのため数回やり直す
-   10. 8 か 9 が失敗したら自動でロールバック（household-app を以前のデプロイに、ルートを以前の割り当てに戻す）し、ジョブは失敗にする
+   4. 現在のデプロイを記録（`record-deployments.mjs`）: household-auth / household-mcp / household-gateway / household-app の今のバージョン。ここから先で本番を変える
+   5. `household-auth` → `household-mcp` を `wrangler deploy`（初回はルートを持たないのでまだ公開されない。2 回目以降は gateway 経由で即時に 100%）
+   6. secret をそろえる（`ensure-secrets.mjs`）。household-auth へはすぐ反映、household-app へは `wrangler versions secret put` で新しいバージョンに入れるだけ（本番にはカットオーバーで出る）
+   7. `household-gateway` を `wrangler deploy`（ルートは書かない）
+   8. household-app を `vike build` し、`wrangler versions upload`（`upload-app-version.mjs`。まだ本番には出さない）
+   9. カットオーバー（`cutover-routes.mjs`）: 変更前の状態を記録してから、`maronn-household-budget.com/*` と `www.maronn-household-budget.com/*` を `household-gateway` に割り当て（既存のルートは PUT で付け替えるので未割り当ての時間はない）、household-app の新バージョンを 100% で出す
+   10. スモークテスト（`smoke-test.mjs`）。反映待ちのため数回やり直す
+   11. 4 のあとのどのステップが失敗（または中断）しても自動でロールバックし（`rollback.mjs`）、ジョブは失敗にする。デプロイと逆の順に household-app → ルート → household-gateway → household-mcp → household-auth を記録した状態へ戻す。記録と同じ Worker（そこまで進まなかったもの）と、記録したときにまだ無かった Worker（初回。ルートを持たないので公開されない）はそのまま。D1 のマイグレーションは戻さない
 3. **deploy-crons**: `delete-no-user-household-data-cron` を `wrangler deploy`。deploy が成功したときだけ実行する（ユーザーのいないデータを消す cron なので、マイグレーションと認証基盤の更新が済んだ状態でだけ新しくする。失敗時は既存の cron が動き続ける）。`webhook-batch-cron` はこのワークフローでは扱わない
 
 ## GitHub secret
@@ -27,7 +28,7 @@
 | `CLOUDFLARE_API_TOKEN` | Workers のデプロイ・secret・ルート・Custom Domain の操作。アカウントの Workers Scripts:Edit と、ゾーン `maronn-household-budget.com` の Zone:Read・Workers Routes:Edit が必要 |
 | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID |
 | `CLOUDFLARE_D1_API_TOKEN` | D1 マイグレーション |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | household-auth の Google ログイン。毎回のデプロイで Worker の secret に入れ直す |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | household-auth の Google ログイン。プリフライトで Google が受け付けることを確かめてから、毎回のデプロイで Worker の secret に入れ直す |
 
 Worker の secret（`OIDC_SIGNING_KEY` と `HOUSEHOLD_CLIENT_SECRET`）は GitHub に置かない。無ければデプロイが生成する（既存の値は上書きしない）。
 
@@ -41,14 +42,14 @@ Worker の secret（`OIDC_SIGNING_KEY` と `HOUSEHOLD_CLIENT_SECRET`）は GitHu
 
 自動のロールバックが失敗したときや、あとから戻したいとき。
 
-- **カットオーバー前の状態に戻す**: 実行結果の Artifacts から `cutover-state` をダウンロードし、
+- **デプロイ前の状態に戻す**: 実行結果の Artifacts から `deploy-state`（`workers-state.json` と、カットオーバーまで進んでいれば `cutover-state.json`）をダウンロードし、
   ```bash
+  pnpm install
   CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... \
-    node scripts/cloudflare/cutover-routes.mjs --rollback ./cutover-state.json
+    node scripts/cloudflare/rollback.mjs --workers-state ./workers-state.json --cutover-state ./cutover-state.json --if-exists
   ```
-  （先に `pnpm install`。household-app の切り替えに `apps/household-app` の wrangler を使う）
-- **household-app だけ戻す**: `cd apps/household-app && npx wrangler deployments list --name household-app` で戻す先を確かめ、`npx wrangler rollback <version-id> --name household-app`
-- **household-auth / household-mcp / household-gateway**: 自動のロールバックの対象外（`wrangler deploy` で即時反映される）。`npx wrangler rollback <version-id> --name <worker>` で戻す
+  各 Worker はそれぞれのアプリのディレクトリの wrangler で `wrangler rollback <version-id> --name <worker> --yes --message "deploy rollback"` を実行する（記録が複数バージョンの配分なら `wrangler versions deploy <id>@<n>% ... --name <worker> --yes`）。戻す先のあとに secret を入れていても、CI（非対話）では確認なしで強制し、そのバージョンの secret に戻る
+- **1 つの Worker だけ戻す**: `cd apps/<app> && npx wrangler deployments list --name <worker>` で戻す先を確かめ、`npx wrangler rollback <version-id> --name <worker>`（household-auth と household-app は `HOUSEHOLD_CLIENT_SECRET` が食い違わないよう同じ時点に戻す）
 - **ルートだけ戻す**: ダッシュボードの Websites → maronn-household-budget.com → Workers Routes で割り当てを変える
 
 ## OIDC_SIGNING_KEY のローテーション
@@ -80,13 +81,15 @@ npx wrangler secret delete OIDC_SIGNING_KEY_PREVIOUS --name household-auth
 | `cloudflare-api.mjs` | Cloudflare API の小さなクライアント（`success: false` は例外。「Worker が無い」は HTTP 404 かつ 10007 のときだけ） |
 | `wrangler.mjs` | 各アプリの wrangler の実行と、`WRANGLER_OUTPUT_FILE_PATH` の ND-JSON の解釈 |
 | `retire-legacy-workers.mjs` | 旧 Worker の退役（`--dry-run` あり） |
-| `preflight.mjs` | デプロイ前の確認 |
+| `preflight.mjs` | デプロイ前の確認（GitHub secret・Google の資格情報・API トークン） |
+| `record-deployments.mjs` | 本番を変える前の各 Worker のデプロイの記録 |
 | `ensure-secrets.mjs` | Worker の secret をそろえる（`--dry-run` あり。一覧が読めなければ失敗し、生成し直さない） |
 | `upload-app-version.mjs` | household-app の `wrangler versions upload` とバージョン ID の取り出し |
-| `cutover-routes.mjs` | カットオーバーとロールバック（`--rollback <file>`） |
+| `cutover-routes.mjs` | カットオーバー（変更前の状態を記録してからルートと household-app を切り替える） |
+| `rollback.mjs` | 記録した状態へのロールバック |
 | `smoke-test.mjs` | 公開 URL のスモークテスト |
 
 ## うまくいかないとき
 
-- `ensure-secrets` で household-app への `secret put` が「latest version isn't currently deployed」（10215）で失敗する: household-app の最新のバージョンが本番に出ていない（以前の実行がアップロード後に止まった、など）。`npx wrangler versions deploy <最新のversion-id>@100% --name household-app` か `npx wrangler rollback` で最新のバージョンを本番にそろえるか、`npx wrangler versions secret put HOUSEHOLD_CLIENT_SECRET --name household-app` で入れてから再実行する
+- プリフライトで Google に拒否される（`invalid_client`）: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` が Google Cloud Console の OAuth クライアント（ウェブアプリケーション）の値と一致しているか確かめる。`redirect_uri_mismatch` なら承認済みのリダイレクト URI に `https://maronn-household-budget.com/api/auth/callback/google` を追加する
 - スモークテストだけが失敗する: ログの NG の行に、どの URL が何を返したかが出る。`node scripts/cloudflare/smoke-test.mjs --attempts 1` で手元から同じ確認ができる

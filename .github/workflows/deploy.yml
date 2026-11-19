@@ -2,9 +2,11 @@
 #
 # 1. retire-legacy: 旧 Worker（mcp-server / auth-server / delete-expired-session-cron）のルートと
 #    Custom Domain を外して削除する。後続が失敗しても、これだけは先に必ず実行する
-# 2. deploy: プリフライト → 型検査 → D1 マイグレーション → household-auth / household-mcp → secret →
-#    household-gateway → household-app のバージョンのアップロード → カットオーバー（ルートを gateway へ、
-#    household-app の新バージョンを 100%）→ スモークテスト。失敗したらルートと household-app を元に戻す
+# 2. deploy: プリフライト（GitHub secret・Google の資格情報・API トークン）→ 型検査 → D1 マイグレーション →
+#    現在のデプロイを記録 → household-auth / household-mcp → secret → household-gateway →
+#    household-app のバージョンのアップロード → カットオーバー（ルートを gateway へ、household-app の新バージョンを 100%）→
+#    スモークテスト。記録のあとのどのステップが失敗しても、household-app・ルート・household-gateway・
+#    household-mcp・household-auth を記録した状態に戻す（D1 のマイグレーションは戻さない）
 # 3. deploy-crons: delete-no-user-household-data-cron（deploy が成功したときだけ。D1 のスキーマとユーザーの
 #    扱いがアプリと一致している状態でだけ、データを消す cron を更新するため）
 #
@@ -66,9 +68,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # カットオーバーの変更前の状態を書くファイル（ロールバックと手動ロールバック用）
+      # 変更前の状態を書くファイル（ロールバックと手動ロールバック用）
       - name: Prepare
-        run: echo "CUTOVER_STATE=$RUNNER_TEMP/cutover-state.json" >> "$GITHUB_ENV"
+        run: |
+          echo "WORKERS_STATE=$RUNNER_TEMP/workers-state.json" >> "$GITHUB_ENV"
+          echo "CUTOVER_STATE=$RUNNER_TEMP/cutover-state.json" >> "$GITHUB_ENV"
 
       # バージョンは package.json の packageManager（pnpm@10.17.0）から決まる
       - name: Setup pnpm
@@ -80,7 +84,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
-      # 本番に何かを変更する前に、必要な secret と API トークンの権限を確かめる
+      # 本番に何かを変更する前に、必要な secret・Google の資格情報・API トークンの権限を確かめる
       - name: Preflight
         run: node scripts/cloudflare/preflight.mjs
         env:
@@ -102,7 +106,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # ルートを持たない（gateway から service binding で呼ばれる）ので、デプロイしてもまだ公開されない。
+      # ここから先で本番の Worker を変える。その前に各 Worker の現在のデプロイを WORKERS_STATE に記録する
+      # （このステップが成功したら、以降のどのステップが失敗しても下の Roll back が記録した状態に戻す）
+      - name: Record deployed versions
+        id: record
+        run: node scripts/cloudflare/record-deployments.mjs --state "$WORKERS_STATE"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 2 回目以降のデプロイでは wrangler deploy の時点で 100% になる（ルートは gateway 経由で既に公開されている）。
       # household-mcp は household-auth への service binding を持つので auth を先に出す
       - name: Deploy household-auth
         run: pnpm --filter ./apps/auth-server exec wrangler deploy
@@ -117,7 +130,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # household-auth をデプロイしたあとでないと secret の一覧を確かめられない。
-      # wrangler secret put はそのたびに新しいバージョンを作ってすぐ本番に反映する
+      # household-auth への wrangler secret put はすぐ本番に反映する。household-app へは
+      # wrangler versions secret put で新しいバージョンに入れるだけ（本番にはカットオーバーで出る）
       - name: Ensure worker secrets
         run: node scripts/cloudflare/ensure-secrets.mjs
         env:
@@ -161,22 +175,26 @@ jobs:
         id: smoke
         run: node scripts/cloudflare/smoke-test.mjs
 
-      # カットオーバーかスモークテストが失敗（または中断）したら元に戻し、ジョブは失敗のままにする。
-      # カットオーバーが何も変更する前に失敗していれば状態ファイルが無いので何もしない（--if-exists）
+      # 記録のあとのステップが失敗（または中断）したら、household-app → ルート → household-gateway →
+      # household-mcp → household-auth の順に記録した状態へ戻し、ジョブは失敗のままにする。
+      # 現在のデプロイが記録と同じ Worker（そこまで進まなかったもの）は何もしない。
+      # カットオーバーまで進まなかったときは CUTOVER_STATE が無いので、ルートは触らない（--if-exists）
       - name: Roll back
-        if: ${{ (failure() || cancelled()) && steps.cutover.outcome != 'skipped' }}
-        run: node scripts/cloudflare/cutover-routes.mjs --rollback "$CUTOVER_STATE" --if-exists
+        if: ${{ (failure() || cancelled()) && steps.record.outcome == 'success' }}
+        run: node scripts/cloudflare/rollback.mjs --workers-state "$WORKERS_STATE" --cutover-state "$CUTOVER_STATE" --if-exists
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # 手動でロールバックするときのために、変更前の状態を残す（secret は含まない）
-      - name: Keep cutover state
+      - name: Keep deploy state
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: cutover-state
-          path: ${{ env.CUTOVER_STATE }}
+          name: deploy-state
+          path: |
+            ${{ env.WORKERS_STATE }}
+            ${{ env.CUTOVER_STATE }}
           if-no-files-found: ignore
           retention-days: 30
 

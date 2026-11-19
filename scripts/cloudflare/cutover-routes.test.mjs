@@ -1,20 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  appDeployArgs,
-  appRollbackArgs,
-  planAppRollback,
-  planRouteCutover,
-  planRouteRollback,
-  sameTraffic,
-} from './cutover-routes.mjs';
+import { appDeployArgs, planRouteCutover, planRouteRollback } from './cutover-routes.mjs';
 
 const APEX = 'maronn-household-budget.com/*';
 const WWW = 'www.maronn-household-budget.com/*';
 const PATTERNS = [APEX, WWW];
 const GATEWAY = 'household-gateway';
-const V_OLD = '11111111-1111-4111-8111-111111111111';
 const V_NEW = '22222222-2222-4222-8222-222222222222';
-const V_OTHER = '33333333-3333-4333-8333-333333333333';
 
 /** 計画をルート一覧に当てはめた結果（API の振る舞いを写したもの） */
 function applyRouteOperations(routes, operations) {
@@ -149,42 +140,6 @@ describe('planRouteRollback', () => {
   });
 });
 
-describe('planAppRollback', () => {
-  const deployment = (...versions) => ({ id: 'd', versions: versions.map(([id, p]) => ({ version_id: id, percentage: p })) });
-
-  it('1 バージョン 100% のデプロイには wrangler rollback で戻す', () => {
-    expect(planAppRollback(deployment([V_OLD, 100]), deployment([V_NEW, 100]))).toEqual({
-      type: 'rollback',
-      versionId: V_OLD,
-    });
-  });
-
-  it('複数バージョンの配分には versions deploy で同じ配分に戻す', () => {
-    expect(planAppRollback(deployment([V_OLD, 90], [V_OTHER, 10]), deployment([V_NEW, 100]))).toEqual({
-      type: 'versions-deploy',
-      specs: [`${V_OLD}@90%`, `${V_OTHER}@10%`],
-    });
-  });
-
-  it('既に以前のデプロイなら何もしない', () => {
-    expect(planAppRollback(deployment([V_OLD, 100]), deployment([V_OLD, 100])).type).toBe('none');
-  });
-
-  it('以前のデプロイが無ければ（初回）戻す先が無い', () => {
-    expect(planAppRollback(null, deployment([V_NEW, 100])).type).toBe('none');
-  });
-});
-
-describe('sameTraffic', () => {
-  const d = (...versions) => ({ versions: versions.map(([id, p]) => ({ version_id: id, percentage: p })) });
-  it('バージョンと割合が同じかを比べる（順序は問わない）', () => {
-    expect(sameTraffic(d([V_OLD, 50], [V_NEW, 50]), d([V_NEW, 50], [V_OLD, 50]))).toBe(true);
-    expect(sameTraffic(d([V_OLD, 100]), d([V_NEW, 100]))).toBe(false);
-    expect(sameTraffic(d([V_OLD, 60], [V_NEW, 40]), d([V_OLD, 50], [V_NEW, 50]))).toBe(false);
-    expect(sameTraffic(null, d([V_OLD, 100]))).toBe(false);
-  });
-});
-
 describe('wrangler の引数', () => {
   it('新バージョンを 100% で確認なしに出す', () => {
     expect(appDeployArgs(V_NEW, 'household-app', 'cutover')).toEqual([
@@ -198,29 +153,5 @@ describe('wrangler の引数', () => {
       'cutover',
     ]);
     expect(() => appDeployArgs('not-a-uuid', 'household-app', 'm')).toThrow();
-  });
-
-  it('ロールバックの計画を wrangler の引数にする', () => {
-    expect(appRollbackArgs({ type: 'rollback', versionId: V_OLD }, 'household-app', 'r')).toEqual([
-      'rollback',
-      V_OLD,
-      '--name',
-      'household-app',
-      '--yes',
-      '--message',
-      'r',
-    ]);
-    expect(appRollbackArgs({ type: 'versions-deploy', specs: [`${V_OLD}@90%`, `${V_OTHER}@10%`] }, 'household-app', 'r')).toEqual([
-      'versions',
-      'deploy',
-      `${V_OLD}@90%`,
-      `${V_OTHER}@10%`,
-      '--name',
-      'household-app',
-      '--yes',
-      '--message',
-      'r',
-    ]);
-    expect(() => appRollbackArgs({ type: 'none', reason: 'x' }, 'household-app', 'r')).toThrow();
   });
 });

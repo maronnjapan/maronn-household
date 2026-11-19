@@ -1,7 +1,7 @@
 /**
  * スクリプト共通の CLI 補助（引数・GitHub Actions のワークフローコマンド・終了コード）
  */
-import { appendFileSync, realpathSync } from 'node:fs';
+import { appendFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -75,3 +75,9 @@ export async function runCli(main) {
 }
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 途中で止まっても壊れたファイルが残らないよう、一時ファイルに書いてから置き換える */
+export function writeJsonFileAtomic(file, value) {
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(value, null, 2)}\n`);
+  renameSync(`${file}.tmp`, file);
+}

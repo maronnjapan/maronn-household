@@ -4,6 +4,7 @@ import {
   generateHouseholdClientSecret,
   generateOidcSigningKey,
   resolveSecretValues,
+  secretPutArgs,
   signingKeyId,
 } from './ensure-secrets.mjs';
 
@@ -18,6 +19,22 @@ describe('decideSecretActions', () => {
       'household-auth/HOUSEHOLD_CLIENT_SECRET<-household-client-secret',
       'household-app/HOUSEHOLD_CLIENT_SECRET<-household-client-secret',
     ]);
+  });
+
+  it('household-auth にはすぐ反映する secret put、household-app には本番に出さない versions secret put を使う', () => {
+    const commands = decideSecretActions([], []).puts.map((p) => `${p.worker}/${p.name}:${p.command}`);
+    expect(commands).toEqual([
+      'household-auth/GOOGLE_CLIENT_ID:secret-put',
+      'household-auth/GOOGLE_CLIENT_SECRET:secret-put',
+      'household-auth/OIDC_SIGNING_KEY:secret-put',
+      'household-auth/HOUSEHOLD_CLIENT_SECRET:secret-put',
+      'household-app/HOUSEHOLD_CLIENT_SECRET:versions-secret-put',
+    ]);
+  });
+
+  it('household-app がまだ無い（バージョンが無い）ときは secret put で仮の Worker を作る', () => {
+    const app = decideSecretActions([], [], { appExists: false }).puts.find((p) => p.worker === 'household-app');
+    expect(app.command).toBe('secret-put');
   });
 
   it('2 回目以降（すべてある）: Google の値だけを入れ直し、署名鍵とクライアントシークレットは変えない', () => {
@@ -119,5 +136,30 @@ describe('生成する値', () => {
     expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(Buffer.from(a, 'base64url').length).toBe(32);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('secretPutArgs', () => {
+  it('値は引数に入れず（標準入力で渡す）、Worker 名を明示する', () => {
+    expect(secretPutArgs({ worker: 'household-auth', name: 'GOOGLE_CLIENT_ID', command: 'secret-put' })).toEqual([
+      'secret',
+      'put',
+      'GOOGLE_CLIENT_ID',
+      '--name',
+      'household-auth',
+    ]);
+    expect(
+      secretPutArgs({ worker: 'household-app', name: 'HOUSEHOLD_CLIENT_SECRET', command: 'versions-secret-put' })
+    ).toEqual([
+      'versions',
+      'secret',
+      'put',
+      'HOUSEHOLD_CLIENT_SECRET',
+      '--name',
+      'household-app',
+      '--message',
+      'deploy: set HOUSEHOLD_CLIENT_SECRET',
+    ]);
+    expect(() => secretPutArgs({ worker: 'x', name: 'y', command: 'other' })).toThrow();
   });
 });

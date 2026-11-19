@@ -12,7 +12,7 @@ const MAX_MEMO_ITEM_NAMES = 3;
 
 export interface ReceiptItemInput {
   name: string;
-  /** 明細の金額（円、整数）。値引き行は負の値 */
+  /** 行の金額（数量×単価、円、0以上の整数）。値引きは明細に入れず totalAmount に反映する */
   amount: number;
   quantity?: number;
   category?: string;
@@ -26,6 +26,8 @@ export interface ReceiptInput {
   totalAmount: number;
   /** 明細にカテゴリがない場合に使うカテゴリ */
   category?: string;
+  taxAmount?: number;
+  paymentMethod?: string;
   items?: ReceiptItemInput[];
 }
 
@@ -112,21 +114,6 @@ function buildMemo(storeName: string, names: string[]): string {
 }
 
 /**
- * 同じレシートの二重登録を検出するための指紋
- * 生成AIの読み取り結果の表記ゆれ（全角半角・空白・ハイフン）を吸収する
- */
-export function receiptFingerprint(
-  receipt: Pick<ReceiptInput, 'storeName' | 'purchasedAt' | 'totalAmount'>
-): string {
-  const store = receipt.storeName
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\s\-‐‑‒–—―−]/g, '');
-  const purchasedAt = receipt.purchasedAt.trim().replace(' ', 'T').slice(0, 16);
-  return `${purchasedAt}|${store}|${receipt.totalAmount}`;
-}
-
-/**
  * 購入日時から支出日（YYYY-MM-DD）を取り出す
  */
 export function receiptDate(purchasedAt: string): string {
@@ -188,5 +175,67 @@ export function monthDateRange(month: string): { start: string; end: string } {
   return {
     start: `${month}-01`,
     end: `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`,
+  };
+}
+
+export interface ReceiptRecordingContext {
+  userId: string;
+  /** 記録したクライアント（MCP クライアントの client_id） */
+  clientId: string;
+  /** 記録日時（ISO 8601） */
+  now: string;
+  /** 行の ID を作る（ULID など） */
+  newId: () => string;
+}
+
+/**
+ * レシートの記録で保存する行（receipts / receipt_items / expenses）を組み立てる
+ *
+ * itemsTotal は明細の合計（明細がなければ null）、difference は支払総額との差（税・値引き・読み取り誤り）。
+ * 差が大きいときは、読み取りを見直すきっかけとして呼び出し側に返す。
+ */
+export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecordingContext) {
+  const { userId, clientId, now, newId } = context;
+  const receiptId = newId();
+  const date = receiptDate(input.purchasedAt);
+  const items = (input.items ?? []).map((item, position) => ({
+    id: newId(),
+    receiptId,
+    position,
+    name: item.name,
+    amount: item.amount,
+    quantity: item.quantity ?? null,
+    category: item.category ?? null,
+  }));
+  const expenses = allocateReceiptToExpenses(input).map((allocation) => ({
+    id: newId(),
+    userId,
+    amount: allocation.amount,
+    category: allocation.category,
+    memo: allocation.memo,
+    date,
+    createdAt: now,
+    updatedAt: now,
+    deviceId: `mcp:${clientId}`,
+    receiptId,
+  }));
+  const itemsTotal = items.length > 0 ? items.reduce((sum, item) => sum + item.amount, 0) : null;
+  return {
+    receipt: {
+      id: receiptId,
+      userId,
+      storeName: input.storeName,
+      purchasedAt: input.purchasedAt,
+      totalAmount: input.totalAmount,
+      taxAmount: input.taxAmount ?? null,
+      paymentMethod: input.paymentMethod ?? null,
+      source: clientId,
+      createdAt: now,
+      updatedAt: now,
+    },
+    items,
+    expenses,
+    itemsTotal,
+    difference: itemsTotal === null ? 0 : input.totalAmount - itemsTotal,
   };
 }

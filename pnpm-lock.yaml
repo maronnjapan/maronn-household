@@ -226,18 +226,18 @@ importers:
       '@maronn/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@maronn/household-store':
+        specifier: workspace:*
+        version: link:../../packages/household-store
+      '@maronn/oauth-resource':
+        specifier: workspace:*
+        version: link:../../packages/oauth-resource
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@3.25.76)
-      drizzle-orm:
-        specifier: ^0.45.1
-        version: 0.45.1(@cloudflare/workers-types@4.20260702.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.10)
       hono:
         specifier: ^4.13.13
         version: 4.13.19
-      jose:
-        specifier: ^6.2.18
-        version: 6.2.18
       ulidx:
         specifier: ^2.4.1
         version: 2.4.1
@@ -251,6 +251,9 @@ importers:
       '@maronn/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
+      jose:
+        specifier: ^6.2.18
+        version: 6.2.18
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -292,6 +295,41 @@ importers:
       vitest:
         specifier: ^1.2.0
         version: 1.6.1(@types/node@22.19.7)
+
+  packages/household-store:
+    dependencies:
+      '@maronn/db-schema':
+        specifier: workspace:*
+        version: link:../db-schema
+      '@maronn/domain':
+        specifier: workspace:*
+        version: link:../domain
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@cloudflare/workers-types@4.20260702.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.10)
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20260120.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/oauth-resource:
+    dependencies:
+      hono:
+        specifier: ^4.13.13
+        version: 4.13.19
+      jose:
+        specifier: ^6.2.18
+        version: 6.2.18
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20260120.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/test-utils:
     devDependencies:

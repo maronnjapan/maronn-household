@@ -41,6 +41,8 @@ export const session = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /** 認証基盤が発行した ID トークン（ログアウト時の id_token_hint） */
+    idToken: text("id_token"),
   },
   (table) => [index("session_userId_idx").on(table.userId)],
 );

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
 
 export const expenses = sqliteTable(
   'expenses',
@@ -50,17 +50,12 @@ export const receipts = sqliteTable(
     totalAmount: integer('total_amount').notNull(),
     taxAmount: integer('tax_amount'),
     paymentMethod: text('payment_method'),
-    /** 二重登録検出用（@maronn/domain の receiptFingerprint） */
-    fingerprint: text('fingerprint').notNull(),
     /** 登録元クライアント */
     source: text('source').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
-  (table) => [
-    uniqueIndex('receipts_user_fingerprint_unique').on(table.userId, table.fingerprint),
-    index('receipts_user_purchased_at_idx').on(table.userId, table.purchasedAt),
-  ]
+  (table) => [index('receipts_user_purchased_at_idx').on(table.userId, table.purchasedAt)]
 );
 
 export const receiptItems = sqliteTable(
@@ -70,10 +65,10 @@ export const receiptItems = sqliteTable(
     receiptId: text('receipt_id')
       .notNull()
       .references(() => receipts.id, { onDelete: 'cascade' }),
-    userId: text('user_id').notNull(),
     /** レシート上の並び順（0始まり） */
     position: integer('position').notNull(),
     name: text('name').notNull(),
+    /** 行の金額（数量×単価） */
     amount: integer('amount').notNull(),
     quantity: real('quantity'),
     category: text('category'),

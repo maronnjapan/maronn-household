@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   allocateReceiptToExpenses,
-  receiptFingerprint,
+  planReceiptRecording,
   receiptDate,
   summarizeSpending,
   monthDateRange,
@@ -148,32 +148,6 @@ describe('allocateReceiptToExpenses', () => {
   });
 });
 
-describe('receiptFingerprint', () => {
-  it('表記ゆれ（全角・空白・記号）を吸収して同じレシートを同一と判定する', () => {
-    const a = receiptFingerprint({
-      storeName: 'セブン-イレブン 新宿店',
-      purchasedAt: '2026-11-19T12:34',
-      totalAmount: 598,
-    });
-    const b = receiptFingerprint({
-      storeName: 'ｾﾌﾞﾝｲﾚﾌﾞﾝ新宿店',
-      purchasedAt: '2026-11-19T12:34',
-      totalAmount: 598,
-    });
-
-    expect(a).toBe(b);
-  });
-
-  it('金額や日時が違えば別のレシートとして扱う', () => {
-    const base = { storeName: '店', purchasedAt: '2026-11-19T12:34', totalAmount: 598 };
-
-    expect(receiptFingerprint(base)).not.toBe(receiptFingerprint({ ...base, totalAmount: 599 }));
-    expect(receiptFingerprint(base)).not.toBe(
-      receiptFingerprint({ ...base, purchasedAt: '2026-11-19T12:35' })
-    );
-  });
-});
-
 describe('receiptDate', () => {
   it('日時文字列から YYYY-MM-DD を取り出す', () => {
     expect(receiptDate('2026-11-19T12:34:56+09:00')).toBe('2026-11-19');
@@ -220,5 +194,93 @@ describe('monthDateRange', () => {
   it('YYYY-MM 形式でなければエラーにする', () => {
     expect(() => monthDateRange('2026-13')).toThrow();
     expect(() => monthDateRange('202611')).toThrow();
+  });
+});
+
+describe('planReceiptRecording', () => {
+  const ids = () => {
+    let n = 0;
+    return () => `id-${++n}`;
+  };
+  const context = {
+    userId: 'user-1',
+    clientId: 'dcr-claude',
+    now: '2026-11-19T10:00:00.000Z',
+  };
+
+  it('レシート・明細・按分した支出の行を作り、明細合計と支払総額の差を返す', () => {
+    const plan = planReceiptRecording(
+      {
+        storeName: 'スーパーA',
+        purchasedAt: '2026-11-19T18:30',
+        totalAmount: 1100,
+        taxAmount: 100,
+        paymentMethod: 'credit_card',
+        items: [
+          { name: '米', amount: 700, category: 'food' },
+          { name: 'ティッシュ', amount: 300, quantity: 2, category: 'daily-goods' },
+        ],
+      },
+      { ...context, newId: ids() }
+    );
+
+    expect(plan.receipt).toEqual({
+      id: 'id-1',
+      userId: 'user-1',
+      storeName: 'スーパーA',
+      purchasedAt: '2026-11-19T18:30',
+      totalAmount: 1100,
+      taxAmount: 100,
+      paymentMethod: 'credit_card',
+      source: 'dcr-claude',
+      createdAt: context.now,
+      updatedAt: context.now,
+    });
+    expect(plan.items).toEqual([
+      { id: 'id-2', receiptId: 'id-1', position: 0, name: '米', amount: 700, quantity: null, category: 'food' },
+      { id: 'id-3', receiptId: 'id-1', position: 1, name: 'ティッシュ', amount: 300, quantity: 2, category: 'daily-goods' },
+    ]);
+    expect(plan.expenses).toEqual([
+      {
+        id: 'id-4',
+        userId: 'user-1',
+        amount: 770,
+        category: 'food',
+        memo: 'スーパーA: 米',
+        date: '2026-11-19',
+        createdAt: context.now,
+        updatedAt: context.now,
+        deviceId: 'mcp:dcr-claude',
+        receiptId: 'id-1',
+      },
+      {
+        id: 'id-5',
+        userId: 'user-1',
+        amount: 330,
+        category: 'daily-goods',
+        memo: 'スーパーA: ティッシュ',
+        date: '2026-11-19',
+        createdAt: context.now,
+        updatedAt: context.now,
+        deviceId: 'mcp:dcr-claude',
+        receiptId: 'id-1',
+      },
+    ]);
+    expect(plan.itemsTotal).toBe(1000);
+    expect(plan.difference).toBe(100);
+  });
+
+  it('明細がなければ明細の行は作らず、差は0とする', () => {
+    const plan = planReceiptRecording(
+      { storeName: '店', purchasedAt: '2026-11-19', totalAmount: 500, category: 'food' },
+      { ...context, newId: ids() }
+    );
+
+    expect(plan.items).toEqual([]);
+    expect(plan.expenses).toHaveLength(1);
+    expect(plan.receipt.taxAmount).toBeNull();
+    expect(plan.receipt.paymentMethod).toBeNull();
+    expect(plan.itemsTotal).toBeNull();
+    expect(plan.difference).toBe(0);
   });
 });

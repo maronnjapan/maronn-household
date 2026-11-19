@@ -12,25 +12,21 @@ CREATE TABLE `receipts` (
 	`total_amount` integer NOT NULL,
 	`tax_amount` integer,
 	`payment_method` text,
-	-- 二重登録検出用（購入日時・店名・支払総額を正規化した値）
-	`fingerprint` text NOT NULL,
 	-- 登録元のクライアント（MCPクライアントのclient_idなど）
 	`source` text NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `receipts_user_fingerprint_unique` ON `receipts` (`user_id`, `fingerprint`);
---> statement-breakpoint
 CREATE INDEX `receipts_user_purchased_at_idx` ON `receipts` (`user_id`, `purchased_at`);
 --> statement-breakpoint
 CREATE TABLE `receipt_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`receipt_id` text NOT NULL,
-	`user_id` text NOT NULL,
 	-- レシート上の並び順（0始まり）
 	`position` integer NOT NULL,
 	`name` text NOT NULL,
+	-- 行の金額（数量×単価）
 	`amount` integer NOT NULL,
 	`quantity` real,
 	`category` text,

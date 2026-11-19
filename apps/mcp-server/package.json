@@ -1,0 +1,31 @@
+{
+  "name": "mcp-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "MCP server (OAuth protected resource) to record receipts and read household data",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:ci": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@maronn/db-schema": "workspace:*",
+    "@maronn/domain": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.13.13",
+    "jose": "^6.2.18",
+    "ulidx": "^2.4.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260120.0",
+    "@maronn/test-utils": "workspace:*",
+    "typescript": "^5.9.3",
+    "vitest": "^1.2.0",
+    "wrangler": "^4.54.0"
+  }
+}

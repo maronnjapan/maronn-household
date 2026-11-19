@@ -1,0 +1,29 @@
+{
+  "name": "auth-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "OpenID Provider (maronn-openid-connect) for household-app login and MCP OAuth",
+  "scripts": {
+    "generate": "maronn-oidc generate hono --db sql --enable dynamic-client-registration,rp-initiated-logout --disable client-credentials,request-object,form-post-response-mode,implicit-flow,hybrid-flow --scope household --output ./src/oidc-provider --force",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:ci": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@maronn-openid-connect/core": "0.12.0",
+    "@maronn-openid-connect/experimental": "0.0.19",
+    "hono": "^4.13.13",
+    "jose": "^6.2.18"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260120.0",
+    "@maronn-openid-connect/cli": "0.17.0",
+    "typescript": "^5.9.3",
+    "vitest": "^1.2.0",
+    "wrangler": "^4.54.0",
+    "@maronn/test-utils": "workspace:*"
+  }
+}

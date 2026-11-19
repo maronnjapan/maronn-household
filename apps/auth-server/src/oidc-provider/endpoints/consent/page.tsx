@@ -1,0 +1,87 @@
+/** @jsxImportSource hono/jsx */
+/**
+ * Consent screen (screen routing layer).
+ *
+ * GET /consent renders the approve / deny form and POST /consent submits it.
+ * Neither handler holds OIDC logic: prepareConsent() and submitConsent() in
+ * pipeline.ts find the transaction through the transaction cookie, check
+ * the csrf_token, record the decision, mint the authorization code and build
+ * the authorization response, and report what happened as an outcome. This
+ * file turns each outcome into a screen or a redirect. To customize the consent UI, edit this
+ * file or the consentPage view in views.tsx; pipeline.ts never has to
+ * change. Keep the two button values ('approve' / 'deny') as they are: the
+ * logic accepts exactly those.
+ */
+import { Hono } from 'hono';
+import { respondToClient } from '../../pages/authorization-response.js';
+import { renderErrorPage } from '../../pages/errors.js';
+import { defaultViews, renderView, type ConsentPageParams, type Views } from '../../views.js';
+import { prepareConsent, submitConsent } from './pipeline.js';
+
+export const consentPage = new Hono<{ Variables: Record<string, any> }>();
+
+/**
+ * 同意画面を描画し、HTML の `Response` を返す。
+ *
+ * ビューは、リクエストコンテキストの `views` にあればそれを使い、なければ既定のビューを使う。
+ * 同意画面の見た目を変えるときは、この関数だけを変えればよい（ビューを差し替える、フレームワークで描画した `Response` を返す、独自の UI へリダイレクトする）。
+ *
+ * `renderView()` は、ヘッダーで別の指定をしない限り `Cache-Control: no-store` を付ける。
+ * Cached forms could disclose the transaction’s csrf_token or client to another browser or later flow.
+ * 独自の `Response` を返すときも、このヘッダーを付ける。
+ */
+export function renderConsentPage(c: any, params: ConsentPageParams): Response {
+  const views: Views = c.get('views') ?? defaultViews;
+  return renderView(<views.consentPage {...params} />);
+}
+
+/**
+ * Consent Page - GET
+ * Displays the consent form for the transaction in this browser's cookie.
+ */
+consentPage.get('/', async (c) => {
+  const screen = await prepareConsent(c);
+  if (screen.kind === 'error') return renderErrorPage(c, screen);
+  return renderConsentPage(c, {
+    transactionId: screen.transactionId,
+    csrfToken: screen.csrfToken,
+    scopes: screen.scopes,
+    // クライアントの名前、ロゴ、ポリシーと利用規約のリンクを渡す（OIDC Dynamic Client Registration 1.0 §2）。
+    client: screen.client,
+  });
+});
+
+/**
+ * Consent Handler - POST
+ * Submits the consent decision and sends the browser on.
+ */
+consentPage.post('/', async (c) => {
+  const body = await c.req.parseBody();
+  const outcome = await submitConsent(c, {
+    transactionId: String(body['transaction_id'] ?? ''),
+    csrfToken: String(body['csrf_token'] ?? ''),
+    action: String(body['action'] ?? ''),
+  });
+
+  if (outcome.kind === 'error') return renderErrorPage(c, outcome);
+  if (outcome.kind === 'invalid_decision') {
+    // OIDC Core 1.0 Section 3.1.2.4 / 3.1.2.6: no decision was obtained, which
+    // is not the same as the End-User denying — so the browser stays on the OP's
+    // own error page instead of being sent back to the client. 'approve' and
+    // 'deny' are the values the logic accepts; the buttons in views.tsx
+    // consentPage() must keep sending exactly those.
+    return renderErrorPage(c, {
+      error: 'Invalid consent decision. Please use the Approve or Deny button.',
+      statusCode: 400,
+    });
+  }
+  if (outcome.kind === 'session_missing') {
+    return renderErrorPage(c, {
+      error: 'Authentication session not found. Please restart login.',
+      statusCode: 400,
+    });
+  }
+  // Approved or denied: the authorization response, in the response mode the
+  // request asked for (a redirect, or the form a form_post response is posted from).
+  return respondToClient(c, outcome.response, outcome.cookies);
+});

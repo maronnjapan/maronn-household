@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // 全リクエストの入口。ドメインのルートはこの Worker だけが持つ（他の Worker はルートなし）
+  "name": "gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-03",
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": false,
+  // 振り分け先（src/routes.ts の Service と対応）
+  "services": [
+    { "binding": "AUTH", "service": "auth-server" },
+    { "binding": "MCP", "service": "mcp-server" },
+    { "binding": "APP", "service": "household-app" }
+  ],
+  "routes": [
+    {
+      "pattern": "maronn-household-budget.com/*",
+      "zone_name": "maronn-household-budget.com"
+    },
+    {
+      "pattern": "www.maronn-household-budget.com/*",
+      "zone_name": "maronn-household-budget.com"
+    }
+  ]
+}

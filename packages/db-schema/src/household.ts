@@ -1,25 +1,85 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-export const expenses = sqliteTable('expenses', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull(),
-  amount: integer('amount').notNull(),
-  category: text('category'),
-  memo: text('memo'),
-  date: text('date').notNull(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-  deviceId: text('device_id').notNull(),
-  subBudgetId: text('sub_budget_id'),
-});
+export const expenses = sqliteTable(
+  'expenses',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    amount: integer('amount').notNull(),
+    category: text('category'),
+    memo: text('memo'),
+    date: text('date').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    deviceId: text('device_id').notNull(),
+    subBudgetId: text('sub_budget_id'),
+    /** レシートから按分された支出の場合のレシートID（手入力はnull） */
+    receiptId: text('receipt_id'),
+  },
+  (table) => [
+    index('expenses_user_date_idx').on(table.userId, table.date),
+    index('expenses_receipt_id_idx').on(table.receiptId),
+  ]
+);
 
-export const budgets = sqliteTable('budgets', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull(),
-  month: text('month').notNull(),
-  amount: integer('amount').notNull(),
-  updatedAt: text('updated_at').notNull(),
-});
+export const budgets = sqliteTable(
+  'budgets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    month: text('month').notNull(),
+    amount: integer('amount').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('budgets_user_month_idx').on(table.userId, table.month)]
+);
+
+/**
+ * レシート（生成AIがレシート写真を読み取って登録する購入記録）
+ * 予算計算に使う支出は expenses にカテゴリ別に按分して保存し、receiptId で紐づける
+ */
+export const receipts = sqliteTable(
+  'receipts',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    storeName: text('store_name').notNull(),
+    /** 購入日時（ISO 8601） */
+    purchasedAt: text('purchased_at').notNull(),
+    /** 支払総額（税込・値引き後） */
+    totalAmount: integer('total_amount').notNull(),
+    taxAmount: integer('tax_amount'),
+    paymentMethod: text('payment_method'),
+    /** 二重登録検出用（@maronn/domain の receiptFingerprint） */
+    fingerprint: text('fingerprint').notNull(),
+    /** 登録元クライアント */
+    source: text('source').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('receipts_user_fingerprint_unique').on(table.userId, table.fingerprint),
+    index('receipts_user_purchased_at_idx').on(table.userId, table.purchasedAt),
+  ]
+);
+
+export const receiptItems = sqliteTable(
+  'receipt_items',
+  {
+    id: text('id').primaryKey(),
+    receiptId: text('receipt_id')
+      .notNull()
+      .references(() => receipts.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    /** レシート上の並び順（0始まり） */
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    amount: integer('amount').notNull(),
+    quantity: real('quantity'),
+    category: text('category'),
+  },
+  (table) => [index('receipt_items_receipt_id_idx').on(table.receiptId)]
+);
 
 export const apiTokens = sqliteTable('api_tokens', {
   tokenHash: text('token_hash').primaryKey(),

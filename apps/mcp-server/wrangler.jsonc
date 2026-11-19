@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // MCP サーバー（OAuth の保護リソース）。gateway から service binding で呼ばれるのでルートは持たない
+  "name": "mcp-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": false,
+  "vars": {
+    // 認証基盤の issuer（= 公開オリジン）。リソース URL は `${ISSUER}/mcp`
+    "ISSUER": "https://maronn-household-budget.com"
+  },
+  // アクセストークンの検証鍵（JWKS）は認証基盤から service binding で取得する
+  // （同じゾーンの URL への fetch は Worker を経由しないため）
+  "services": [{ "binding": "AUTH", "service": "auth-server" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "household-db",
+      "database_id": "91552f81-4280-49ed-b9f0-5534d41a0a34"
+    }
+  ]
+}

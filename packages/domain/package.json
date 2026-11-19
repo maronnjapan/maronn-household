@@ -11,7 +11,9 @@
     "./expense": "./src/expense.ts",
     "./sync": "./src/sync.ts",
     "./webhook": "./src/webhook.ts",
-    "./webhook-templates": "./src/webhook-templates.ts"
+    "./webhook-templates": "./src/webhook-templates.ts",
+    "./receipt": "./src/receipt.ts",
+    "./categories": "./src/categories.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

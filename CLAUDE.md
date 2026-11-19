@@ -83,33 +83,51 @@
 
 ```
 apps/
-├── household-app/         # メインアプリ（Vike + Hono + Cloudflare Workers）
-│   ├── server/            # Honoサーバーエントリ・ハンドラー群
+├── gateway/               # household-gateway: 全リクエストの入口（ドメインのルートを唯一持つ）。パスで各 Worker へ振り分け
+├── auth-server/           # household-auth: 認証基盤（OpenID Provider、maronn-openid-connect）。アプリのログインと MCP の OAuth
+│   ├── src/oidc-provider/ # CLI（@maronn-openid-connect/cli 0.17.0）の生成コード。手で編集しない（db/instance.ts のみ自前）
+│   └── src/*.ts           # 差し込み部品（Google ログイン、既存 user/account のユーザーストア、D1 の DCR ストア、署名鍵、画面、定期削除）
+├── mcp-server/            # household-mcp: MCP サーバー（レシートの記録・家計データの参照、~120行）
+├── household-app/         # household-app: メインアプリ（Vike + Hono）。認証基盤の RP
+│   ├── server/            # Honoサーバーエントリ・ハンドラー群（session/ がログイン・ログアウト）
 │   ├── pages/             # Vikeページ（+Page.tsx, +Layout.tsx）
 │   ├── components/        # Reactコンポーネント
 │   ├── hooks/             # カスタムフック
 │   ├── trpc/              # tRPCルーター定義
-│   ├── auth/              # Better Auth設定
-│   └── database/migrations/ # D1マイグレーションSQL
-├── mcp-server/            # MCP（Model Context Protocol）サーバー（Cloudflare Workers）
-├── delete-expired-session-cron/   # セッション削除バッチ
+│   ├── auth/              # ログイン状態のクライアント（/api/session）
+│   ├── integration/       # 認証基盤と組み合わせた結合テスト
+│   └── database/migrations/ # D1マイグレーションSQL（全 Worker 共通の household-db）
 ├── delete-no-user-household-data-cron/ # 孤立データ削除バッチ
 └── webhook-batch-cron/    # Webhookバッチ実行cron
 
 packages/
 ├── db-schema/             # @maronn/db-schema: Drizzle ORMスキーマ（全アプリ共通）
-└── domain/                # @maronn/domain: ドメインロジック（純粋関数）
+├── domain/                # @maronn/domain: ドメインロジック（純粋関数。レシートの按分など）
+├── household-store/       # @maronn/household-store: 家計データ（支出・予算・レシート）の D1 読み書き
+├── oauth-resource/        # @maronn/oauth-resource: 認証基盤のトークンで守る API の共通部品（RFC 9728、Bearer 検証）
+└── test-utils/            # @maronn/test-utils: 全マイグレーションを適用したローカル D1（Miniflare）
 ```
 
 ### サーバーアーキテクチャ
 
+単一ホスト `maronn-household-budget.com` の全リクエストを `household-gateway` が受け、パスで service binding 先を決める（`apps/gateway/src/routes.ts`）。
+他の Worker はルートも workers.dev も持たない。Worker 間の通信も service binding（同じゾーンの URL への fetch は Worker を経由しないため）。
+
+| パス | 行き先 |
+|---|---|
+| `/authorize` `/token` `/userinfo` `/login` `/login/*` `/consent` `/register` `/revoke` `/introspect` `/logout` `/.well-known/openid-configuration` `/.well-known/jwks.json` `/api/auth/callback/google` | household-auth |
+| `/.well-known/oauth-authorization-server` | household-auth（OIDC Discovery に書き換え） |
+| `/mcp` `/.well-known/oauth-protected-resource/*` | household-mcp |
+| それ以外 | household-app |
+
+`/register` と `/authorize` は IP ごとにレート制限する。`www.` は apex に 301。
+
 `household-app` は **Photon.js**（`@photonjs/hono`）を使ってVike（SSR）とHonoを統合している。`server/entry.ts` がエントリポイントで、`apply()` でミドルウェア・ハンドラーを登録し `serve()` でCloudflare Workers向けにエクスポートする。
 
 ルーティング:
-- `/api/auth/*` → Better Auth（認証）
+- `/api/session/*` → ログイン・ログアウト（認証基盤の RP）
 - `/api/trpc/*` → tRPCハンドラー
 - `/api/v1/export/*` → エクスポートAPI（トークン認証）
-- `/oauth/*` → MCP用 OAuth 2.1 認可サーバー
 - それ以外 → Vikeが処理（SSR）
 
 ## プロジェクト概要
@@ -170,33 +188,23 @@ packages/
 
 ### 認証
 
-**Google OAuth のみ対応**
+**認証基盤（household-auth）+ Google ログイン**
 
-Better Auth + Google OAuth を使用。メール/パスワード認証は非対応。
+- `apps/auth-server` が OpenID Provider（maronn-openid-connect の生成コード）。issuer は公開オリジン（`https://maronn-household-budget.com`）で、ルートはオリジン直下に固定
+- エンドユーザーは Google でログインする（上流 OP への認可コードフロー。Workers で動く自前実装 `google-login.ts`）。Google のリダイレクト URI は Better Auth 時代と同じ `/api/auth/callback/google`
+- ユーザーは既存の `user` / `account`（provider_id='google'）テーブルをそのまま使い、既存ユーザーの user_id を維持する（`household-user-store.ts`）
+- household-app は confidential クライアント `household-app`（認可コード + PKCE）。セッションは D1 の `session` テーブル（トークンは SHA-256 で保存）、Cookie は `__Host-hh_session`
+- MCP クライアントは動的クライアント登録（RFC 7591）+ PKCE。`resource`（RFC 8707）は認証基盤の入口で audience に変換し、MCP 宛てのトークンにだけ MCP サーバーの URL が aud に入る
+- 移行期間は Better Auth のセッション Cookie も BETTER_AUTH_SECRET で検証して受け付ける（既定の寿命 7 日で自然に消える。消えたら server/session/store.ts の互換処理を削除してよい）
 
-#### 必要な環境変数
+#### secrets
 
-```bash
-BETTER_AUTH_SECRET=<ランダムな秘密鍵（32文字以上推奨）>
-BETTER_AUTH_URL=<アプリのベースURL（例: https://example.com）>
-GOOGLE_CLIENT_ID=<Google Cloud Consoleで取得>
-GOOGLE_CLIENT_SECRET=<Google Cloud Consoleで取得>
-```
-
-#### ファイル構成
-
-```
-apps/household-app/
-├── auth/
-│   ├── config.ts       # Better Auth サーバー設定（Googleプロバイダー）
-│   └── client.ts       # クライアント用関数（signInWithGoogle, signOut）
-├── pages/
-│   └── auth/
-│       └── login/
-│           └── +Page.tsx   # Googleログインボタンのみ
-└── hooks/
-    └── use-auth.ts     # 認証状態フック
-```
+| Worker | 名前 | 説明 |
+|---|---|---|
+| household-auth | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | GitHub Secrets から毎回投入 |
+| household-auth | `OIDC_SIGNING_KEY`（任意で `OIDC_SIGNING_KEY_PREVIOUS`） | RSA 秘密鍵 JWK。未設定ならデプロイが生成 |
+| household-auth / household-app | `HOUSEHOLD_CLIENT_SECRET` | 両方に同じ値。片方でも欠けたらデプロイが再生成 |
+| household-app | `BETTER_AUTH_SECRET` | 移行期間だけ旧 Cookie の検証に使う |
 
 ### テスト
 
@@ -243,13 +251,15 @@ interface SyncMeta {
 スキーマは `packages/db-schema/src/` で管理し、`@maronn/db-schema` パッケージとして各アプリから参照する。
 
 主なテーブル（`packages/db-schema/src/household.ts`）:
-- `expenses`: 支出記録（`subBudgetId` フィールドあり）
+- `expenses`: 支出記録（`subBudgetId`、レシート由来なら `receiptId`）
+- `receipts` / `receipt_items`: 生成AIがレシート写真から読み取った購入（支払総額を明細の比率でカテゴリ別の `expenses` に按分して紐づける）
 - `budgets`: 月次予算
 - `subBudgets` / `subBudgetMonthlyAmounts`: サブ予算
 - `apiTokens` / `apiUsage`: エクスポートAPI用トークン管理
 - `webhooks` / `webhookBatchSchedules`: Webhook設定
 
-Better Auth 関連テーブルは `packages/db-schema/src/auth.ts`、MCP OAuth は `packages/db-schema/src/mcp-oauth.ts` で管理。
+ユーザーとアプリのセッションは `packages/db-schema/src/auth.ts`（`user` / `account` / `session`）。
+認証基盤の生成OPのテーブル（`clients` / `transactions` / `access_tokens` など）は `0008_oidc_provider.sql`（生成コードの `db/schema.sql` と同じ）。OP の `users` / `federated_identities` は使わない。
 
 ## 同期戦略
 
@@ -430,9 +440,7 @@ try-catch は最小限に。予期しないエラーはそのまま上位に伝�
 ```bash
 # 開発（各アプリは個別に起動）
 pnpm dev              # 開発サーバー起動（household-app、port 3000）
-# auth-server と mcp-server は apps/ 内で個別に起動:
-#   cd apps/auth-server && pnpm dev   # port 3001
-#   cd apps/mcp-server  && pnpm dev   # port 8787（wrangler デフォルト）
+# gateway・auth-server・mcp-server は apps/ 内で `pnpm dev`（wrangler dev）。テストは Miniflare のローカル D1 で通しで動く
 pnpm test             # ユニット + コンポーネント（Vitest）
 pnpm test:e2e         # E2Eテスト（Playwright）
 pnpm test:watch       # ウォッチモード
@@ -443,61 +451,37 @@ pnpm format           # Prettierフォーマット
 
 # DBマイグレーション（apps/household-app 内で実行）
 pnpm drizzle:generate:household  # household テーブルのマイグレーション生成
-pnpm drizzle:generate:auth       # Better Auth テーブルのマイグレーション生成
+pnpm drizzle:generate:auth       # user/account/session テーブルのマイグレーション生成
 pnpm drizzle:migrate             # ローカルD1にマイグレーション適用
 pnpm drizzle:migrate:remote      # リモートD1にマイグレーション適用
 pnpm drizzle:studio              # Drizzle Studio（DB GUI）
 
-# デプロイ
-pnpm deploy           # デプロイ（スクリプト経由）
-pnpm deploy:prod      # 本番環境デプロイ
-pnpm deploy:dev       # 開発環境デプロイ
-pnpm deploy:quick     # ビルド・DBスキップの高速デプロイ
+# デプロイ: main への push で GitHub Actions（.github/workflows/deploy.yml、詳細は scripts/cloudflare/README.md）
 ```
 
 ## 実装済み機能
 
-### MCP OAuth 認可サーバー（`apps/auth-server/`）
+### 認証基盤（`apps/auth-server/`、Worker 名 `household-auth`）
 
-household-app から切り出した独立した Cloudflare Worker。MCP クライアント（Claude Desktop 等）専用の認証基盤。
+maronn-openid-connect（`@maronn-openid-connect/core` 0.12.0 / `experimental` 0.0.19、CLI 0.17.0 で生成）の OpenID Provider。
+家計簿アプリのログインと MCP クライアントの OAuth を担う。
 
-#### 設計方針
+- 生成コード: `pnpm --filter auth-server generate`（`src/oidc-provider/` に上書き。生成物は手で編集しない）
+- 差し込み: `src/app.ts`（applyOidc のオプション、追加のルート、エラーページ、クリックジャッキング対策のヘッダー）
+- 定期削除（Cron Trigger、毎日 20:00 UTC）: 期限切れのトランザクション・コード・トークン、90 日超の OP のブラウザセッション、期限切れのアプリのセッション、24 時間使われなかった動的登録クライアント
+- 内部エンドポイント `POST /internal/users/delete`（アカウント削除。household-app から service binding でだけ呼ぶ）
+- 生成OPの制約: ルートのプレフィックス不可、RFC 8414 のメタデータなし（gateway が OIDC Discovery に書き換え）、RFC 8707 なし（入口で audience に変換）、DCR のストアはメモリ（D1 版に差し替え）
 
-- household-app の Web ログインとは**独立したセッション**を持つ（MCP OAuth フロー専用）
-- 同じ D1（`household-db`）を共有するため、同一 Google アカウントで認証すると同じ `user_id` を持つ
-- D1 マイグレーションは `apps/household-app/database/migrations/` で一元管理
+### MCP サーバー（`apps/mcp-server/`、Worker 名 `household-mcp`）
 
-#### エンドポイント
+OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud に `${ISSUER}/mcp`、scope に `household`、発行済みの記録があること）を検証し、Streamable HTTP（ステートレス）でツールを提供する。
 
-| パス | 説明 |
-|------|------|
-| `GET /.well-known/oauth-authorization-server` | RFC 8414 AS メタデータ |
-| `POST /oauth/register` | RFC 7591 動的クライアント登録 |
-| `GET /oauth/authorize` | 認可エンドポイント（PKCE 必須）|
-| `POST /oauth/token` | トークンエンドポイント |
-| `/api/auth/*` | Better Auth（Google OAuth） |
-
-#### 環境変数（`.dev.vars`）
-
-```
-AUTH_SERVER_URL=http://localhost:3001
-BETTER_AUTH_SECRET=...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-```
-
-#### 本番デプロイ前の追加作業
-
-- Google Cloud Console に `https://auth.maronn-household-budget.com/api/auth/callback/google` を追加
-- `wrangler.jsonc` に `routes`（`auth.maronn-household-budget.com`）を追加
-
-### MCP サーバー（`apps/mcp-server/`）
-
-OAuth Resource Server として Bearer トークンを検証し、MCP Protocol（Streamable HTTP）でツールを提供する。
-
-- 認可サーバーは `apps/auth-server/` を参照（環境変数 `AUTH_SERVER_URL`）
-- `/.well-known/oauth-protected-resource` で RFC 9728 準拠のメタデータを返す
-- ローカル開発: `AUTH_SERVER_URL=http://localhost:3001`（auth-server と別ポートで起動）
+- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。カテゴリ別に按分した支出を作る。同日・同額のレシートは duplicate を返す
+- `delete_receipt`: 記録したレシートを取り消す
+- `list_records`: 月の支出（店名付き）。`includeItems` でレシートと明細
+- `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く）
+- 接続先: `https://maronn-household-budget.com/mcp`（Claude のカスタムコネクタなど。ログインと同意は認証基盤の画面）
+- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない
 
 ### 月次予算設定機能
 

@@ -78,6 +78,9 @@ importers:
 
   apps/delete-no-user-household-data-cron:
     devDependencies:
+      '@maronn/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       typescript:
         specifier: ^5.5.2
         version: 5.9.3

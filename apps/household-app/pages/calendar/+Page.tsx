@@ -11,7 +11,8 @@ import {
   downloadCSV,
   type ImportableExpense,
 } from '../../lib/csv-parser';
-import { EXPENSE_CATEGORIES } from '../../constants/categories';
+import { CategoryOptions } from '../../components/CategoryOptions';
+import { useCategories } from '../../hooks/use-categories';
 import { useSubBudgets } from '../../hooks/use-sub-budget';
 import './calendar.css';
 import { DEFAULT_BUDGET_AMOUNT } from '../../lib/const';
@@ -29,15 +30,6 @@ function formatCurrency(amount: number): string {
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return `${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-/**
- * カテゴリー値からラベルを取得
- */
-function getCategoryLabel(categoryValue?: string): string | undefined {
-  if (!categoryValue) return undefined;
-  const category = EXPENSE_CATEGORIES.find((cat) => cat.value === categoryValue);
-  return category?.label;
 }
 
 interface EditingState {
@@ -69,6 +61,7 @@ export function Page() {
   const { handleUpdateExpense, handleDeleteExpense } = useExpenseActions();
   const { addExpense } = useAddExpense();
   const { subBudgets: subBudgetsList } = useSubBudgets();
+  const { labelOf } = useCategories();
 
   // 月の日数を計算
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -291,11 +284,7 @@ export function Page() {
                                 className="edit-input category"
                               >
                                 <option value="">カテゴリー未選択</option>
-                                {EXPENSE_CATEGORIES.map((cat) => (
-                                  <option key={cat.value} value={cat.value}>
-                                    {cat.label}
-                                  </option>
-                                ))}
+                                <CategoryOptions selected={editing.category} />
                               </select>
                               <input
                                 type="text"
@@ -333,7 +322,7 @@ export function Page() {
                                 )}
                               </span>
                               {expense.category && (
-                                <span className="expense-category">{getCategoryLabel(expense.category)}</span>
+                                <span className="expense-category">{labelOf(expense.category)}</span>
                               )}
                               {expense.memo && <span className="expense-memo">{expense.memo}</span>}
                             </div>
@@ -382,11 +371,7 @@ export function Page() {
                       className="add-input category"
                     >
                       <option value="">カテゴリー未選択</option>
-                      {EXPENSE_CATEGORIES.map((cat) => (
-                        <option key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </option>
-                      ))}
+                      <CategoryOptions selected={adding.category} />
                     </select>
                     <input
                       type="text"

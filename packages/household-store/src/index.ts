@@ -1,17 +1,23 @@
 /**
- * 家計データ（支出・予算・レシート）の D1 への読み書き
+ * 家計データ（支出・予算・レシート・カテゴリー）の D1 への読み書き
  *
  * 1 人のユーザーのデータだけを扱う。MCP サーバーなどのアダプターは、認証したユーザーでこのストアを作る。
  * 計算などの純粋なロジックは @maronn/domain に置く。
  */
-import { and, asc, desc, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   budgets,
+  categories,
   expenses,
   receiptItems,
   receipts,
 } from '@maronn/db-schema/household';
+import {
+  resolveCategories,
+  type Category,
+  type CategoryChange,
+} from '@maronn/domain/categories';
 import {
   monthDateRange,
   summarizeSpending,
@@ -166,5 +172,48 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         .all();
       return summarizeSpending(budget?.amount ?? DEFAULT_BUDGET_AMOUNT, spent);
     },
+
+    /** カテゴリーの一覧（既定のカテゴリーに、このユーザーの追加・名前変更・削除を重ねたもの。削除済みを含む） */
+    async listCategories(): Promise<Category[]> {
+      const records = await db
+        .select({
+          value: categories.value,
+          label: categories.label,
+          deletedAt: categories.deletedAt,
+          createdAt: categories.createdAt,
+        })
+        .from(categories)
+        .where(eq(categories.userId, userId))
+        .all();
+      return resolveCategories(records);
+    },
+
+    /** カテゴリーの変更を保存する（同じ value の行があれば名前・削除日時を上書きする） */
+    async saveCategory(change: CategoryChange) {
+      await db
+        .insert(categories)
+        .values({ userId, ...change, createdAt: change.updatedAt })
+        .onConflictDoUpdate({
+          target: [categories.userId, categories.value],
+          set: {
+            label: change.label,
+            deletedAt: change.deletedAt,
+            updatedAt: change.updatedAt,
+          },
+        })
+        .run();
+    },
+
+    /** そのカテゴリーの支出の件数（全期間） */
+    async countExpensesInCategory(value: string): Promise<number> {
+      const row = await db
+        .select({ n: count() })
+        .from(expenses)
+        .where(and(eq(expenses.userId, userId), eq(expenses.category, value)))
+        .get();
+      return row?.n ?? 0;
+    },
   };
 }
+
+export type HouseholdStore = ReturnType<typeof createHouseholdStore>;

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index, primaryKey } from 'drizzle-orm/sqlite-core';
 
 export const expenses = sqliteTable(
   'expenses',
@@ -74,6 +74,25 @@ export const receiptItems = sqliteTable(
     category: text('category'),
   },
   (table) => [index('receipt_items_receipt_id_idx').on(table.receiptId)]
+);
+
+/**
+ * 支出カテゴリーの、ユーザーごとの変更（追加したカテゴリーと、既定のカテゴリーの名前変更・削除）
+ * そのユーザーのカテゴリーの一覧は、@maronn/domain の resolveCategories で既定のカテゴリーと重ねて作る
+ */
+export const categories = sqliteTable(
+  'categories',
+  {
+    userId: text('user_id').notNull(),
+    /** 支出・レシート明細の category に保存する値（既定のカテゴリーは 'food' など、追加したカテゴリーは ULID） */
+    value: text('value').notNull(),
+    label: text('label').notNull(),
+    /** 削除日時（削除しても過去の支出の表示名に使うため、行は残す） */
+    deletedAt: text('deleted_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.value] })]
 );
 
 export const apiTokens = sqliteTable('api_tokens', {

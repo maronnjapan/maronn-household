@@ -101,6 +101,24 @@ async function callTool(name: string, args: Record<string, unknown>, token?: str
   return { isError: body.result.isError, data: body.result.isError ? text : JSON.parse(text) };
 }
 
+interface ToolDefinition {
+  name: string;
+  inputSchema: JsonSchema;
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+}
+
+interface JsonSchema {
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+}
+
+async function listTools(token?: string): Promise<ToolDefinition[]> {
+  const response = await rpc('tools/list', {}, token ?? (await accessToken()));
+  const body = (await response.json()) as { result: { tools: ToolDefinition[] } };
+  return body.result.tools;
+}
+
 async function count(table: string) {
   return (await testDb.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n;
 }
@@ -187,22 +205,26 @@ describe('アクセストークンの検証', () => {
 });
 
 describe('ツール', () => {
-  it('tools/list でレシートの記録・取り消しと参照のツールを公開する', async () => {
-    const response = await rpc('tools/list', {}, await accessToken());
-    const body = (await response.json()) as {
-      result: { tools: { name: string; annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean } }[] };
-    };
-    const tools = Object.fromEntries(body.result.tools.map((tool) => [tool.name, tool.annotations]));
+  it('tools/list でレシートの記録・取り消し、参照、カテゴリーの管理のツールを公開する', async () => {
+    const tools = Object.fromEntries((await listTools()).map((tool) => [tool.name, tool.annotations]));
 
     expect(Object.keys(tools).sort()).toEqual([
+      'create_category',
+      'delete_category',
       'delete_receipt',
       'get_budget_summary',
+      'list_categories',
       'list_records',
       'record_receipt',
+      'update_category',
     ]);
     expect(tools.list_records?.readOnlyHint).toBe(true);
     expect(tools.get_budget_summary?.readOnlyHint).toBe(true);
+    expect(tools.list_categories?.readOnlyHint).toBe(true);
     expect(tools.delete_receipt?.destructiveHint).toBe(true);
+    expect(tools.delete_category?.destructiveHint).toBe(true);
+    expect(tools.create_category).toMatchObject({ destructiveHint: false });
+    expect(tools.update_category).toMatchObject({ destructiveHint: false, idempotentHint: true });
   });
 
   it('record_receipt はレシートと明細を保存し、カテゴリ別に按分した支出をトークンのユーザーで作る', async () => {
@@ -334,9 +356,185 @@ describe('ツール', () => {
       spent: 1100,
       remaining: 48900,
       byCategory: [
-        { category: 'food', amount: 770 },
-        { category: 'daily-goods', amount: 330 },
+        { category: 'food', label: '食費', amount: 770 },
+        { category: 'daily-goods', label: '日用品', amount: 330 },
       ],
     });
+  });
+});
+
+describe('カテゴリー', () => {
+  const selectExpenses = async () =>
+    (await testDb.db.prepare('SELECT * FROM expenses ORDER BY id').all()).results;
+
+  it('list_categories は既定のカテゴリーを、追加したものがなければそのまま返す', async () => {
+    const { data } = await callTool('list_categories', {});
+
+    expect(data.categories).toHaveLength(12);
+    expect(data.categories[0]).toEqual({ value: 'food', label: '食費', builtIn: true });
+    expect(data.categories.at(-1)).toEqual({ value: 'other', label: 'その他', builtIn: true });
+  });
+
+  it('create_category で追加したカテゴリーは一覧に載り、record_receipt で名前でも value でも使え、参照の結果に名前が付く', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+    await callTool('record_receipt', {
+      ...RECEIPT,
+      items: [
+        { name: 'ドッグフード', amount: 700, category: 'ペット' },
+        { name: 'ティッシュ', amount: 300, category: '日用品' },
+      ],
+    });
+    await callTool('record_receipt', {
+      storeName: 'ペットショップ',
+      purchasedAt: '2026-11-20',
+      totalAmount: 500,
+      category: pet.value,
+    });
+
+    const { data: listed } = await callTool('list_categories', {});
+    const records = await callTool('list_records', { month: '2026-11', includeItems: true });
+    const summary = await callTool('get_budget_summary', { month: '2026-11' });
+
+    expect(pet).toEqual({ status: 'created', value: expect.stringMatching(/^[0-9A-Z]{26}$/), label: 'ペット' });
+    expect(listed.categories.at(-2)).toEqual({ value: pet.value, label: 'ペット', builtIn: false });
+    expect(listed.categories.at(-1).value).toBe('other');
+    const expenses = (await testDb.db.prepare('SELECT amount, category FROM expenses ORDER BY amount DESC').all())
+      .results;
+    expect(expenses).toEqual([
+      { amount: 770, category: pet.value },
+      { amount: 500, category: pet.value },
+      { amount: 330, category: 'daily-goods' },
+    ]);
+    expect(
+      records.data.expenses.map((e: { amount: number; categoryLabel: string }) => [e.amount, e.categoryLabel])
+    ).toEqual(expect.arrayContaining([[770, 'ペット'], [330, '日用品'], [500, 'ペット']]));
+    expect(
+      records.data.receipts[0].items.map((i: { category: string; categoryLabel: string }) => [i.category, i.categoryLabel])
+    ).toEqual([
+      [pet.value, 'ペット'],
+      ['daily-goods', '日用品'],
+    ]);
+    expect(summary.data.byCategory).toEqual([
+      { category: pet.value, label: 'ペット', amount: 1270 },
+      { category: 'daily-goods', label: '日用品', amount: 330 },
+    ]);
+  });
+
+  it('tools/list の record_receipt のカテゴリーの説明に、利用者の有効なカテゴリーの対応表を載せる（追加分を含み、削除したものは含まない）', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+    await callTool('delete_category', { category: '教育費' });
+
+    const recordReceipt = (await listTools()).find((tool) => tool.name === 'record_receipt')!;
+    const properties = recordReceipt.inputSchema.properties!;
+    const itemCategory = properties.items!.items!.properties!.category!.description!;
+
+    expect(itemCategory).toContain(`"${pet.value}":"ペット"`);
+    expect(itemCategory).toContain('"food":"食費"');
+    expect(itemCategory).not.toContain('教育費');
+    expect(properties.category!.description).toContain('明細にカテゴリーがないときに使う');
+    expect(properties.category!.description).toContain(`"${pet.value}":"ペット"`);
+    expect(JSON.stringify(recordReceipt.inputSchema)).not.toContain('$ref');
+  });
+
+  it('record_receipt は、知らないカテゴリーや削除したカテゴリーでは何も記録しない', async () => {
+    await callTool('delete_category', { category: 'education' });
+
+    const unknown = await callTool('record_receipt', {
+      ...RECEIPT,
+      items: [{ name: 'ドッグフード', amount: 1000, category: 'ペット' }],
+    });
+    const deleted = await callTool('record_receipt', { ...RECEIPT, items: undefined, category: '教育費' });
+
+    expect(unknown.isError).toBe(true);
+    expect(unknown.data).toContain('ペット');
+    expect(deleted.isError).toBe(true);
+    expect(deleted.data).toContain('削除済み');
+    expect(await count('receipts')).toBe(0);
+    expect(await count('expenses')).toBe(0);
+  });
+
+  it('update_category で名前を変えると、記録済みの支出の行は変えずに表示名だけ変わる（既定のカテゴリーも変えられる）', async () => {
+    await callTool('record_receipt', RECEIPT);
+    const before = await selectExpenses();
+
+    const renamed = await callTool('update_category', { category: '食費', label: '食料品' });
+
+    const { data: listed } = await callTool('list_categories', {});
+    const { data: records } = await callTool('list_records', { month: '2026-11' });
+    expect(renamed.data).toEqual({ value: 'food', label: '食料品' });
+    expect(await selectExpenses()).toEqual(before);
+    expect(listed.categories[0]).toEqual({ value: 'food', label: '食料品', builtIn: true });
+    expect(records.expenses.find((e: { category: string }) => e.category === 'food').categoryLabel).toBe('食料品');
+  });
+
+  it('同じ名前のカテゴリーは作らずに既存のものを返し、他のカテゴリーと同じ名前には変えられない', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+
+    const again = await callTool('create_category', { label: ' ペット ' });
+    const builtIn = await callTool('create_category', { label: '食費' });
+    const rename = await callTool('update_category', { category: 'ペット', label: '食費' });
+
+    expect(again.data).toEqual({ status: 'existing', value: pet.value, label: 'ペット' });
+    expect(builtIn.data).toEqual({ status: 'existing', value: 'food', label: '食費' });
+    expect(rename.isError).toBe(true);
+    expect(rename.data).toContain('食費');
+    expect(await count('categories')).toBe(1);
+  });
+
+  it('delete_category で削除したカテゴリーは一覧から消え、記録済みの支出はカテゴリーと名前を保つ', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+    await callTool('record_receipt', { ...RECEIPT, items: undefined, category: 'ペット' });
+    const before = await selectExpenses();
+
+    const deleted = await callTool('delete_category', { category: 'ペット' });
+
+    const { data: listed } = await callTool('list_categories', {});
+    const { data: records } = await callTool('list_records', { month: '2026-11' });
+    const { data: summary } = await callTool('get_budget_summary', { month: '2026-11' });
+    expect(deleted.data).toEqual({ deleted: true, value: pet.value, label: 'ペット', expenseCount: 1 });
+    expect(await selectExpenses()).toEqual(before);
+    expect(listed.categories.map((c: { value: string }) => c.value)).not.toContain(pet.value);
+    expect(records.expenses[0]).toMatchObject({ category: pet.value, categoryLabel: 'ペット' });
+    expect(summary.byCategory).toEqual([{ category: pet.value, label: 'ペット', amount: 1100 }]);
+  });
+
+  it('カテゴリーのない支出の計上先（その他）は削除できない', async () => {
+    const result = await callTool('delete_category', { category: 'その他' });
+
+    expect(result.isError).toBe(true);
+    expect(result.data).toContain('削除できません');
+    expect(await count('categories')).toBe(0);
+  });
+
+  it('削除したカテゴリーと同じ名前で作ると、新しく作らずに復元する（既定のカテゴリーも）', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+    await callTool('delete_category', { category: pet.value });
+    await callTool('delete_category', { category: '教育費' });
+
+    const restoredPet = await callTool('create_category', { label: 'ペット' });
+    const restoredEducation = await callTool('create_category', { label: '教育費' });
+
+    const { data: listed } = await callTool('list_categories', {});
+    expect(restoredPet.data).toEqual({ status: 'restored', value: pet.value, label: 'ペット' });
+    expect(restoredEducation.data).toEqual({ status: 'restored', value: 'education', label: '教育費' });
+    expect(listed.categories).toHaveLength(13);
+    expect(await count('categories')).toBe(2);
+  });
+
+  it('カテゴリーはユーザーごと（他のユーザーが追加・変更・削除したカテゴリーは見えず、使えない）', async () => {
+    const others = await accessToken({ sub: 'someone-else' });
+    const { data: theirs } = await callTool('create_category', { label: 'ペット' }, others);
+    await callTool('update_category', { category: 'food', label: '食料品' }, others);
+    await callTool('delete_category', { category: 'education' }, others);
+
+    const { data } = await callTool('list_categories', {});
+    const recorded = await callTool('record_receipt', { ...RECEIPT, items: undefined, category: theirs.value });
+
+    expect(data.categories).toHaveLength(12);
+    expect(data.categories[0]).toEqual({ value: 'food', label: '食費', builtIn: true });
+    expect(data.categories.map((c: { value: string }) => c.value)).toContain('education');
+    expect(recorded.isError).toBe(true);
+    const owners = await testDb.db.prepare('SELECT DISTINCT user_id FROM categories').all();
+    expect(owners.results).toEqual([{ user_id: 'someone-else' }]);
   });
 });

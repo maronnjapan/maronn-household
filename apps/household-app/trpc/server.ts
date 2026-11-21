@@ -12,6 +12,7 @@ import {
   subBudgets,
   subBudgetMonthlyAmounts,
   receipts,
+  categories,
 } from '@maronn/db-schema/household';
 import { z } from 'zod';
 import { generateSecureToken, hashToken } from '../lib/api-token';
@@ -34,6 +35,7 @@ import {
   applyHeaderValues,
   applyBodyTemplateValues,
   listWebhookTemplatePresets as listTemplatePresets,
+  resolveCategories,
   type ScheduleConfig,
   type WebhookServiceType,
 } from '@maronn/domain';
@@ -980,6 +982,25 @@ export const appRouter = router({
       return { success: true };
     }),
 
+  // カテゴリー一覧（認証必須）
+  // 既定のカテゴリーに、このユーザーの追加・名前変更・削除（MCP で操作する）を重ねたもの。
+  // 削除済みも含める（過去の支出の表示名に使う。選択肢からはクライアントが外す）
+  getCategories: protectedProcedure.query(async (opts) => {
+    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
+    const records = await database
+      .select({
+        value: categories.value,
+        label: categories.label,
+        deletedAt: categories.deletedAt,
+        createdAt: categories.createdAt,
+      })
+      .from(categories)
+      .where(eq(categories.userId, opts.ctx.user.id))
+      .all();
+
+    return { categories: resolveCategories(records) };
+  }),
+
   // サブ予算一覧取得（認証必須）
   getSubBudgets: protectedProcedure.query(async (opts) => {
     const userId = opts.ctx.user.id;
@@ -1654,6 +1675,7 @@ export const appRouter = router({
       database.delete(webhooks).where(eq(webhooks.userId, userId)),
       database.delete(subBudgetMonthlyAmounts).where(eq(subBudgetMonthlyAmounts.userId, userId)),
       database.delete(subBudgets).where(eq(subBudgets.userId, userId)),
+      database.delete(categories).where(eq(categories.userId, userId)),
     ]);
 
     // ユーザー（account / session は cascade）と認証基盤の同意・トークン・セッション

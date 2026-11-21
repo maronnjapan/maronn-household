@@ -1,6 +1,7 @@
 /**
  * ログイン状態のクライアント（認証基盤 household-auth でログインする。サーバー側は server/session/）
  */
+import { clearCachedCategories } from '../lib/categories';
 
 export interface SessionUser {
   id: string;
@@ -62,4 +63,5 @@ export async function signOut(): Promise<void> {
 /** 退会後: このブラウザの記憶を消す */
 export function forgetUser(): void {
   rememberUserId(null);
+  clearCachedCategories();
 }

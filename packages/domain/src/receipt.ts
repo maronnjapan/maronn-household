@@ -5,8 +5,9 @@
  * 明細の合計と支払総額の差（消費税・値引きなど）は明細金額の比率で按分し、
  * 支出の合計が必ず支払総額と一致するようにする。
  */
+import { FALLBACK_CATEGORY } from './categories';
 
-export const DEFAULT_RECEIPT_CATEGORY = 'other';
+export const DEFAULT_RECEIPT_CATEGORY = FALLBACK_CATEGORY;
 
 const MAX_MEMO_ITEM_NAMES = 3;
 

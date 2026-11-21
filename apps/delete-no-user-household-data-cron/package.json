@@ -10,6 +10,7 @@
 		"cf-typegen": "wrangler types"
 	},
 	"devDependencies": {
+		"@maronn/test-utils": "workspace:*",
 		"typescript": "^5.5.2",
 		"wrangler": "^4.54.0"
 	}

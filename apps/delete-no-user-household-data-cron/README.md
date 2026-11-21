@@ -4,7 +4,7 @@
 
 ## 概要
 
-このWorkerは、D1データベースの`user`テーブルに存在しないユーザーの家計データ（expenses, budgets）を削除します。
+このWorkerは、D1データベースの`user`テーブルに存在しないユーザーの家計データ（expenses, budgets, receipts, categories）を削除します。
 ユーザーアカウントが削除された後に残った孤立データをクリーンアップするために使用します。
 
 ### 実装アプローチ
@@ -23,14 +23,14 @@
 ## 主な機能
 
 - userテーブルに存在しないユーザーの家計データを検出
-- expenses, budgetsテーブルから孤立データを削除
+- expenses, budgets, receipts（明細は cascade）, categoriesテーブルから孤立データを削除
 - json_eachを使用した効率的なバッチ削除
 - 詳細なログ出力で削除状況を追跡
 
 ## 処理フロー
 
 1. D1の`user`テーブルから全ユーザーIDを取得
-2. `expenses`と`budgets`テーブルから全ユーザーIDを取得
+2. `expenses`・`budgets`・`receipts`・`categories`テーブルから全ユーザーIDを取得
 3. userテーブルに存在しない孤立user_idを特定
 4. 孤立データをバッチ削除
 

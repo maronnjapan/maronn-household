@@ -21,17 +21,19 @@ async function getOrphanedUserIds(
 	db: D1Database,
 	validUserIds: Set<string>
 ): Promise<Set<string>> {
-	// expenses・budgets・receipts から DISTINCT user_id を取得
-	const [expenseUsers, budgetUsers, receiptUsers] = await Promise.all([
+	// expenses・budgets・receipts・categories から DISTINCT user_id を取得
+	const [expenseUsers, budgetUsers, receiptUsers, categoryUsers] = await Promise.all([
 		db.prepare('SELECT DISTINCT user_id FROM expenses').all<{ user_id: string }>(),
 		db.prepare('SELECT DISTINCT user_id FROM budgets').all<{ user_id: string }>(),
 		db.prepare('SELECT DISTINCT user_id FROM receipts').all<{ user_id: string }>(),
+		db.prepare('SELECT DISTINCT user_id FROM categories').all<{ user_id: string }>(),
 	]);
 
 	const allHouseholdUserIds = new Set([
 		...expenseUsers.results.map((r) => r.user_id),
 		...budgetUsers.results.map((r) => r.user_id),
 		...receiptUsers.results.map((r) => r.user_id),
+		...categoryUsers.results.map((r) => r.user_id),
 	]);
 
 	// userテーブルに存在しないuser_idを返す
@@ -55,15 +57,15 @@ async function getOrphanedUserIds(
 async function deleteOrphanedData(
 	db: D1Database,
 	orphanedUserIds: Set<string>
-): Promise<{ expenses: number; budgets: number; receipts: number }> {
+): Promise<{ expenses: number; budgets: number; receipts: number; categories: number }> {
 	if (orphanedUserIds.size === 0) {
-		return { expenses: 0, budgets: 0, receipts: 0 };
+		return { expenses: 0, budgets: 0, receipts: 0, categories: 0 };
 	}
 
 	// json_eachで配列を展開してIN句を構成し、テーブルごとに1リクエストで削除する
 	const userIdsJson = JSON.stringify(Array.from(orphanedUserIds));
 	// receipts を消すと receipt_items は外部キーの cascade で消える
-	const deleteForTable = async (tableName: 'expenses' | 'budgets' | 'receipts'): Promise<number> => {
+	const deleteForTable = async (tableName: 'expenses' | 'budgets' | 'receipts' | 'categories'): Promise<number> => {
 		const statement = `
 			WITH target_ids AS (
 				SELECT value AS user_id FROM json_each(?1)
@@ -75,17 +77,18 @@ async function deleteOrphanedData(
 		return result.meta.changes ?? 0;
 	};
 
-	const [expensesDeleted, budgetsDeleted, receiptsDeleted] = await Promise.all([
+	const [expensesDeleted, budgetsDeleted, receiptsDeleted, categoriesDeleted] = await Promise.all([
 		deleteForTable('expenses'),
 		deleteForTable('budgets'),
 		deleteForTable('receipts'),
+		deleteForTable('categories'),
 	]);
 
 	console.log(
-		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}, receipts: ${receiptsDeleted}) in single batches`
+		`[deleteOrphanedData] Deleted orphaned rows (expenses: ${expensesDeleted}, budgets: ${budgetsDeleted}, receipts: ${receiptsDeleted}, categories: ${categoriesDeleted}) in single batches`
 	);
 
-	return { expenses: expensesDeleted, budgets: budgetsDeleted, receipts: receiptsDeleted };
+	return { expenses: expensesDeleted, budgets: budgetsDeleted, receipts: receiptsDeleted, categories: categoriesDeleted };
 }
 
 /**

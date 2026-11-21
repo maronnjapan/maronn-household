@@ -87,7 +87,7 @@ apps/
 ├── auth-server/           # household-auth: 認証基盤（OpenID Provider、maronn-openid-connect）。アプリのログインと MCP の OAuth
 │   ├── src/oidc-provider/ # CLI（@maronn-openid-connect/cli 0.17.0）の生成コード。手で編集しない（db/instance.ts のみ自前）
 │   └── src/*.ts           # 差し込み部品（Google ログイン、既存 user/account のユーザーストア、D1 の DCR ストア、署名鍵、画面、定期削除）
-├── mcp-server/            # household-mcp: MCP サーバー（レシートの記録・家計データの参照、~120行）
+├── mcp-server/            # household-mcp: MCP サーバー（レシートの記録・家計データの参照・カテゴリーの管理、~230行）
 ├── household-app/         # household-app: メインアプリ（Vike + Hono）。認証基盤の RP
 │   ├── server/            # Honoサーバーエントリ・ハンドラー群（session/ がログイン・ログアウト）
 │   ├── pages/             # Vikeページ（+Page.tsx, +Layout.tsx）
@@ -103,7 +103,7 @@ apps/
 packages/
 ├── db-schema/             # @maronn/db-schema: Drizzle ORMスキーマ（全アプリ共通）
 ├── domain/                # @maronn/domain: ドメインロジック（純粋関数。レシートの按分など）
-├── household-store/       # @maronn/household-store: 家計データ（支出・予算・レシート）の D1 読み書き
+├── household-store/       # @maronn/household-store: 家計データ（支出・予算・レシート・カテゴリー）の D1 読み書き
 ├── oauth-resource/        # @maronn/oauth-resource: 認証基盤のトークンで守る API の共通部品（RFC 9728、Bearer 検証）
 └── test-utils/            # @maronn/test-utils: 全マイグレーションを適用したローカル D1（Miniflare）
 ```
@@ -257,6 +257,7 @@ interface SyncMeta {
 - `subBudgets` / `subBudgetMonthlyAmounts`: サブ予算
 - `apiTokens` / `apiUsage`: エクスポートAPI用トークン管理
 - `webhooks` / `webhookBatchSchedules`: Webhook設定
+- `categories`: 支出カテゴリーのユーザーごとの変更（追加したカテゴリーと、既定のカテゴリーの名前変更・削除）。一覧は `@maronn/domain` の `resolveCategories` で既定のカテゴリー（`EXPENSE_CATEGORIES`）と重ねて作る
 
 ユーザーとアプリのセッションは `packages/db-schema/src/auth.ts`（`user` / `account` / `session`）。
 認証基盤の生成OPのテーブル（`clients` / `transactions` / `access_tokens` など）は `0008_oidc_provider.sql`（生成コードの `db/schema.sql` と同じ）。OP の `users` / `federated_identities` は使わない。
@@ -476,12 +477,17 @@ maronn-openid-connect（`@maronn-openid-connect/core` 0.12.0 / `experimental` 0.
 
 OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud に `${ISSUER}/mcp`、scope に `household`、発行済みの記録があること）を検証し、Streamable HTTP（ステートレス）でツールを提供する。
 
-- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。カテゴリ別に按分した支出を作る。同日・同額のレシートは duplicate を返す
+- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。カテゴリ別に按分した支出を作る。同日・同額のレシートは duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）
 - `delete_receipt`: 記録したレシートを取り消す
-- `list_records`: 月の支出（店名付き）。`includeItems` でレシートと明細
+- `list_records`: 月の支出（店名・カテゴリー名付き）。`includeItems` でレシートと明細
 - `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く）
+- `list_categories` / `create_category` / `update_category` / `delete_category`: カテゴリーの一覧・追加・名前変更・削除
+  - 既定のカテゴリーも名前変更・削除できる。「その他」（other、カテゴリーのない支出の計上先）は削除不可
+  - 支出の行は書き換えない（value は不変、削除は deleted_at を付けるだけ）。サーバーで支出を書き換えると、端末の未送信の編集との同期で消えたり巻き戻ったりするため
+  - 同じ名前の作成は既存を返し（existing）、削除済みと同じ名前なら復元する（restored）。有効なカテゴリーは 30 個まで、追加は削除済みを含めて 100 個まで
+  - アプリは一覧（tRPC `getCategories`）を記録・カレンダーの選択肢と表示名に使い、オフライン用に直前の一覧を localStorage に保存する。アプリに管理画面はない
 - 接続先: `https://maronn-household-budget.com/mcp`（Claude のカスタムコネクタなど。ログインと同意は認証基盤の画面）
-- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない
+- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る
 
 ### 月次予算設定機能
 

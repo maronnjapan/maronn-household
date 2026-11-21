@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect } from 'react';
 import type { CreateExpenseParams } from '@maronn/domain';
 import { evaluateExpression } from '../utils/calculator';
 import { Accordion } from './Accordion';
-import { EXPENSE_CATEGORIES } from '../constants/categories';
+import { CategoryOptions } from './CategoryOptions';
 import { SubBudgetSelector } from './SubBudgetSelector';
 
 interface ExpenseInputProps {
@@ -198,11 +198,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
               className="category-select"
             >
               <option value="">未選択</option>
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
+              <CategoryOptions selected={category} />
             </select>
           </div>
 

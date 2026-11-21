@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createTestDatabase, splitStatements } from '../src/index';
 
 describe('createTestDatabase', () => {
-  it('すべてのマイグレーションを適用した D1 を作る（家計簿・Better Auth・レシート・認証基盤のテーブル）', async () => {
+  it('すべてのマイグレーションを適用した D1 を作る（家計簿・Better Auth・レシート・認証基盤・カテゴリーのテーブル）', async () => {
     const { db, dispose } = await createTestDatabase();
     const { results } = await db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -22,6 +22,7 @@ describe('createTestDatabase', () => {
         'transactions',
         'access_tokens',
         'browser_sessions',
+        'categories',
       ])
     );
     await dispose();

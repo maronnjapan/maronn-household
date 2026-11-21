@@ -1,15 +1,18 @@
 /**
  * レシート（生成AIが写真から読み取った購入記録）を家計簿の支出に変換するドメインロジック
  *
- * レシートは「支払総額」を正とし、家計簿の支出（予算計算に使う金額）はカテゴリごとに按分して作る。
- * 明細の合計と支払総額の差（消費税・値引きなど）は明細金額の比率で按分し、
- * 支出の合計が必ず支払総額と一致するようにする。
+ * レシート1枚 = 1回の会計 = 支出1件。支出の金額は「支払総額」（カード明細などと一致する額）にし、
+ * 明細は支出の内訳（何を買ったか）として持たせる。カテゴリー別の集計は、支払総額を内訳の金額の比率で按分して作る
+ * （明細の合計と支払総額の差＝消費税・値引きも比率で配る。expense-items.ts の allocateExpenseByCategory）。
  */
-import { FALLBACK_CATEGORY } from './categories';
-
-export const DEFAULT_RECEIPT_CATEGORY = FALLBACK_CATEGORY;
-
-const MAX_MEMO_ITEM_NAMES = 3;
+import {
+  allocateExpenseByCategory,
+  itemsTotal,
+  normalizeExpenseItems,
+  resolveExpenseCategories,
+  type AllocatableExpense,
+  type CategoryAmount,
+} from './expense-items';
 
 export interface ReceiptItemInput {
   name: string;
@@ -25,93 +28,11 @@ export interface ReceiptInput {
   purchasedAt: string;
   /** 支払総額（税込・値引き後、円、整数） */
   totalAmount: number;
-  /** 明細にカテゴリがない場合に使うカテゴリ */
+  /** 会計のカテゴリー（明細にカテゴリーがない場合に使う） */
   category?: string;
   taxAmount?: number;
   paymentMethod?: string;
   items?: ReceiptItemInput[];
-}
-
-export interface ExpenseAllocation {
-  category: string;
-  amount: number;
-  memo: string;
-}
-
-interface CategoryGroup {
-  category: string;
-  itemTotal: number;
-  names: string[];
-}
-
-/**
- * レシートをカテゴリ別の支出に按分する
- */
-export function allocateReceiptToExpenses(receipt: ReceiptInput): ExpenseAllocation[] {
-  const fallbackCategory = receipt.category ?? DEFAULT_RECEIPT_CATEGORY;
-  const items = receipt.items ?? [];
-
-  if (items.length === 0) {
-    return [{ category: fallbackCategory, amount: receipt.totalAmount, memo: receipt.storeName }];
-  }
-
-  const groups = groupItemsByCategory(items, fallbackCategory);
-  const amounts = distributeTotal(
-    receipt.totalAmount,
-    groups.map((group) => group.itemTotal)
-  );
-
-  return groups
-    .map((group, index) => ({
-      category: group.category,
-      amount: amounts[index] ?? 0,
-      memo: buildMemo(receipt.storeName, group.names),
-    }))
-    .filter((allocation) => allocation.amount !== 0);
-}
-
-function groupItemsByCategory(items: ReceiptItemInput[], fallbackCategory: string): CategoryGroup[] {
-  const groups = new Map<string, CategoryGroup>();
-  for (const item of items) {
-    const category = item.category ?? fallbackCategory;
-    const group = groups.get(category) ?? { category, itemTotal: 0, names: [] };
-    group.itemTotal += item.amount;
-    group.names.push(item.name);
-    groups.set(category, group);
-  }
-  return [...groups.values()];
-}
-
-/**
- * total を weights の比率で整数按分する（最大剰余法）
- * 合計は必ず total と一致する。weights の合計が0なら先頭に全額を割り当てる
- */
-function distributeTotal(total: number, weights: number[]): number[] {
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  if (weightSum === 0) {
-    return weights.map((_, index) => (index === 0 ? total : 0));
-  }
-
-  const exact = weights.map((weight) => (total * weight) / weightSum);
-  const result = exact.map((value) => Math.floor(value));
-  let remainder = total - result.reduce((sum, value) => sum + value, 0);
-
-  const byFraction = exact
-    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
-    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
-
-  for (const { index } of byFraction) {
-    if (remainder <= 0) break;
-    result[index] = (result[index] ?? 0) + 1;
-    remainder--;
-  }
-  return result;
-}
-
-function buildMemo(storeName: string, names: string[]): string {
-  const shown = names.slice(0, MAX_MEMO_ITEM_NAMES).join(', ');
-  const rest = names.length - MAX_MEMO_ITEM_NAMES;
-  return `${storeName}: ${shown}${rest > 0 ? ` ほか${rest}点` : ''}`;
 }
 
 /**
@@ -138,20 +59,19 @@ export interface SpendingSummary {
   budget: number;
   spent: number;
   remaining: number;
-  byCategory: { category: string; amount: number }[];
+  byCategory: CategoryAmount[];
 }
 
 /**
  * 月の予算に対する支出状況とカテゴリ別内訳（金額の多い順）
+ * 支出合計は支払総額の合計。内訳のある支出は、カテゴリ別内訳では内訳の比率で按分する
  */
-export function summarizeSpending(
-  budget: number,
-  expenses: { amount: number; category?: string | null }[]
-): SpendingSummary {
+export function summarizeSpending(budget: number, expenses: AllocatableExpense[]): SpendingSummary {
   const byCategory = new Map<string, number>();
   for (const expense of expenses) {
-    const category = expense.category || DEFAULT_RECEIPT_CATEGORY;
-    byCategory.set(category, (byCategory.get(category) ?? 0) + expense.amount);
+    for (const { category, amount } of allocateExpenseByCategory(expense)) {
+      byCategory.set(category, (byCategory.get(category) ?? 0) + amount);
+    }
   }
   const spent = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   return {
@@ -193,8 +113,9 @@ export interface ReceiptRecordingContext {
 }
 
 /**
- * レシートの記録で保存する行（receipts / receipt_items / expenses）を組み立てる
+ * レシートの記録で保存する行（receipts と、支払総額の支出1件とその内訳）を組み立てる
  *
+ * byCategory はカテゴリー別の按分（記録の結果として呼び出し側に返す）。
  * itemsTotal は明細の合計（明細がなければ null）、difference は支払総額との差（税・値引き・読み取り誤り）。
  * 差が大きいときは、読み取りを見直すきっかけとして呼び出し側に返す。
  */
@@ -202,28 +123,26 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
   const { userId, clientId, now, newId } = context;
   const receiptId = newId();
   const date = receiptDate(input.purchasedAt);
-  const items = (input.items ?? []).map((item, position) => ({
-    id: newId(),
-    receiptId,
-    position,
-    name: item.name,
-    amount: item.amount,
-    quantity: item.quantity ?? null,
-    category: item.category ?? null,
-  }));
-  const expenses = allocateReceiptToExpenses(input).map((allocation) => ({
+  // 会計のカテゴリーがなければ主なカテゴリーにし、カテゴリーのない明細には会計のカテゴリーを入れる
+  const { category, items } = resolveExpenseCategories({
+    amount: input.totalAmount,
+    category: input.category,
+    items: normalizeExpenseItems(input.items) ?? null,
+  });
+  const expense = {
     id: newId(),
     userId,
-    amount: allocation.amount,
-    category: allocation.category,
-    memo: allocation.memo,
+    amount: input.totalAmount,
+    category: category ?? null,
+    memo: input.storeName,
     date,
     createdAt: now,
     updatedAt: now,
     deviceId: `mcp:${clientId}`,
     receiptId,
-  }));
-  const itemsTotal = items.length > 0 ? items.reduce((sum, item) => sum + item.amount, 0) : null;
+    items,
+  };
+  const total = items === null ? null : itemsTotal(items);
   return {
     receipt: {
       id: receiptId,
@@ -237,9 +156,9 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
       createdAt: now,
       updatedAt: now,
     },
-    items,
-    expenses,
-    itemsTotal,
-    difference: itemsTotal === null ? 0 : input.totalAmount - itemsTotal,
+    expense,
+    byCategory: allocateExpenseByCategory(expense),
+    itemsTotal: total,
+    difference: total === null ? 0 : input.totalAmount - total,
   };
 }

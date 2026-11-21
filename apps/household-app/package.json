@@ -52,6 +52,7 @@
     "@universal-middleware/core": "^0.4.13",
     "@vitejs/plugin-react": "^5.1.2",
     "better-sqlite3": "^11.5.0",
+    "fake-indexeddb": "6.2.7",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "wrangler": "^4.54.0",

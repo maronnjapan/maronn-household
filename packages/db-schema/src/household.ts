@@ -1,6 +1,21 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, real, index, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+/** 支出の内訳の1行（@maronn/domain の ExpenseItem と同じ形） */
+export interface ExpenseItemRecord {
+  name: string;
+  /** 行の金額（円、0以上の整数） */
+  amount: number;
+  quantity?: number;
+  /** カテゴリーの value。なければ支出（会計）のカテゴリーに計上する */
+  category?: string;
+}
+
+/**
+ * 支出（1回の会計）
+ * amount は支払総額（カード明細などと一致する額）。予算の計算はこの額で行う。
+ * items は何を買ったかの内訳（JSON 配列、なければ NULL）。カテゴリー別の集計は支払総額を内訳の金額の比率で按分する
+ */
 export const expenses = sqliteTable(
   'expenses',
   {
@@ -14,8 +29,10 @@ export const expenses = sqliteTable(
     updatedAt: text('updated_at').notNull(),
     deviceId: text('device_id').notNull(),
     subBudgetId: text('sub_budget_id'),
-    /** レシートから按分された支出の場合のレシートID（手入力はnull） */
+    /** レシートから記録した支出のレシートID（手入力はnull。以前の記録はカテゴリ別に複数の支出に分かれている） */
     receiptId: text('receipt_id'),
+    /** 内訳（0011_expense_items.sql。JSON の配列だけを許す CHECK 制約がある） */
+    items: text('items', { mode: 'json' }).$type<ExpenseItemRecord[]>(),
   },
   (table) => [
     index('expenses_user_date_idx').on(table.userId, table.date),
@@ -37,7 +54,8 @@ export const budgets = sqliteTable(
 
 /**
  * レシート（生成AIがレシート写真を読み取って登録する購入記録）
- * 予算計算に使う支出は expenses にカテゴリ別に按分して保存し、receiptId で紐づける
+ * 予算計算に使う支出は expenses に支払総額の1件として保存し（明細は支出の items）、receiptId で紐づける
+ * （以前の記録はカテゴリ別に按分した複数の支出で、明細は receipt_items にある）
  */
 export const receipts = sqliteTable(
   'receipts',
@@ -59,6 +77,7 @@ export const receipts = sqliteTable(
   (table) => [index('receipts_user_purchased_at_idx').on(table.userId, table.purchasedAt)]
 );
 
+/** 以前のレシートの明細（今のレシートの明細は expenses.items に保存し、ここには書かない） */
 export const receiptItems = sqliteTable(
   'receipt_items',
   {

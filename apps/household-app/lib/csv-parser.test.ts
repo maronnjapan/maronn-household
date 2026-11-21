@@ -11,6 +11,7 @@ import {
   convertToExpensesByFixedColumns,
   escapeCSVValue,
   convertToCSV,
+  convertExpensesToCSV,
   DEFAULT_FIELD_DEFINITIONS,
   FIXED_COLUMN_ORDER,
 } from './csv-parser';
@@ -526,5 +527,55 @@ describe('convertToExpensesByFixedColumns', () => {
     const result = convertToExpensesByFixedColumns(lines, true);
 
     expect(result.errors[0]?.row).toBe(2);
+  });
+});
+
+describe('convertExpensesToCSV', () => {
+  const expense = {
+    id: '01JEXPENSE',
+    amount: 3280,
+    category: 'food',
+    memo: 'スーパーA',
+    date: '2026-11-19',
+    createdAt: '2026-11-19T10:00:00.000Z',
+    updatedAt: '2026-11-19T10:00:00.000Z',
+    deviceId: 'device-1',
+    syncStatus: 'synced' as const,
+  };
+
+  it('1回の会計を1行（金額は支払総額）にし、メモの後ろに内訳の列を足す', () => {
+    const csv = convertExpensesToCSV([
+      {
+        ...expense,
+        items: [
+          { name: '牛乳', amount: 198, category: 'food' },
+          { name: '洗剤', amount: 398, quantity: 2, category: 'daily-goods' },
+        ],
+      },
+      { ...expense, id: '01JOTHER', amount: 500, memo: undefined, category: undefined },
+    ]);
+
+    expect(csv.split('\n')).toEqual([
+      '日付,金額,カテゴリ,メモ,内訳',
+      '2026-11-19,3280,food,スーパーA,牛乳 ¥198 / 洗剤 ×2 ¥398',
+      '2026-11-19,500,,,',
+    ]);
+  });
+
+  it('品名のない内訳はカテゴリー名で表し、カンマを含む内訳はエスケープする', () => {
+    const csv = convertExpensesToCSV(
+      [{ ...expense, items: [{ name: '', amount: 1200, category: 'food' }, { name: 'A,B', amount: 80 }] }],
+      (value) => (value === 'food' ? '食費' : undefined)
+    );
+
+    expect(csv.split('\n')[1]).toBe('2026-11-19,3280,food,スーパーA,"食費 ¥1,200 / A,B ¥80"');
+  });
+
+  it('先頭の4列は既存のインポートでそのまま読み戻せる', () => {
+    const csv = convertExpensesToCSV([{ ...expense, items: [{ name: '牛乳', amount: 198 }] }]);
+
+    const result = convertToExpensesByFixedColumns(parseCSVLines(csv));
+
+    expect(result.success).toEqual([{ date: '2026-11-19', amount: 3280, category: 'food', memo: 'スーパーA' }]);
   });
 });

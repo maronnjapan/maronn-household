@@ -1,15 +1,11 @@
 import { useCallback } from 'react';
-import { updateExpense, deleteExpense, ANONYMOUS_USER_ID } from '../lib/db';
+import { updateExpense, deleteExpense, ANONYMOUS_USER_ID, type ExpenseUpdates } from '../lib/db';
 import { trpc, vanillaTrpc } from '../trpc/client';
 import { getDeviceId } from '../lib/device';
 import { useAuth } from './use-auth';
 
-export interface UpdateExpenseParams {
-  amount?: number;
-  memo?: string;
-  category?: string;
-  date?: string;
-}
+/** 支出の更新内容（items は undefined なら変えず、null なら内訳を消し、配列なら置き換える） */
+export type UpdateExpenseParams = ExpenseUpdates;
 
 export interface UseExpenseActionsResult {
   handleUpdateExpense: (id: string, params: UpdateExpenseParams) => Promise<boolean>;
@@ -37,6 +33,7 @@ async function syncUpdateToServer(
       category: params.category,
       memo: params.memo,
       date: params.date,
+      items: params.items,
       updatedAt,
       deviceId,
     });

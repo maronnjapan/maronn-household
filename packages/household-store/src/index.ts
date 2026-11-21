@@ -4,7 +4,7 @@
  * 1 人のユーザーのデータだけを扱う。MCP サーバーなどのアダプターは、認証したユーザーでこのストアを作る。
  * 計算などの純粋なロジックは @maronn/domain に置く。
  */
-import { and, asc, count, desc, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   budgets,
@@ -56,11 +56,12 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
 
   return {
     /**
-     * 同じ購入日・同じ支払総額のレシート（二重登録の候補）
-     * 支出がすべて消されたレシートは、アプリで取り消されたものとみなして含めない
+     * 同じ購入日・同じ支払総額の記録（二重登録の候補）
+     * - レシート（支出がすべて消されたレシートは、アプリで取り消されたものとみなして含めない）
+     * - アプリなどレシート以外で記録した支出（店で金額だけ記録し、後でレシートを送る使い方で同じ会計を二重に記録しないように）
      */
-    findSameDayReceipts(date: string, totalAmount: number) {
-      return db
+    async findSameDayRecords(date: string, totalAmount: number) {
+      const sameReceipts = await db
         .selectDistinct({
           id: receipts.id,
           storeName: receipts.storeName,
@@ -75,18 +76,33 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
           )
         )
         .all();
+      const sameExpenses = await db
+        .select({
+          id: expenses.id,
+          date: expenses.date,
+          amount: expenses.amount,
+          category: expenses.category,
+          memo: expenses.memo,
+        })
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.userId, userId),
+            eq(expenses.date, date),
+            eq(expenses.amount, totalAmount),
+            isNull(expenses.receiptId)
+          )
+        )
+        .all();
+      return { receipts: sameReceipts, expenses: sameExpenses };
     },
 
-    /** レシート・明細・按分した支出を一つのバッチ（トランザクション）で保存する */
-    async saveReceipt({ receipt, items, expenses: allocated }: ReceiptRecording) {
-      await db.batch([
-        db.insert(receipts).values(receipt),
-        ...items.map((item) => db.insert(receiptItems).values(item)),
-        ...allocated.map((expense) => db.insert(expenses).values(expense)),
-      ]);
+    /** レシートと、その支払総額の支出（内訳付き）を一つのバッチ（トランザクション）で保存する */
+    async saveReceipt({ receipt, expense }: ReceiptRecording) {
+      await db.batch([db.insert(receipts).values(receipt), db.insert(expenses).values(expense)]);
     },
 
-    /** レシートを取り消す（明細は外部キーの cascade、按分した支出も削除）。消したら true */
+    /** レシートを取り消す（支出は内訳ごと削除、以前の記録の明細は外部キーの cascade で削除）。消したら true */
     async deleteReceipt(receiptId: string): Promise<boolean> {
       const [, removed] = await db.batch([
         db
@@ -101,7 +117,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       return removed.meta.changes > 0;
     },
 
-    /** 月の支出（レシート由来の支出は店名付き） */
+    /** 月の支出（1回の会計ごと。レシート由来の支出は店名付き、items は内訳） */
     listExpenses(month: string) {
       return db
         .select({
@@ -113,6 +129,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
           subBudgetId: expenses.subBudgetId,
           receiptId: expenses.receiptId,
           storeName: receipts.storeName,
+          items: expenses.items,
         })
         .from(expenses)
         .leftJoin(receipts, eq(receipts.id, expenses.receiptId))
@@ -121,7 +138,10 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         .all();
     },
 
-    /** 月に購入したレシートと明細（アプリで支出をすべて消して取り消したレシートは含めない） */
+    /**
+     * 月に購入したレシート（アプリで支出をすべて消して取り消したレシートは含めない）
+     * items は以前の記録（receipt_items）の明細だけ。今のレシートの明細は支出の内訳（expenses.items）にある
+     */
     async listReceipts(month: string) {
       const { start, end } = monthDateRange(month);
       const active = and(
@@ -174,7 +194,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         .orderBy(desc(budgets.month))
         .get();
       const spent = await db
-        .select({ amount: expenses.amount, category: expenses.category })
+        .select({ amount: expenses.amount, category: expenses.category, items: expenses.items })
         .from(expenses)
         .where(and(expensesIn(month), isNull(expenses.subBudgetId)))
         .all();
@@ -227,12 +247,13 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
         .run();
     },
 
-    /** そのカテゴリーの支出の件数（全期間） */
+    /** そのカテゴリーの支出の件数（全期間。会計のカテゴリーか、内訳のどれかがそのカテゴリーの支出） */
     async countExpensesInCategory(value: string): Promise<number> {
+      const inItems = sql`exists (select 1 from json_each(${expenses.items}) where json_extract(json_each.value, '$.category') = ${value})`;
       const row = await db
         .select({ n: count() })
         .from(expenses)
-        .where(and(eq(expenses.userId, userId), eq(expenses.category, value)))
+        .where(and(eq(expenses.userId, userId), or(eq(expenses.category, value), inItems)))
         .get();
       return row?.n ?? 0;
     },

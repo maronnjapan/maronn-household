@@ -10,6 +10,7 @@ import {
 import type { ExpenseEntity } from '@maronn/domain';
 import { getExpensesByMonth, getCurrentMonth, mergeExpensesFromServer } from '../lib/db';
 import { DEFAULT_BUDGET_AMOUNT } from '../lib/const';
+import { toLocalExpense } from '../lib/expense-mapping';
 import { trpc } from '../trpc/client';
 import { useAuth } from './use-auth';
 
@@ -72,18 +73,7 @@ export function useRemainingBudget(
   const serverDataUpdatedAt = expensesQuery.dataUpdatedAt;
   if (isAuthenticated && expensesQuery.data?.expenses && serverDataUpdatedAt > lastMergedAtRef.current) {
     lastMergedAtRef.current = serverDataUpdatedAt;
-    const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map((e) => ({
-      id: e.id,
-      amount: e.amount,
-      category: e.category ?? undefined,
-      memo: e.memo ?? undefined,
-      date: e.date,
-      createdAt: e.createdAt,
-      updatedAt: e.updatedAt,
-      deviceId: e.deviceId,
-      syncStatus: 'synced' as const,
-      subBudgetId: e.subBudgetId ?? undefined,
-    }));
+    const serverExpenses: ExpenseEntity[] = expensesQuery.data.expenses.map(toLocalExpense);
     // 非同期でマージを実行（レンダリングをブロックしない）
     // 月とuserIdを渡すことで、サーバーで削除されたデータもローカルから削除される
     mergeExpensesFromServer(serverExpenses, month, userId).catch(console.error);

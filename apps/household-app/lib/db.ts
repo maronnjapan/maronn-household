@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type { ExpenseEntity, SyncStatus } from '@maronn/domain';
+import { normalizeExpenseItems, resolveExpenseCategories, type ExpenseItem } from '@maronn/domain/expense-items';
 
 /**
  * 未認証ユーザー用のID
@@ -180,6 +181,18 @@ export async function addExpense(expense: ExpenseEntity, userId: string = ANONYM
 }
 
 /**
+ * アップロードした版のままなら同期済みにする
+ * 送っている間に編集された（updatedAt が変わった）支出は、次の同期で送るよう pending のままにする
+ */
+export async function markSyncedIfUnchanged(id: string, uploadedUpdatedAt: string): Promise<void> {
+  await db.expenses
+    .where('id')
+    .equals(id)
+    .and((expense) => expense.updatedAt === uploadedUpdatedAt)
+    .modify({ syncStatus: 'synced' });
+}
+
+/**
  * 同期ステータスを更新
  */
 export async function updateSyncStatus(
@@ -190,6 +203,15 @@ export async function updateSyncStatus(
 }
 
 /**
+ * 支出の更新内容
+ * items は undefined なら変えず、null（または空の配列）なら内訳を消し、配列なら置き換える
+ * （memo・category は従来どおり、undefined を渡すと消える）
+ */
+export type ExpenseUpdates = Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>> & {
+  items?: ExpenseItem[] | null;
+};
+
+/**
  * 支出を更新
  * @param id 支出ID
  * @param updates 更新内容
@@ -197,7 +219,7 @@ export async function updateSyncStatus(
  */
 export async function updateExpense(
   id: string,
-  updates: Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>>,
+  updates: ExpenseUpdates,
   userId?: string
 ): Promise<LocalExpenseEntity | null> {
   const existing = await db.expenses.get(id);
@@ -210,9 +232,19 @@ export async function updateExpense(
     return null;
   }
 
-  const updatedExpense: LocalExpenseEntity = {
+  // items: undefined をそのままスプレッドすると既存の内訳が消えるので、items だけは渡されたときだけ変える
+  const { items, ...fields } = updates;
+  const merged: LocalExpenseEntity = {
     ...existing,
-    ...updates,
+    ...fields,
+    ...(items !== undefined ? { items: normalizeExpenseItems(items) ?? null } : {}),
+  };
+  // 内訳があれば、会計のカテゴリー（なければ主なカテゴリー）と内訳のカテゴリーを確定する
+  const resolved = resolveExpenseCategories(merged);
+  const updatedExpense: LocalExpenseEntity = {
+    ...merged,
+    category: resolved.category,
+    items: resolved.items,
     updatedAt: new Date().toISOString(),
     syncStatus: 'pending',
   };
@@ -280,11 +312,21 @@ export async function mergeExpensesFromServer(
         });
       } else if (localExpense.userId === userId && new Date(serverExpense.updatedAt) > new Date(localExpense.updatedAt)) {
         // サーバーのデータが新しい場合は更新（同じユーザーのデータのみ）
+        // サーバーが内訳を返さない（内訳を知らない古いサーバー）ときは、ローカルの内訳を残す
         await db.expenses.put({
           ...serverExpense,
+          items: serverExpense.items !== undefined ? serverExpense.items : localExpense.items,
           userId,
           syncStatus: 'synced',
         });
+      } else if (
+        localExpense.userId === userId &&
+        serverExpense.updatedAt === localExpense.updatedAt &&
+        localExpense.items === undefined &&
+        serverExpense.items !== undefined
+      ) {
+        // 同じ版でも、内訳を知らないコードが取り込んだ行なら、サーバーの内訳で補う
+        await db.expenses.update(localExpense.id, { items: serverExpense.items });
       }
       // ローカルが新しい場合はそのまま（pendingのまま）
     }

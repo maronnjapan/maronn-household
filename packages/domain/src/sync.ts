@@ -41,10 +41,17 @@ export interface MergeResult {
  * ローカルの支出とサーバーの支出をマージする
  *
  * 戦略：
- * - 同じIDでupdatedAtが同じ → 何もしない
- * - 同じIDでupdatedAtが異なる → 競合として両方残す（リモートに新IDを振る）
+ * - 同じIDでupdatedAtが同じ → 何もしない（ローカルに内訳の情報がなくサーバーにあれば、内訳だけ補う）
+ * - 同じIDでサーバーの方が新しい
+ *   - ローカルに未送信の編集がない（pending でない）→ サーバーの版を採用する
+ *   - ローカルに未送信の編集があり、同じデバイスの更新 → サーバーの版を採用する
+ *   - ローカルに未送信の編集があり、異なるデバイスの更新 → 競合として両方残す（リモートに新IDを振る）
+ * - 同じIDでローカルの方が新しい → 何もしない（次のアップロードで送られる）
  * - サーバーにしかないID → 追加
  * - ローカルにしかないID → 何もしない（次のアップロードで送られる）
+ *
+ * 内訳（items）は undefined なら「内訳を知らないコードが書いた行（不明）」、null なら「内訳なし」。
+ * サーバーの版の items が undefined（内訳を知らない古いサーバー）なら、ローカルの内訳を残す
  *
  * @param localExpenses ローカルの支出リスト
  * @param remoteExpenses サーバーから取得した支出リスト
@@ -79,39 +86,42 @@ export function mergeExpenses(
     }
 
     // 同じIDが存在する
-    const localUpdated = new Date(local.updatedAt);
-    const remoteUpdated = new Date(remote.updatedAt);
+    const localUpdated = new Date(local.updatedAt).getTime();
+    const remoteUpdated = new Date(remote.updatedAt).getTime();
 
-    if (localUpdated.getTime() === remoteUpdated.getTime()) {
-      // 同じ更新日時 → 何もしない
+    if (localUpdated === remoteUpdated) {
+      // 同じ版。内訳を知らないコードが取り込んだ行なら、内訳だけ補う
+      if (local.items === undefined && remote.items !== undefined) {
+        result.toUpdate.push({ ...local, items: remote.items, syncStatus: 'synced' });
+      }
       continue;
     }
 
-    // 更新日時が異なる → 競合
-    if (local.deviceId === remote.deviceId) {
-      // 同じデバイスからの更新 → より新しい方を採用
-      if (remoteUpdated > localUpdated) {
-        result.toUpdate.push({
-          ...remote,
-          syncStatus: 'synced',
-        });
-      }
-      // ローカルの方が新しい場合は何もしない（次回アップロードで送られる）
-    } else {
-      // 異なるデバイスからの更新 → 両方残す
-      // ローカルはそのまま、リモートに新しいIDを振る
-      const remoteWithNewId: ExpenseEntity = {
-        ...remote,
-        id: ulid(Date.now()),
-        syncStatus: 'synced',
-      };
-
-      result.conflicts.push({
-        type: 'keep-both',
-        local,
-        remote: remoteWithNewId,
-      });
+    if (remoteUpdated < localUpdated) {
+      // ローカルの方が新しい → 何もしない（次回アップロードで送られる）
+      continue;
     }
+
+    // サーバーの方が新しい
+    const remoteVersion: ExpenseEntity = {
+      ...remote,
+      items: remote.items !== undefined ? remote.items : local.items,
+      syncStatus: 'synced',
+    };
+
+    if (local.syncStatus !== 'pending' || local.deviceId === remote.deviceId) {
+      // ローカルに未送信の編集がない、または同じデバイスからの更新 → サーバーの版を採用
+      result.toUpdate.push(remoteVersion);
+      continue;
+    }
+
+    // ローカルの未送信の編集と、異なるデバイスからの更新 → 両方残す
+    // ローカルはそのまま、リモートに新しいIDを振る
+    result.conflicts.push({
+      type: 'keep-both',
+      local,
+      remote: { ...remoteVersion, id: ulid(Date.now()) },
+    });
   }
 
   return result;

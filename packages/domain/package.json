@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./budget": "./src/budget.ts",
     "./expense": "./src/expense.ts",
+    "./expense-items": "./src/expense-items.ts",
     "./sync": "./src/sync.ts",
     "./webhook": "./src/webhook.ts",
     "./webhook-templates": "./src/webhook-templates.ts",

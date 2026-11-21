@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ExpenseEntity } from '@maronn/domain';
+import { allocateExpenseByCategory } from '@maronn/domain/expense-items';
 import { Calendar } from '../../components/Calendar';
 import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-expenses';
 import { useExpenseActions } from '../../hooks/use-expense-actions';
@@ -7,11 +8,14 @@ import { useAddExpense } from '../../hooks/use-add-expense';
 import { useGetBudget } from '../../hooks/use-set-budget';
 import { CSVImporter } from '../../components/CSVImporter';
 import {
-  convertToCSV,
+  convertExpensesToCSV,
   downloadCSV,
   type ImportableExpense,
 } from '../../lib/csv-parser';
+import { draftsFromItems, finalizeItemDrafts, type ItemDraft } from '../../lib/expense-items';
 import { CategoryOptions } from '../../components/CategoryOptions';
+import { ExpenseItemsEditor } from '../../components/ExpenseItemsEditor';
+import { ExpenseItemsList } from '../../components/ExpenseItemsList';
 import { useCategories } from '../../hooks/use-categories';
 import { useSubBudgets } from '../../hooks/use-sub-budget';
 import './calendar.css';
@@ -37,6 +41,13 @@ interface EditingState {
   amount: string;
   memo: string;
   category: string;
+  items: ItemDraft[];
+  /**
+   * 内訳を保存するか。端末が内訳を知っている（サーバーから内訳の情報を受け取った）か、内訳の欄を編集したときだけ送る。
+   * 内訳を知らない古い JS が取り込んだ行で空の内訳を送ると、サーバーの内訳が消えるため
+   */
+  saveItems: boolean;
+  spreadDifference: boolean;
 }
 
 interface AddingState {
@@ -44,6 +55,14 @@ interface AddingState {
   memo: string;
   category: string;
   subBudgetId: string;
+  items: ItemDraft[];
+  spreadDifference: boolean;
+}
+
+/** 金額欄の値（支払総額）。正の整数でなければ null */
+function parseTotal(input: string): number | null {
+  const amount = parseInt(input, 10);
+  return isNaN(amount) || amount <= 0 ? null : amount;
 }
 
 export function Page() {
@@ -89,7 +108,7 @@ export function Page() {
       return;
     }
 
-    const csvContent = convertToCSV(allExpenses);
+    const csvContent = convertExpensesToCSV(allExpenses, labelOf);
     const filename = `支出_${monthStr}.csv`;
     downloadCSV(csvContent, filename);
   }
@@ -132,6 +151,9 @@ export function Page() {
       amount: String(expense.amount),
       memo: expense.memo ?? '',
       category: expense.category ?? '',
+      items: draftsFromItems(expense.items),
+      saveItems: expense.items !== undefined,
+      spreadDifference: false,
     });
     setDeletingId(null);
   }
@@ -143,8 +165,9 @@ export function Page() {
   async function handleSaveEdit() {
     if (!editing) return;
 
-    const amount = parseInt(editing.amount, 10);
-    if (isNaN(amount) || amount <= 0) {
+    const amount = parseTotal(editing.amount);
+    const items = finalizeItemDrafts(editing.items, amount, { spreadDifference: editing.spreadDifference });
+    if (amount === null || !items.ok) {
       return;
     }
 
@@ -152,6 +175,8 @@ export function Page() {
       amount,
       memo: editing.memo || undefined,
       category: editing.category || undefined,
+      // 内訳をすべて消したときは null（サーバーの内訳も消す）。内訳を知らず編集もしていなければ送らない
+      items: editing.saveItems ? (items.items ?? null) : undefined,
     });
 
     if (success) {
@@ -179,7 +204,7 @@ export function Page() {
   }
 
   const handleStartAdd = () => {
-    setAdding({ amount: '', memo: '', category: '', subBudgetId: '' });
+    setAdding({ amount: '', memo: '', category: '', subBudgetId: '', items: [], spreadDifference: false });
     setEditing(null);
     setDeletingId(null);
   }
@@ -191,8 +216,9 @@ export function Page() {
   async function handleSaveAdd() {
     if (!adding || !selectedDay) return;
 
-    const amount = parseInt(adding.amount, 10);
-    if (isNaN(amount) || amount <= 0) {
+    const amount = parseTotal(adding.amount);
+    const items = finalizeItemDrafts(adding.items, amount, { spreadDifference: adding.spreadDifference });
+    if (amount === null || !items.ok) {
       return;
     }
 
@@ -202,6 +228,7 @@ export function Page() {
       category: adding.category || undefined,
       date: selectedDay.date,
       subBudgetId: adding.subBudgetId || undefined,
+      items: items.items,
     });
 
     setAdding(null);
@@ -275,7 +302,8 @@ export function Page() {
                                 type="number"
                                 value={editing.amount}
                                 onChange={(e) => setEditing({ ...editing, amount: e.target.value })}
-                                placeholder="金額"
+                                placeholder="支払総額"
+                                aria-label="支払総額"
                                 className="edit-input amount"
                               />
                               <select
@@ -292,6 +320,18 @@ export function Page() {
                                 onChange={(e) => setEditing({ ...editing, memo: e.target.value })}
                                 placeholder="メモ"
                                 className="edit-input memo"
+                              />
+                            </div>
+                            <div className="expense-items-section">
+                              <p className="expense-items-heading">内訳</p>
+                              <ExpenseItemsEditor
+                                drafts={editing.items}
+                                onChange={(items) => setEditing({ ...editing, items, saveItems: true })}
+                                total={parseTotal(editing.amount)}
+                                expenseCategory={editing.category}
+                                spreadDifference={editing.spreadDifference}
+                                onSpreadDifferenceChange={(spreadDifference) => setEditing({ ...editing, spreadDifference })}
+                                onUseItemsTotal={(itemsTotal) => setEditing({ ...editing, amount: String(itemsTotal) })}
                               />
                             </div>
                             <div className="edit-actions">
@@ -321,10 +361,23 @@ export function Page() {
                                   </span>
                                 )}
                               </span>
-                              {expense.category && labelOf(expense.category) && (
-                                <span className="expense-category">{labelOf(expense.category)}</span>
+                              {/* 内訳が複数のカテゴリーにまたがる会計は、按分したカテゴリー別の額を並べる */}
+                              {allocateExpenseByCategory(expense).length > 1 ? (
+                                <span className="expense-category-list">
+                                  {allocateExpenseByCategory(expense).map(({ category, amount }) => (
+                                    <span key={category} className="expense-category">
+                                      {labelOf(category) ?? category} {formatCurrency(amount)}
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : (
+                                expense.category &&
+                                labelOf(expense.category) && (
+                                  <span className="expense-category">{labelOf(expense.category)}</span>
+                                )
                               )}
                               {expense.memo && <span className="expense-memo">{expense.memo}</span>}
+                              <ExpenseItemsList expense={expense} labelOf={labelOf} />
                             </div>
                             <div className="expense-actions">
                               <button className="btn-edit" onClick={() => handleStartEdit(expense)}>編集</button>
@@ -361,7 +414,8 @@ export function Page() {
                       type="number"
                       value={adding.amount}
                       onChange={(e) => setAdding({ ...adding, amount: e.target.value })}
-                      placeholder="金額"
+                      placeholder="支払総額"
+                      aria-label="支払総額"
                       className="add-input amount"
                       autoFocus
                     />
@@ -394,6 +448,18 @@ export function Page() {
                         ))}
                       </select>
                     )}
+                  </div>
+                  <div className="expense-items-section">
+                    <p className="expense-items-heading">内訳（任意）</p>
+                    <ExpenseItemsEditor
+                      drafts={adding.items}
+                      onChange={(items) => setAdding({ ...adding, items })}
+                      total={parseTotal(adding.amount)}
+                      expenseCategory={adding.category}
+                      spreadDifference={adding.spreadDifference}
+                      onSpreadDifferenceChange={(spreadDifference) => setAdding({ ...adding, spreadDifference })}
+                      onUseItemsTotal={(itemsTotal) => setAdding({ ...adding, amount: String(itemsTotal) })}
+                    />
                   </div>
                   <div className="add-actions">
                     <button className="btn-add-save" onClick={handleSaveAdd}>追加</button>

@@ -1,6 +1,7 @@
 import type { ExpenseEntity } from '@maronn/domain';
 import { mergeExpenses } from '@maronn/domain';
-import { db, updateSyncStatus, getCurrentMonth, type LocalExpenseEntity } from './db';
+import { db, markSyncedIfUnchanged, getCurrentMonth, type LocalExpenseEntity } from './db';
+import { toLocalExpense, toUploadPayload } from './expense-mapping';
 import { vanillaTrpc } from '../trpc/client';
 import { fetchSessionUser } from '../auth/client';
 
@@ -51,19 +52,7 @@ async function retryWithBackoff<T>(
  */
 async function uploadExpense(expense: ExpenseEntity): Promise<boolean> {
   try {
-    const result = await retryWithBackoff(() =>
-      vanillaTrpc.createExpense.mutate({
-        id: expense.id,
-        amount: expense.amount,
-        category: expense.category,
-        memo: expense.memo,
-        date: expense.date,
-        createdAt: expense.createdAt,
-        updatedAt: expense.updatedAt,
-        deviceId: expense.deviceId,
-        subBudgetId: expense.subBudgetId,
-      })
-    );
+    const result = await retryWithBackoff(() => vanillaTrpc.createExpense.mutate(toUploadPayload(expense)));
 
     return result.success === true;
   } catch (error) {
@@ -115,8 +104,8 @@ export async function syncPendingExpenses(userId?: string): Promise<{
       const uploaded = await uploadExpense(expense);
 
       if (uploaded) {
-        // 同期成功 → syncStatus を 'synced' に更新
-        await updateSyncStatus(expense.id, 'synced');
+        // 同期成功 → syncStatus を 'synced' に更新（送っている間に編集されていれば pending のまま）
+        await markSyncedIfUnchanged(expense.id, expense.updatedAt);
         successCount++;
       } else {
         failedCount++;
@@ -140,19 +129,8 @@ async function downloadExpenses(month: string): Promise<ExpenseEntity[]> {
       vanillaTrpc.getExpenses.query({ month })
     );
 
-    // サーバーから取得したデータにsyncStatus: 'synced'を追加
-    return (result.expenses || []).map((e) => ({
-      id: e.id,
-      amount: e.amount,
-      category: e.category ?? undefined,
-      memo: e.memo ?? undefined,
-      date: e.date,
-      createdAt: e.createdAt,
-      updatedAt: e.updatedAt,
-      deviceId: e.deviceId,
-      syncStatus: 'synced' as const,
-      subBudgetId: e.subBudgetId ?? undefined,
-    }));
+    // サーバーから取得したデータを同期済みのローカルの支出にする（内訳も写す）
+    return (result.expenses || []).map(toLocalExpense);
   } catch (error) {
     console.error('Failed to download expenses:', month, error);
     return [];

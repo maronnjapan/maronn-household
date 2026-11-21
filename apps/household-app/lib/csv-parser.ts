@@ -2,6 +2,8 @@
  * CSV処理ユーティリティ
  * 項目の増減に柔軟に対応できる設計
  */
+import type { ExpenseEntity } from '@maronn/domain';
+import { formatItemsText } from '@maronn/domain/expense-items';
 
 /**
  * CSVパース結果の1行分のデータ
@@ -133,11 +135,11 @@ export const FIXED_COLUMN_ORDER: FieldDefinition[] = [
  */
 export function parseCSV(csvText: string): CSVParseResult {
   const errors: string[] = [];
-  const lines = csvText.trim().split(/\r?\n/);
-
-  if (lines.length === 0) {
+  // ''.split() は [''] を返し長さ0にならないので、空かどうかは分割の前に確かめる
+  if (csvText.trim() === '') {
     return { headers: [], rows: [], errors: ['CSVが空です'] };
   }
+  const lines = csvText.trim().split(/\r?\n/);
 
   const headerLine = lines[0];
   if (!headerLine) {
@@ -489,6 +491,27 @@ export function convertToCSV<T extends Record<string, unknown>>(
   });
 
   return [headerLine, ...dataLines].join('\n');
+}
+
+/**
+ * 支出をエクスポート用の CSV にする
+ * 1回の会計 = 1行で、金額は支払総額（カード明細の CSV と突き合わせられるように）。
+ * 内訳は1つのセル（「牛乳 ¥198 / 洗剤 ¥398」、改行なし）でメモの後ろに出す。先頭の4列は FIXED_COLUMN_ORDER と同じなので、インポートで読み戻せる
+ */
+export function convertExpensesToCSV(
+  expenses: ExpenseEntity[],
+  labelOf?: (value: string) => string | undefined
+): string {
+  return convertToCSV(
+    expenses.map((expense) => ({
+      date: expense.date,
+      amount: expense.amount,
+      category: expense.category,
+      memo: expense.memo,
+      items: formatItemsText(expense.items, labelOf),
+    })),
+    [...DEFAULT_EXPORT_FIELDS, { key: 'items', header: '内訳' }]
+  );
 }
 
 /**

@@ -288,6 +288,83 @@
   font-size: 0.875rem;
 }
 
+/* 内訳（1回の会計で何を買ったか） */
+.expense-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  background: #f8f9fa;
+  border-radius: 0.375rem;
+}
+
+.expense-breakdown-summary {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  cursor: pointer;
+}
+
+.expense-category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.expense-breakdown-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.expense-breakdown-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #2c3e50;
+}
+
+.expense-breakdown-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.expense-breakdown-category {
+  padding: 0 0.375rem;
+  background: #e3f2fd;
+  color: #1976d2;
+  font-size: 0.7rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+
+.expense-breakdown-amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.expense-breakdown-note {
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 0.75rem;
+}
+
+.expense-items-section {
+  margin-bottom: 0.75rem;
+}
+
+.expense-items-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
 .expense-actions {
   display: flex;
   gap: 8px;

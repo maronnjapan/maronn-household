@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createTestDatabase, splitStatements } from '../src/index';
 
 describe('createTestDatabase', () => {
-  it('すべてのマイグレーションを適用した D1 を作る（家計簿・Better Auth・レシート・認証基盤・カテゴリーのテーブル）', async () => {
+  it('すべてのマイグレーションを適用した D1 を作る（家計簿・Better Auth・レシート・認証基盤・カテゴリーのテーブル、支出の内訳）', async () => {
     const { db, dispose } = await createTestDatabase();
     const { results } = await db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -25,6 +25,8 @@ describe('createTestDatabase', () => {
         'categories',
       ])
     );
+    const { results: columns } = await db.prepare('PRAGMA table_info(expenses)').all<{ name: string }>();
+    expect(columns.map((column) => column.name)).toContain('items');
     await dispose();
   }, 60_000);
 });

@@ -6,7 +6,7 @@
 
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gte, lte } from 'drizzle-orm';
-import { enhance, type Get, type Post, type Put, type UniversalHandler } from '@universal-middleware/core';
+import { enhance, type UniversalHandler } from '@universal-middleware/core';
 import { expenses, budgets, apiTokens, apiUsage } from '@maronn/db-schema/household';
 import { hashToken } from '../lib/api-token';
 import { ulid } from 'ulidx';
@@ -120,7 +120,7 @@ export const exportApiHandler = ((basePath: string) =>
       method: ['GET', 'POST', 'PUT'],
       immutable: false,
     },
-  )) satisfies UniversalHandler;
+  )) satisfies (basePath: string) => UniversalHandler;
 
 /**
  * 1日のAPI使用回数をチェックして増加させる
@@ -248,6 +248,8 @@ async function handleMonthlyExport(
             updatedAt: budget.updatedAt,
           }
         : null,
+      // 1件 = 1回の会計（amount は支払総額）。items は何を買ったかの内訳（なければ null）、
+      // receiptId はレシートから記録した支出のレシート ID（以前のレシートはカテゴリ別に複数の支出に分かれている）
       expenses: expensesList.map((exp) => ({
         id: exp.id,
         amount: exp.amount,
@@ -255,6 +257,8 @@ async function handleMonthlyExport(
         memo: exp.memo,
         date: exp.date,
         createdAt: exp.createdAt,
+        receiptId: exp.receiptId,
+        items: exp.items,
       })),
       summary: {
         totalExpenses,

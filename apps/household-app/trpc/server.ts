@@ -36,6 +36,12 @@ import {
   applyHeaderValues,
   applyBodyTemplateValues,
   listWebhookTemplatePresets as listTemplatePresets,
+  normalizeExpenseItems,
+  MAX_EXPENSE_ITEMS,
+  MAX_EXPENSE_ITEM_NAME_LENGTH,
+  MAX_EXPENSE_ITEM_AMOUNT,
+  MAX_EXPENSE_ITEM_QUANTITY,
+  MAX_EXPENSE_ITEM_CATEGORY_LENGTH,
   type ScheduleConfig,
   type WebhookServiceType,
 } from '@maronn/domain';
@@ -115,9 +121,29 @@ export const protectedProcedure = t.procedure.use(async (opts) => {
 });
 
 // 入力バリデーション用のスキーマ
+
+/** 支出（1回の会計）の内訳の1行 */
+const expenseItemSchema = z.object({
+  name: z.string().max(MAX_EXPENSE_ITEM_NAME_LENGTH),
+  amount: z.number().int().nonnegative().max(MAX_EXPENSE_ITEM_AMOUNT),
+  quantity: z.number().positive().max(MAX_EXPENSE_ITEM_QUANTITY).optional(),
+  category: z.string().max(MAX_EXPENSE_ITEM_CATEGORY_LENGTH).optional(),
+});
+
+/**
+ * 内訳: undefined なら変えない（内訳を知らない古いクライアントは送らない）、null なら消す、配列なら置き換える
+ */
+const expenseItemsSchema = z.array(expenseItemSchema).max(MAX_EXPENSE_ITEMS).nullable().optional();
+
+/** 保存する内訳（undefined は変えない。空の配列は null にそろえる） */
+function itemsToStore(items: z.infer<typeof expenseItemsSchema>) {
+  return items === undefined ? undefined : (normalizeExpenseItems(items) ?? null);
+}
+
 const expenseInputSchema = z.object({
   id: z.string(),
-  amount: z.number(),
+  // Infinity は D1 で NULL になり NOT NULL 違反になるので受け付けない（小数は以前の端末の行のため通す）
+  amount: z.number().finite(),
   category: z.string().optional(),
   memo: z.string().optional(),
   date: z.string(),
@@ -125,6 +151,7 @@ const expenseInputSchema = z.object({
   updatedAt: z.string(),
   deviceId: z.string(),
   subBudgetId: z.string().optional(),
+  items: expenseItemsSchema,
 });
 
 const getExpensesInputSchema = z.object({
@@ -133,12 +160,13 @@ const getExpensesInputSchema = z.object({
 
 const updateExpenseInputSchema = z.object({
   id: z.string(),
-  amount: z.number().optional(),
+  amount: z.number().finite().optional(),
   category: z.string().optional(),
   memo: z.string().optional(),
   date: z.string().optional(),
   updatedAt: z.string(),
   deviceId: z.string(),
+  items: expenseItemsSchema,
 });
 
 const deleteExpenseInputSchema = z.object({
@@ -372,6 +400,7 @@ export const appRouter = router({
         subBudgetId,
       } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
+      const items = itemsToStore(opts.input.items);
 
       // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
@@ -384,6 +413,11 @@ export const appRouter = router({
         .from(expenses)
         .where(eq(expenses.id, id))
         .get();
+
+      if (existing && existing.userId !== userId) {
+        // 他のユーザーの支出と同じ ID。その支出は書き換えない
+        throw new TRPCError({ code: 'CONFLICT', message: 'Expense id is already in use' });
+      }
 
       if (existing) {
         // 既に存在する場合はupdatedAtで更新判定
@@ -398,8 +432,10 @@ export const appRouter = router({
               updatedAt,
               deviceId,
               subBudgetId: subBudgetId || null,
+              // undefined なら内訳を変えない（Drizzle は undefined の項目を SET に含めない）
+              items,
             })
-            .where(eq(expenses.id, id))
+            .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
             .run();
 
           try {
@@ -434,6 +470,7 @@ export const appRouter = router({
           updatedAt,
           deviceId,
           subBudgetId: subBudgetId || null,
+          items: items ?? null,
         })
         .run();
 
@@ -498,6 +535,7 @@ export const appRouter = router({
       const { id, amount, category, memo, date, updatedAt, deviceId } =
         opts.input;
       const userId = opts.ctx.user.id;
+      const items = itemsToStore(opts.input.items);
 
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
@@ -532,8 +570,10 @@ export const appRouter = router({
           date: date ?? existing.date,
           updatedAt,
           deviceId,
+          // undefined なら内訳を変えない（Drizzle は undefined の項目を SET に含めない）
+          items,
         })
-        .where(eq(expenses.id, id))
+        .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
         .run();
 
       return { success: true, updated: true };

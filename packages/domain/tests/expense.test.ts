@@ -52,4 +52,39 @@ describe('createExpense', () => {
 
     expect(expense1.id).not.toBe(expense2.id);
   });
+
+  it('内訳を指定して作成できる（金額は支払総額のまま）', () => {
+    const expense = createExpense({
+      amount: 3280,
+      category: 'food',
+      items: [
+        { name: ' 牛乳 ', amount: 198 },
+        { name: '洗剤', amount: 398, category: 'daily-goods' },
+      ],
+    });
+
+    expect(expense.amount).toBe(3280);
+    expect(expense.category).toBe('food');
+    expect(expense.items).toEqual([
+      { name: '牛乳', amount: 198, category: 'food' },
+      { name: '洗剤', amount: 398, category: 'daily-goods' },
+    ]);
+  });
+
+  it('内訳があり会計のカテゴリーがなければ、主なカテゴリー（按分額が最大）を会計のカテゴリーにする', () => {
+    const expense = createExpense({
+      amount: 3280,
+      items: [
+        { name: 'シャンプー', amount: 480, category: 'daily-goods' },
+        { name: '', amount: 2800, category: 'food' },
+      ],
+    });
+
+    expect(expense.category).toBe('food');
+  });
+
+  it('内訳が空なら内訳を持たない', () => {
+    expect(createExpense({ amount: 100, items: [] }).items).toBeUndefined();
+    expect(createExpense({ amount: 100 }).items).toBeUndefined();
+  });
 });

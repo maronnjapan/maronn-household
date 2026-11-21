@@ -1,8 +1,10 @@
 import { useState, useRef, useLayoutEffect } from 'react';
 import type { CreateExpenseParams } from '@maronn/domain';
 import { evaluateExpression } from '../utils/calculator';
+import { finalizeItemDrafts, parseItemDrafts, summarizeItemDrafts, type ItemDraft } from '../lib/expense-items';
 import { Accordion } from './Accordion';
 import { CategoryOptions } from './CategoryOptions';
+import { ExpenseItemsEditor } from './ExpenseItemsEditor';
 import { SubBudgetSelector } from './SubBudgetSelector';
 
 interface ExpenseInputProps {
@@ -33,6 +35,7 @@ function getPreHydrationState(): { expression: string; memo: string; category: s
 /**
  * 支出入力コンポーネント（電卓UI）
  * 金額を電卓で計算し、即座に追加（< 50ms）
+ * 電卓の金額は1回の会計の支払総額。何を買ったかは「内訳（任意）」に品名・金額・カテゴリーで残せる
  *
  * Progressive Enhancement対応:
  * - pre-hydration-calculator.jsがhydration前に動作
@@ -47,9 +50,13 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
   const [memo, setMemo] = useState(initialState.current.memo);
   const [category, setCategory] = useState(initialState.current.category);
   const [subBudgetId, setSubBudgetId] = useState('');
+  const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
+  const [spreadDifference, setSpreadDifference] = useState(false);
 
   // 式を評価して金額を取得
   const calculatedAmount = evaluateExpression(expression);
+  const parsedItems = parseItemDrafts(itemDrafts);
+  const itemCount = parsedItems.ok ? (parsedItems.items?.length ?? 0) : 0;
 
   const handleButtonClick = (value: string) => {
     if (value === 'C') {
@@ -72,16 +79,19 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
 
   const handleSubmit = async () => {
     const amount = evaluateExpression(expression);
-    if (!amount || amount <= 0) {
+    // 内訳の合計が支払総額より少なければ、足りない分を「残り」の1行にする（差を税・値引きとして配分するなら作らない）
+    const items = finalizeItemDrafts(itemDrafts, amount, { spreadDifference });
+    if (!amount || amount <= 0 || !items.ok) {
       return;
     }
 
-    // 支出を追加
+    // 支出を追加（金額は支払総額、内訳は何を買ったか）
     await onAdd({
       amount,
       category: category || undefined,
       memo: memo.trim() || undefined,
       subBudgetId: subBudgetId || undefined,
+      items: items.items,
     });
 
     // フォームをクリア
@@ -89,9 +99,11 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
     setMemo('');
     setCategory('');
     setSubBudgetId('');
+    setItemDrafts([]);
+    setSpreadDifference(false);
   };
 
-  const isValid = calculatedAmount !== null && calculatedAmount > 0;
+  const isValid = calculatedAmount !== null && calculatedAmount > 0 && parsedItems.ok;
 
   // hydration完了後にマーク（pre-hydrationスクリプトのイベントを無効化）
   // useLayoutEffectは例外的に使用（hydration時の一度限りのDOM操作のため）
@@ -183,6 +195,27 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
       {/* サブ予算選択（サブ予算が存在する場合のみ表示） */}
       <SubBudgetSelector value={subBudgetId} onChange={setSubBudgetId} />
 
+      {/* 内訳（アコーディオン。開くまで描画しないので、hydration 前の電卓には影響しない） */}
+      {/* 閉じると中身は描画しないので、見出しに入力済みの内訳を出す（隠れた内訳に気づかず送信しないように） */}
+      <Accordion
+        title={
+          itemCount > 0
+            ? `内訳（${itemCount}件・¥${summarizeItemDrafts(itemDrafts, null).itemsTotal.toLocaleString()}）`
+            : '内訳（任意）'
+        }
+        defaultOpen={false}
+      >
+        <ExpenseItemsEditor
+          drafts={itemDrafts}
+          onChange={setItemDrafts}
+          total={calculatedAmount !== null && calculatedAmount > 0 ? calculatedAmount : null}
+          expenseCategory={category}
+          spreadDifference={spreadDifference}
+          onSpreadDifferenceChange={setSpreadDifference}
+          onUseItemsTotal={(itemsTotal) => setExpression(String(itemsTotal))}
+        />
+      </Accordion>
+
       {/* メモ・カテゴリー入力（アコーディオン） */}
       <Accordion title="詳細設定（任意）" defaultOpen={false}>
         <div className="detail-inputs">
@@ -221,7 +254,10 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
 
       {/* 送信ボタン */}
       <button type="button" onClick={handleSubmit} disabled={!isValid} className="submit-button">
-        送信 {isValid && `(¥${calculatedAmount?.toLocaleString()})`}
+        {/* pre-hydration-calculator.js が書く文言（「送信」「送信 (¥N)」）と1つの文字列で一致させる（hydration の不一致を避ける） */}
+        {isValid
+          ? `送信 (¥${calculatedAmount?.toLocaleString()}${itemCount > 0 ? `・内訳${itemCount}件` : ''})`
+          : '送信'}
       </button>
     </div>
   );

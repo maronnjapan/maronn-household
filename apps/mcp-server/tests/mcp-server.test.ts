@@ -227,16 +227,41 @@ describe('ツール', () => {
     expect(tools.update_category).toMatchObject({ destructiveHint: false, idempotentHint: true });
   });
 
-  it('record_receipt はレシートと明細を保存し、カテゴリ別に按分した支出をトークンのユーザーで作る', async () => {
+  it('record_receipt はレシートを支払総額の支出1件（1回の会計）として記録し、明細を内訳として持たせる', async () => {
     const { data } = await callTool('record_receipt', RECEIPT);
 
-    expect(data).toMatchObject({ duplicate: false, itemsTotal: 1000, difference: 100 });
+    expect(data).toEqual({
+      duplicate: false,
+      receiptId: expect.any(String),
+      expenseId: expect.any(String),
+      amount: 1100,
+      category: 'food',
+      categoryLabel: '食費',
+      itemsTotal: 1000,
+      difference: 100,
+      byCategory: [
+        { category: 'food', label: '食費', amount: 770 },
+        { category: 'daily-goods', label: '日用品', amount: 330 },
+      ],
+    });
     const expenses = await testDb.db
-      .prepare('SELECT user_id, amount, category, date, device_id, receipt_id FROM expenses ORDER BY amount DESC')
-      .all();
+      .prepare('SELECT id, user_id, amount, category, memo, date, device_id, receipt_id, items FROM expenses')
+      .all<Record<string, unknown>>();
     expect(expenses.results).toEqual([
-      { user_id: USER_ID, amount: 770, category: 'food', date: '2026-11-19', device_id: 'mcp:dcr-claude', receipt_id: data.receiptId },
-      { user_id: USER_ID, amount: 330, category: 'daily-goods', date: '2026-11-19', device_id: 'mcp:dcr-claude', receipt_id: data.receiptId },
+      {
+        id: data.expenseId,
+        user_id: USER_ID,
+        amount: 1100,
+        category: 'food',
+        memo: 'スーパーA 新宿店',
+        date: '2026-11-19',
+        device_id: 'mcp:dcr-claude',
+        receipt_id: data.receiptId,
+        items: JSON.stringify([
+          { name: '米', amount: 700, category: 'food' },
+          { name: 'ティッシュ', amount: 300, quantity: 1, category: 'daily-goods' },
+        ]),
+      },
     ]);
     expect(await testDb.db.prepare('SELECT * FROM receipts').first()).toMatchObject({
       id: data.receiptId,
@@ -247,13 +272,16 @@ describe('ツール', () => {
       payment_method: 'credit_card',
       source: 'dcr-claude',
     });
-    const items = await testDb.db
-      .prepare('SELECT position, name, amount, quantity, category FROM receipt_items ORDER BY position')
-      .all();
-    expect(items.results).toEqual([
-      { position: 0, name: '米', amount: 700, quantity: null, category: 'food' },
-      { position: 1, name: 'ティッシュ', amount: 300, quantity: 1, category: 'daily-goods' },
-    ]);
+    expect(await count('receipt_items')).toBe(0);
+  });
+
+  it('record_receipt で明細がなければ、内訳のない支出1件にする', async () => {
+    const { data } = await callTool('record_receipt', { ...RECEIPT, items: undefined, category: 'food' });
+
+    expect(data).toMatchObject({ amount: 1100, category: 'food', itemsTotal: null, difference: 0 });
+    expect(
+      await testDb.db.prepare('SELECT amount, category, items FROM expenses').first()
+    ).toEqual({ amount: 1100, category: 'food', items: null });
   });
 
   it('同じ購入日・同じ支払総額のレシートは duplicate を返し（店名や時刻の読み取り揺れも含む）、allowDuplicate なら記録する', async () => {
@@ -261,9 +289,36 @@ describe('ツール', () => {
     const second = await callTool('record_receipt', { ...RECEIPT, storeName: 'スーパーA', purchasedAt: '2026-11-19' });
     const third = await callTool('record_receipt', { ...RECEIPT, allowDuplicate: true });
 
-    expect(second.data).toMatchObject({ duplicate: true, existing: [{ id: first.data.receiptId, storeName: 'スーパーA 新宿店' }] });
+    expect(second.data).toMatchObject({
+      duplicate: true,
+      existing: [{ source: 'receipt', receiptId: first.data.receiptId, storeName: 'スーパーA 新宿店' }],
+    });
     expect(third.data.duplicate).toBe(false);
     expect(await count('receipts')).toBe(2);
+  });
+
+  it('アプリで記録した同じ日・同じ金額の支出も duplicate として返す（同じ会計の二重登録を防ぐ）', async () => {
+    await testDb.db
+      .prepare(
+        "INSERT INTO expenses (id, user_id, amount, category, memo, date, created_at, updated_at, device_id) VALUES ('app-1', ?, 1100, 'food', 'スーパー', '2026-11-19', 'x', 'x', 'd')"
+      )
+      .bind(USER_ID)
+      .run();
+    await testDb.db
+      .prepare(
+        "INSERT INTO expenses (id, user_id, amount, date, created_at, updated_at, device_id) VALUES ('others', 'someone-else', 1100, '2026-11-19', 'x', 'x', 'd')"
+      )
+      .run();
+
+    const { data } = await callTool('record_receipt', RECEIPT);
+    const forced = await callTool('record_receipt', { ...RECEIPT, allowDuplicate: true });
+
+    expect(data).toEqual({
+      duplicate: true,
+      existing: [{ source: 'app', expenseId: 'app-1', date: '2026-11-19', amount: 1100, memo: 'スーパー', categoryLabel: '食費' }],
+    });
+    expect(forced.data.duplicate).toBe(false);
+    expect(await count('receipts')).toBe(1);
   });
 
   it('アプリで支出をすべて消したレシートは重複とみなさず、読み直して記録できる', async () => {
@@ -287,7 +342,7 @@ describe('ツール', () => {
     expect(await count('receipts')).toBe(0);
   });
 
-  it('delete_receipt は自分のレシートと、その明細・按分した支出を取り消す', async () => {
+  it('delete_receipt は自分のレシートと、その支出（内訳ごと）を取り消す', async () => {
     const mine = await callTool('record_receipt', RECEIPT);
     const others = await callTool('record_receipt', RECEIPT, await accessToken({ sub: 'someone-else' }));
 
@@ -297,23 +352,81 @@ describe('ツール', () => {
     expect(deleted.data).toEqual({ deleted: true });
     expect(notMine.data).toEqual({ deleted: false });
     expect(await count('receipts')).toBe(1);
-    expect(await count('receipt_items')).toBe(2);
-    expect(await count('expenses')).toBe(2);
+    expect(await count('expenses')).toBe(1);
   });
 
-  it('list_records はトークンのユーザーの指定月の支出を店名付きで返し、includeItems でレシートの明細も返す', async () => {
+  it('delete_receipt は以前の記録（カテゴリ別に分けた支出と receipt_items の明細）も取り消す', async () => {
+    await testDb.db.batch([
+      testDb.db
+        .prepare(
+          "INSERT INTO receipts (id, user_id, store_name, purchased_at, total_amount, source, created_at, updated_at) VALUES ('old', ?, '店', '2026-11-18', 1000, 'c', 'x', 'x')"
+        )
+        .bind(USER_ID),
+      testDb.db.prepare(
+        "INSERT INTO receipt_items (id, receipt_id, position, name, amount, category) VALUES ('i1', 'old', 0, '米', 700, 'food'), ('i2', 'old', 1, '紙', 300, 'daily-goods')"
+      ),
+      testDb.db
+        .prepare(
+          "INSERT INTO expenses (id, user_id, amount, category, date, created_at, updated_at, device_id, receipt_id) VALUES ('e1', ?1, 700, 'food', '2026-11-18', 'x', 'x', 'd', 'old'), ('e2', ?1, 300, 'daily-goods', '2026-11-18', 'x', 'x', 'd', 'old')"
+        )
+        .bind(USER_ID),
+    ]);
+
+    const deleted = await callTool('delete_receipt', { receiptId: 'old' });
+
+    expect(deleted.data).toEqual({ deleted: true });
+    expect(await count('receipt_items')).toBe(0);
+    expect(await count('expenses')).toBe(0);
+  });
+
+  it('list_records はトークンのユーザーの指定月の支出（1回の会計ごと、店名付き）と、按分したカテゴリ別の合計を返す', async () => {
     await callTool('record_receipt', RECEIPT);
     await callTool('record_receipt', { ...RECEIPT, purchasedAt: '2026-10-31' });
     await callTool('record_receipt', RECEIPT, await accessToken({ sub: 'someone-else' }));
+    await testDb.db
+      .prepare(
+        "INSERT INTO expenses (id, user_id, amount, category, date, created_at, updated_at, device_id, sub_budget_id) VALUES ('sub', ?, 500, 'food', '2026-11-02', 'x', 'x', 'd', 'sb-1')"
+      )
+      .bind(USER_ID)
+      .run();
 
     const { data } = await callTool('list_records', { month: '2026-11' });
-    const withItems = await callTool('list_records', { month: '2026-11', includeItems: true });
 
+    expect(data.total).toBe(1600);
+    expect(data.byCategory).toEqual([
+      { category: 'food', label: '食費', amount: 1270 },
+      { category: 'daily-goods', label: '日用品', amount: 330 },
+    ]);
     expect(data.expenses).toHaveLength(2);
-    expect(data.expenses[0]).toMatchObject({ date: '2026-11-19', storeName: 'スーパーA 新宿店' });
+    expect(data.expenses.find((e: { amount: number }) => e.amount === 1100)).toMatchObject({
+      date: '2026-11-19',
+      storeName: 'スーパーA 新宿店',
+      category: 'food',
+      categoryLabel: '食費',
+    });
+    expect(data.expenses[0]).not.toHaveProperty('items');
     expect(data.receipts).toBeUndefined();
-    expect(withItems.data.receipts).toHaveLength(1);
-    expect(withItems.data.receipts[0].items.map((item: { name: string }) => item.name)).toEqual(['米', 'ティッシュ']);
+  });
+
+  it('list_records の includeItems で、各支出の内訳（カテゴリー名付き）とレシートの店名・税・支払方法を返す', async () => {
+    const { data: recorded } = await callTool('record_receipt', RECEIPT);
+
+    const { data } = await callTool('list_records', { month: '2026-11', includeItems: true });
+
+    expect(data.expenses[0].items).toEqual([
+      { name: '米', amount: 700, category: 'food', categoryLabel: '食費' },
+      { name: 'ティッシュ', amount: 300, quantity: 1, category: 'daily-goods', categoryLabel: '日用品' },
+    ]);
+    expect(data.receipts).toEqual([
+      {
+        id: recorded.receiptId,
+        storeName: 'スーパーA 新宿店',
+        purchasedAt: '2026-11-19T18:30',
+        totalAmount: 1100,
+        taxAmount: 100,
+        paymentMethod: 'credit_card',
+      },
+    ]);
   });
 
   it('list_records の includeItems は、アプリで支出をすべて消して取り消したレシートを含めない', async () => {
@@ -401,15 +514,15 @@ describe('カテゴリー', () => {
     const expenses = (await testDb.db.prepare('SELECT amount, category FROM expenses ORDER BY amount DESC').all())
       .results;
     expect(expenses).toEqual([
-      { amount: 770, category: pet.value },
+      { amount: 1100, category: pet.value },
       { amount: 500, category: pet.value },
-      { amount: 330, category: 'daily-goods' },
     ]);
     expect(
       records.data.expenses.map((e: { amount: number; categoryLabel: string }) => [e.amount, e.categoryLabel])
-    ).toEqual(expect.arrayContaining([[770, 'ペット'], [330, '日用品'], [500, 'ペット']]));
+    ).toEqual(expect.arrayContaining([[1100, 'ペット'], [500, 'ペット']]));
+    const withItems = records.data.expenses.find((e: { amount: number }) => e.amount === 1100);
     expect(
-      records.data.receipts[0].items.map((i: { category: string; categoryLabel: string }) => [i.category, i.categoryLabel])
+      withItems.items.map((i: { category: string; categoryLabel: string }) => [i.category, i.categoryLabel])
     ).toEqual([
       [pet.value, 'ペット'],
       ['daily-goods', '日用品'],
@@ -488,9 +601,8 @@ describe('カテゴリー', () => {
     const recorded = await callTool('record_receipt', { ...RECEIPT, items: undefined, category: 'ｐｅｔ' });
 
     expect(fullWidth.data).toEqual({ status: 'existing', value: pet.value, label: 'Pet' });
-    expect(recorded.data.expenses).toEqual([
-      { amount: 1100, category: pet.value, categoryLabel: 'Pet', memo: 'スーパーA 新宿店' },
-    ]);
+    expect(recorded.data).toMatchObject({ amount: 1100, category: pet.value, categoryLabel: 'Pet' });
+    expect(recorded.data.byCategory).toEqual([{ category: pet.value, label: 'Pet', amount: 1100 }]);
   });
 
   it('同じ名前の create_category を同時に呼んでも、カテゴリーは 1 つだけ作る（後の呼び出しには既存のものを返す）', async () => {
@@ -523,6 +635,24 @@ describe('カテゴリー', () => {
     expect(listed.categories.map((c: { value: string }) => c.value)).not.toContain(pet.value);
     expect(records.expenses[0]).toMatchObject({ category: pet.value, categoryLabel: 'ペット' });
     expect(summary.byCategory).toEqual([{ category: pet.value, label: 'ペット', amount: 1100 }]);
+  });
+
+  it('delete_category の expenseCount には、内訳でそのカテゴリーを使う会計も数える', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'ペット' });
+    await callTool('record_receipt', {
+      ...RECEIPT,
+      category: 'food',
+      items: [
+        { name: '弁当', amount: 800 },
+        { name: 'おやつ', amount: 200, category: 'ペット' },
+      ],
+    });
+    await callTool('record_receipt', { ...RECEIPT, totalAmount: 300, items: undefined, category: 'ペット' });
+    await callTool('record_receipt', { ...RECEIPT, totalAmount: 400, items: undefined, category: 'food' });
+
+    const deleted = await callTool('delete_category', { category: pet.value });
+
+    expect(deleted.data.expenseCount).toBe(2);
   });
 
   it('カテゴリーのない支出の計上先（その他）は削除できない', async () => {

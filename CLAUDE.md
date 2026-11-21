@@ -220,16 +220,24 @@ packages/
 ### ローカル（IndexedDB / Dexie）
 
 ```typescript
-interface Expense {
+interface Expense {     // 1件 = 1回の会計（カード明細の1行と対応）
   id: string;           // ULID（ソート可能なユニークID）
-  amount: number;
-  category?: string;
+  amount: number;       // 支払総額。予算・残額の計算はこの額で行う
+  category?: string;    // 会計のカテゴリー（内訳があってなければ主なカテゴリー）
   memo?: string;
   date: string;         // ISO 8601
   createdAt: string;
   updatedAt: string;
   syncStatus: 'pending' | 'synced' | 'conflict';
   deviceId: string;     // 競合解決用
+  items?: ExpenseItem[] | null; // 内訳。null は内訳なし、undefined は内訳を知らないコードが書いた行（不明）
+}
+
+interface ExpenseItem { // 何を買ったか（@maronn/domain の expense-items.ts）
+  name: string;         // 品名（空でもよい）
+  amount: number;       // 0以上の整数
+  quantity?: number;
+  category?: string;    // 保存時に会計のカテゴリー（なければ other）を入れる
 }
 
 interface Budget {
@@ -251,8 +259,10 @@ interface SyncMeta {
 スキーマは `packages/db-schema/src/` で管理し、`@maronn/db-schema` パッケージとして各アプリから参照する。
 
 主なテーブル（`packages/db-schema/src/household.ts`）:
-- `expenses`: 支出記録（`subBudgetId`、レシート由来なら `receiptId`）
-- `receipts` / `receipt_items`: 生成AIがレシート写真から読み取った購入（支払総額を明細の比率でカテゴリ別の `expenses` に按分して紐づける）
+- `expenses`: 支出記録。1行 = 1回の会計で `amount` は支払総額（`subBudgetId`、レシート由来なら `receiptId`）。`items` は内訳（JSON 配列、なければ NULL。`0011_expense_items.sql`、JSON の配列だけを許す CHECK 制約あり）
+  - カテゴリー別の集計は `@maronn/domain` の `allocateExpenseByCategory`（支払総額を内訳の金額の比率で最大剰余法により按分。内訳の金額がすべて0なら会計のカテゴリーに全額）
+  - 内訳は行と一緒に丸ごと置き換える（内訳の行に ID はない）。tRPC の `items` は undefined = 変えない（内訳を知らない古いクライアント）、null = 消す、配列 = 置き換え
+- `receipts` / `receipt_items`: 生成AIがレシート写真から読み取った購入。レシート1枚を支払総額の `expenses` 1件にし、明細はその `items` に入れる（`receipt_items` は以前の記録の明細だけ。以前の記録はカテゴリ別に複数の `expenses` に分かれている）
 - `budgets`: 月次予算
 - `subBudgets` / `subBudgetMonthlyAmounts`: サブ予算
 - `apiTokens` / `apiUsage`: エクスポートAPI用トークン管理
@@ -281,10 +291,14 @@ interface ConflictPair {
 
 function resolveConflicts(local: Expense[], remote: Expense[]): SyncResult {
   // 同一IDで updatedAt が異なる場合:
-  // - 支出（Expense）: 両方残す（IDを振り直して2件に）
+  // - 支出（Expense）: ローカルに未送信の編集（pending）があり、別の端末で編集されていれば両方残す（IDを振り直して2件に）
+  //   未送信の編集がなければ新しい方を採用（packages/domain/src/sync.ts の mergeExpenses）
   // - 予算（Budget）: updatedAt が新しい方を採用
+  // 内訳: 同じ版でローカルが不明（items が undefined）ならサーバーの内訳で補い、サーバーが内訳を返さなければローカルの内訳を残す
 }
 ```
+
+アップロードが成功しても、送っている間に編集された支出（updatedAt が変わった行）は pending のままにする（`markSyncedIfUnchanged`）。
 
 ### 同期フロー
 
@@ -477,10 +491,10 @@ maronn-openid-connect（`@maronn-openid-connect/core` 0.12.0 / `experimental` 0.
 
 OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud に `${ISSUER}/mcp`、scope に `household`、発行済みの記録があること）を検証し、Streamable HTTP（ステートレス）でツールを提供する。
 
-- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。カテゴリ別に按分した支出を作る。同日・同額のレシートは duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）
-- `delete_receipt`: 記録したレシートを取り消す
-- `list_records`: 月の支出（店名・カテゴリー名付き）。`includeItems` でレシートと明細
-- `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く）
+- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。支払総額の支出1件（1回の会計）にし、明細を内訳（`items`）にする。結果にカテゴリ別の按分（`byCategory`）を返す。同日・同額のレシートや、アプリなどで記録した同日・同額の支出（`receipt_id` なし）は duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）。レシートのカテゴリーがなければ主なカテゴリーを支出のカテゴリーにする
+- `delete_receipt`: 記録したレシートを取り消す（支出ごと内訳も消える）
+- `list_records`: 月の支出（1件 = 1回の会計、店名・カテゴリー名付き）と、サブ予算を含む月の合計・按分したカテゴリ別の額。`includeItems` で各支出の内訳と、レシートの店名・税・支払方法（以前のレシートは明細も）
+- `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く。内訳のある支出は按分）
 - `list_categories` / `create_category` / `update_category` / `delete_category`: カテゴリーの一覧・追加・名前変更・削除
   - 既定のカテゴリーも名前変更・削除できる。「その他」（other、カテゴリーのない支出の計上先）は削除不可
   - 支出の行は書き換えない（value は不変、削除は deleted_at を付けるだけ）。サーバーで支出を書き換えると、端末の未送信の編集との同期で消えたり巻き戻ったりするため
@@ -488,7 +502,7 @@ OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud �
   - 同じ名前の作成は既存を返し（existing）、削除済みと同じ名前なら復元する（restored）。有効なカテゴリーは 30 個まで、追加は削除済みを含めて 100 個まで
   - アプリは一覧（tRPC `getCategories`）を記録・カレンダーの選択肢と表示名に使い、オフライン用に直前の一覧を localStorage に保存する。アプリに管理画面はない
 - 接続先: `https://maronn-household-budget.com/mcp`（Claude のカスタムコネクタなど。ログインと同意は認証基盤の画面）
-- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る。カテゴリー名は以後の会話のツールの説明に載る（作成は「ユーザーが頼んだときだけ」とツールの説明に書いている）
+- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。Webhook のペイロードには内訳を含めない。以前（2026-11-21 まで）に記録したレシートはカテゴリ別に複数の支出に分かれたまま（移行していない）。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る。カテゴリー名は以後の会話のツールの説明に載る（作成は「ユーザーが頼んだときだけ」とツールの説明に書いている）
 
 ### 月次予算設定機能
 

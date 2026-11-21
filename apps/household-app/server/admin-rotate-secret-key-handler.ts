@@ -267,4 +267,4 @@ export const adminRotateSecretKeyHandler = ((basePath: string) =>
       method: ['POST'],
       immutable: false,
     }
-  )) satisfies UniversalHandler;
+  )) satisfies (basePath: string) => UniversalHandler;

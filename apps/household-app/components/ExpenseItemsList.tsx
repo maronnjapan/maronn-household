@@ -42,9 +42,14 @@ export function ExpenseItemsList({ expense, labelOf }: ExpenseItemsListProps) {
           );
         })}
       </ul>
-      {total > 0 && total !== expense.amount && (
+      {total > 0 && total < expense.amount && (
         <p className="expense-breakdown-note">
           内訳の合計 {formatYen(total)}（支払総額との差 {formatYen(expense.amount - total)} は内訳の比率で配分）
+        </p>
+      )}
+      {total > expense.amount && (
+        <p className="expense-breakdown-note">
+          内訳の合計 {formatYen(total)}（支払総額より多い {formatYen(total - expense.amount)} は値引きとして内訳の比率で配分）
         </p>
       )}
     </details>

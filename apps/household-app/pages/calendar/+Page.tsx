@@ -368,12 +368,13 @@ export function Page() {
                                   </span>
                                 )}
                               </span>
-                              {/* 内訳が複数のカテゴリーにまたがる会計は、按分したカテゴリー別の額を並べる */}
-                              {allocateExpenseByCategory(expense).length > 1 ? (
+                              {/* 内訳のある会計は、実際に計上されるカテゴリー（按分先）を出す。複数なら額も並べる */}
+                              {expense.items && expense.items.length > 0 ? (
                                 <span className="expense-category-list">
-                                  {allocateExpenseByCategory(expense).map(({ category, amount }) => (
+                                  {allocateExpenseByCategory(expense).map(({ category, amount }, _index, all) => (
                                     <span key={category} className="expense-category">
-                                      {labelOf(category) ?? category} {formatCurrency(amount)}
+                                      {labelOf(category) ?? category}
+                                      {all.length > 1 && ` ${formatCurrency(amount)}`}
                                     </span>
                                   ))}
                                 </span>

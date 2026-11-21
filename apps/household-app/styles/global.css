@@ -713,6 +713,8 @@ input[type="checkbox"]:focus {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  /* 幅の狭いモーダルの中でも使うので、行の並びは画面ではなく入力欄の幅で決める */
+  container-type: inline-size;
 }
 
 .expense-items-rows {
@@ -765,8 +767,7 @@ input[type="checkbox"]:focus {
   box-shadow: 0 0 0 0.125rem rgba(52, 152, 219, 0.1);
 }
 
-.expense-items-row-invalid .expense-items-amount,
-.expense-items-row-invalid .expense-items-name {
+.expense-items-row.expense-items-row-invalid input[type="text"] {
   border-color: #e74c3c;
 }
 
@@ -831,8 +832,8 @@ input[type="checkbox"]:focus {
   font-size: 0.9rem;
 }
 
-/* 広い画面: 1行に品名・金額・カテゴリー・削除 */
-@media (min-width: 640px) {
+/* 入力欄が広いとき: 1行に品名・金額・カテゴリー・削除 */
+@container (min-width: 36rem) {
   .expense-items-row {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
   }

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { updateExpense, deleteExpense, ANONYMOUS_USER_ID, type ExpenseUpdates } from '../lib/db';
+import { syncPendingExpenses } from '../lib/sync';
 import { trpc, vanillaTrpc } from '../trpc/client';
-import { getDeviceId } from '../lib/device';
 import { useAuth } from './use-auth';
 
 /** 支出の更新内容（items は undefined なら変えず、null なら内訳を消し、配列なら置き換える） */
@@ -10,36 +10,6 @@ export type UpdateExpenseParams = ExpenseUpdates;
 export interface UseExpenseActionsResult {
   handleUpdateExpense: (id: string, params: UpdateExpenseParams) => Promise<boolean>;
   handleDeleteExpense: (id: string) => Promise<boolean>;
-}
-
-/**
- * サーバーに更新を同期（バックグラウンド）
- */
-async function syncUpdateToServer(
-  id: string,
-  params: UpdateExpenseParams,
-  updatedAt: string,
-  deviceId: string
-): Promise<void> {
-  if (!navigator.onLine) {
-    console.info('Offline: update will sync later');
-    return;
-  }
-
-  try {
-    await vanillaTrpc.updateExpense.mutate({
-      id,
-      amount: params.amount,
-      category: params.category,
-      memo: params.memo,
-      date: params.date,
-      items: params.items,
-      updatedAt,
-      deviceId,
-    });
-  } catch (error) {
-    console.error('Failed to sync update to server:', error);
-  }
 }
 
 /**
@@ -76,9 +46,10 @@ export function useExpenseActions(): UseExpenseActionsResult {
       }
 
       // 2. 認証時のみバックグラウンドでサーバーに同期（UIをブロックしない）
+      // 記録の同期と同じく、確定した全項目（カテゴリーを確定した内訳、消したメモなど）を送る。
+      // 渡された差分だけを送ると、サーバーとローカルが同じ版のまま食い違い、以後の同期でも直らないため
       if (isAuthenticated) {
-        const deviceId = getDeviceId();
-        syncUpdateToServer(id, params, updated.updatedAt, deviceId).catch(console.error);
+        syncPendingExpenses(userId).catch(console.error);
 
         // 3. tRPCキャッシュを無効化（他ページへ遷移時に最新データを取得）
         await utils.getExpenses.invalidate();

@@ -145,9 +145,11 @@ export function formatItemsText(
 
 /**
  * 保存する会計のカテゴリーと内訳のカテゴリーを確定する
- * - カテゴリーのない内訳には会計のカテゴリー（なければ other）を入れる。後から会計のカテゴリーを変えても按分が動かないように
+ * - カテゴリーのない内訳には会計のカテゴリー（なければ other）を入れる。後から会計のカテゴリーを変えても按分が動かないように。
+ *   ただし内訳に入れられない長さ（MAX_EXPENSE_ITEM_CATEGORY_LENGTH 超え。CSV から取り込んだ値など）は写さない（会計のカテゴリーに計上される）
  * - 会計のカテゴリーがなく内訳があれば、按分額が最大のカテゴリー（主なカテゴリー）を会計のカテゴリーにする。
- *   カレンダー・CSV・エクスポート API・Webhook の category は会計のカテゴリーを1つだけ出すため
+ *   カレンダー・CSV・エクスポート API・Webhook の category は会計のカテゴリーを1つだけ出すため。
+ *   品名だけの内訳（金額がすべて0）なら、最初にカテゴリーのある内訳のカテゴリーにする（全額がそこに計上される）
  */
 export function resolveExpenseCategories<Items extends readonly ExpenseItem[] | null | undefined>(expense: {
   amount: number;
@@ -159,14 +161,21 @@ export function resolveExpenseCategories<Items extends readonly ExpenseItem[] | 
     return { category: expense.category || undefined, items: items as Items };
   }
   const fallback = expense.category || FALLBACK_CATEGORY;
-  const resolvedItems = items.map((item) => ({ ...item, category: item.category || fallback }));
+  const fill = fallback.length <= MAX_EXPENSE_ITEM_CATEGORY_LENGTH ? fallback : undefined;
+  const resolvedItems = items.map((item) => {
+    const category = item.category || fill;
+    return category ? { ...item, category } : item;
+  });
   if (expense.category) {
     return { category: expense.category, items: resolvedItems };
+  }
+  if (itemsTotal(items) === 0) {
+    return { category: items.find((item) => item.category)?.category ?? FALLBACK_CATEGORY, items: resolvedItems };
   }
   const allocation = allocateExpenseByCategory({ amount: expense.amount, items: resolvedItems });
   const main = allocation.reduce<CategoryAmount | undefined>(
     (best, current) => (best === undefined || current.amount > best.amount ? current : best),
     undefined
   );
-  return { category: main?.category ?? fallback, items: resolvedItems };
+  return { category: main?.category ?? FALLBACK_CATEGORY, items: resolvedItems };
 }

@@ -4,6 +4,7 @@ import {
   finalizeItemDrafts,
   initialSpreadDifference,
   newItemDraft,
+  updateItemDraft,
   parseItemDrafts,
   summarizeItemDrafts,
   type ItemDraft,
@@ -212,6 +213,14 @@ describe('finalizeItemDrafts', () => {
     expect(finalizeItemDrafts(drafts, 500, { spreadDifference: false })).toEqual(parseItemDrafts(drafts));
   });
 
+  it('内訳が上限（200行）に達していれば残りの行を足さない（サーバーが受け付けない行数にしない）', () => {
+    const drafts = Array.from({ length: 200 }, (_, i) => draft({ name: `品${i}`, amount: '1' }));
+
+    const result = finalizeItemDrafts(drafts, 1000, { spreadDifference: false });
+
+    expect(result.ok && result.items).toHaveLength(200);
+  });
+
   it('入力に誤りがあればエラーのまま返す', () => {
     const bad = draft({ name: '卵', amount: 'abc' });
 
@@ -234,5 +243,20 @@ describe('initialSpreadDifference', () => {
     expect(initialSpreadDifference(undefined, 1100)).toBe(false);
     expect(initialSpreadDifference(null, 1100)).toBe(false);
     expect(initialSpreadDifference([{ name: '米', amount: 0 }], 1100)).toBe(false);
+  });
+});
+
+describe('updateItemDraft', () => {
+  it('品名か金額を書き換えた行は、保存済みの数量を外す（読み取りの誤りを直したときに古い数量が残らないように）', () => {
+    const saved = draft({ name: '洗剤', amount: '398', quantity: 2 });
+
+    expect(updateItemDraft(saved, { name: '柔軟剤' }).quantity).toBeUndefined();
+    expect(updateItemDraft(saved, { amount: '400' }).quantity).toBeUndefined();
+  });
+
+  it('カテゴリーだけを変えた行は数量を保つ', () => {
+    const saved = draft({ name: '洗剤', amount: '398', quantity: 2 });
+
+    expect(updateItemDraft(saved, { category: 'daily-goods' })).toEqual({ ...saved, category: 'daily-goods' });
   });
 });

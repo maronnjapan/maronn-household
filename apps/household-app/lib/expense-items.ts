@@ -127,6 +127,7 @@ export function finalizeItemDrafts(
 
   const items = parsed.items;
   const sum = itemsTotal(items);
+  const hasRoomForRow = items.length < MAX_EXPENSE_ITEMS;
   const difference = total - sum;
   if (sum === 0 || difference <= 0) return parsed;
 
@@ -134,7 +135,8 @@ export function finalizeItemDrafts(
     (item) => !item.name && (!item.category || (expenseCategory !== '' && item.category === expenseCategory))
   );
   const remainder = remainderIndex >= 0 ? (items[remainderIndex]?.amount ?? 0) + difference : difference;
-  if (remainder > MAX_EXPENSE_ITEM_AMOUNT) return parsed;
+  // 行を足せない（上限の行数・金額を超える）ときは、差を比率で配分する
+  if (remainder > MAX_EXPENSE_ITEM_AMOUNT || (remainderIndex < 0 && !hasRoomForRow)) return parsed;
   return {
     ok: true,
     items:
@@ -152,4 +154,15 @@ export function finalizeItemDrafts(
 export function initialSpreadDifference(items: readonly ExpenseItem[] | null | undefined, amount: number): boolean {
   const total = itemsTotal(items);
   return total > 0 && total < amount;
+}
+
+/**
+ * 行を書き換える。品名か金額を書き換えた行は保存済みの数量を外す
+ * （数量はフォームに出さないので、MCP の読み取りの誤りを直したときに古い「×2」が黙って残らないように）
+ */
+export function updateItemDraft(draft: ItemDraft, patch: Partial<Omit<ItemDraft, 'key'>>): ItemDraft {
+  const updated = { ...draft, ...patch };
+  if (patch.name === undefined && patch.amount === undefined) return updated;
+  const { quantity: _quantity, ...withoutQuantity } = updated;
+  return withoutQuantity;
 }

@@ -286,3 +286,27 @@ describe('resolveExpenseCategories', () => {
     expect(resolveExpenseCategories({ amount: 500, items: null })).toEqual({ category: undefined, items: null });
   });
 });
+
+describe('resolveExpenseCategories（端のケース）', () => {
+  it('品名だけの内訳（金額がすべて0）で会計のカテゴリーがなければ、最初にカテゴリーのある内訳のカテゴリーを会計のカテゴリーにする', () => {
+    const result = resolveExpenseCategories({
+      amount: 500,
+      items: [
+        { name: 'おにぎり', amount: 0 },
+        { name: '牛乳', amount: 0, category: 'food' },
+        { name: '洗剤', amount: 0, category: 'daily-goods' },
+      ],
+    });
+
+    expect(result.category).toBe('food');
+    expect(allocateExpenseByCategory({ amount: 500, ...result })).toEqual([{ category: 'food', amount: 500 }]);
+  });
+
+  it('内訳に入れられない長さの会計のカテゴリーは内訳に写さない（内訳はカテゴリーなしのまま会計のカテゴリーに計上される）', () => {
+    const long = 'x'.repeat(41);
+
+    const result = resolveExpenseCategories({ amount: 500, category: long, items: [{ name: '牛乳', amount: 500 }] });
+
+    expect(result).toEqual({ category: long, items: [{ name: '牛乳', amount: 500 }] });
+  });
+});

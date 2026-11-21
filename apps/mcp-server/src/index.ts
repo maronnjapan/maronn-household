@@ -172,7 +172,8 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
     {
       description:
         '月の支出（1件 = 1回の会計、amount は支払総額。レシート由来は店名付き、category は会計の主なカテゴリー）。' +
-        'total はサブ予算を含む月の支出合計、byCategory は内訳の比率で按分したカテゴリ別の額（カテゴリ別の集計にはこれを使う）。' +
+        'ただし 2026-11-21 までに記録したレシートは、同じ receiptId の支出がカテゴリ別に複数に分かれている（合わせて1回の会計）。' +
+        'total と byCategory はサブ予算を含む月の全支出で、byCategory は内訳の比率で按分したカテゴリ別の額（カテゴリ別の集計にはこれを使う。予算に対する内訳は get_budget_summary）。' +
         'includeItems で各支出の内訳（expenses[].items）と、レシートの店名・日時・税・支払方法（receipts。以前のレシートは明細も items に持つ）を返す',
       inputSchema: { month, includeItems: z.boolean().optional() },
       annotations: readOnly,

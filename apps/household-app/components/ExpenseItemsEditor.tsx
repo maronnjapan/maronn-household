@@ -1,6 +1,14 @@
+import { useId } from 'react';
+import { FALLBACK_CATEGORY } from '@maronn/domain/categories';
 import { useCategories } from '../hooks/use-categories';
 import { categoryChoices } from '../lib/categories';
-import { newItemDraft, parseItemDrafts, summarizeItemDrafts, type ItemDraft } from '../lib/expense-items';
+import {
+  newItemDraft,
+  parseItemDrafts,
+  summarizeItemDrafts,
+  updateItemDraft,
+  type ItemDraft,
+} from '../lib/expense-items';
 
 interface ExpenseItemsEditorProps {
   drafts: ItemDraft[];
@@ -38,28 +46,32 @@ export function ExpenseItemsEditor({
   onUseItemsTotal,
 }: ExpenseItemsEditorProps) {
   const { categories, labelOf } = useCategories();
+  const errorId = useId();
   const parsed = parseItemDrafts(drafts);
   const invalidKeys = new Set(parsed.ok ? [] : parsed.invalidKeys);
   const { itemsTotal, difference } = summarizeItemDrafts(drafts, total);
-  // 一覧にない値（CSV から取り込んだ値など）はそのまま出す
-  const expenseCategoryLabel = (expenseCategory && (labelOf(expenseCategory) ?? expenseCategory)) || 'その他';
+  // 未選択ならカテゴリーのない支出の計上先（その他。名前は変えられる）。一覧にない値（CSV から取り込んだ値など）はそのまま出す
+  const expenseCategoryLabel = expenseCategory
+    ? (labelOf(expenseCategory) ?? expenseCategory)
+    : (labelOf(FALLBACK_CATEGORY) ?? 'その他');
   const hasRows = drafts.length > 0;
 
-  const update = (key: string, patch: Partial<ItemDraft>) =>
-    onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
+  const update = (key: string, patch: Partial<Omit<ItemDraft, 'key'>>) =>
+    onChange(drafts.map((draft) => (draft.key === key ? updateItemDraft(draft, patch) : draft)));
 
   return (
     <div className="expense-items-editor">
       {hasRows && (
         <ul className="expense-items-rows">
-          {drafts.map((draft, index) => (
-            <li
-              key={draft.key}
-              className={`expense-items-row${invalidKeys.has(draft.key) ? ' expense-items-row-invalid' : ''}`}
-            >
+          {drafts.map((draft, index) => {
+            const invalid = invalidKeys.has(draft.key);
+            const invalidProps = invalid ? { 'aria-invalid': true, 'aria-describedby': errorId } : {};
+            return (
+            <li key={draft.key} className={`expense-items-row${invalid ? ' expense-items-row-invalid' : ''}`}>
               <input
                 type="text"
                 className="expense-items-name"
+                {...invalidProps}
                 aria-label={`内訳${index + 1}の品名`}
                 placeholder="品名"
                 value={draft.name}
@@ -77,6 +89,7 @@ export function ExpenseItemsEditor({
                 type="text"
                 inputMode="numeric"
                 className="expense-items-amount"
+                {...invalidProps}
                 aria-label={`内訳${index + 1}の金額`}
                 placeholder="金額"
                 value={draft.amount}
@@ -96,7 +109,8 @@ export function ExpenseItemsEditor({
                 ))}
               </select>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
@@ -148,7 +162,7 @@ export function ExpenseItemsEditor({
       )}
 
       {!parsed.ok && (
-        <p className="expense-items-error" role="alert">
+        <p id={errorId} className="expense-items-error" role="alert">
           {parsed.error}
         </p>
       )}

@@ -113,14 +113,14 @@ export function summarizeItemDrafts(
 /**
  * 保存する内訳を作る
  * 支払総額より内訳の合計が少なければ、足りない分を「残り」の1行（品名なし・カテゴリーなし＝会計のカテゴリーに計上）にする。
- * 品名もカテゴリーもない行がすでにあれば（前に保存した残り）その行に足す。
+ * 品名がなくカテゴリーが空か会計のカテゴリーの行がすでにあれば（前に保存した残り。保存時にカテゴリーが入る）その行に足す。
  * spreadDifference なら残りの行は作らず、差は消費税・値引きとしてカテゴリー別の集計で内訳の比率で配る。
  * 内訳の合計が支払総額以上（値引き）や、品名だけの内訳（金額がすべて0）のときも残りの行は作らない
  */
 export function finalizeItemDrafts(
   drafts: readonly ItemDraft[],
   total: number | null,
-  { spreadDifference }: { spreadDifference: boolean }
+  { spreadDifference, expenseCategory = '' }: { spreadDifference: boolean; expenseCategory?: string }
 ): ParsedItems {
   const parsed = parseItemDrafts(drafts);
   if (!parsed.ok || !parsed.items || spreadDifference || total === null) return parsed;
@@ -130,7 +130,9 @@ export function finalizeItemDrafts(
   const difference = total - sum;
   if (sum === 0 || difference <= 0) return parsed;
 
-  const remainderIndex = items.findIndex((item) => !item.name && !item.category);
+  const remainderIndex = items.findIndex(
+    (item) => !item.name && (!item.category || (expenseCategory !== '' && item.category === expenseCategory))
+  );
   const remainder = remainderIndex >= 0 ? (items[remainderIndex]?.amount ?? 0) + difference : difference;
   if (remainder > MAX_EXPENSE_ITEM_AMOUNT) return parsed;
   return {
@@ -140,4 +142,14 @@ export function finalizeItemDrafts(
         ? items.map((item, index) => (index === remainderIndex ? { ...item, amount: remainder } : item))
         : [...items, { name: '', amount: remainder }],
   };
+}
+
+/**
+ * 保存済みの支出を編集するときの「差額は消費税・値引き」の既定
+ * 内訳の合計が支払総額より少ない記録（レシートの消費税など、差を比率で配分している）は、そのまま比率での配分にする。
+ * 残りの行を作る既定にすると、メモを直しただけで差が「残り」の行に変わってしまうため
+ */
+export function initialSpreadDifference(items: readonly ExpenseItem[] | null | undefined, amount: number): boolean {
+  const total = itemsTotal(items);
+  return total > 0 && total < amount;
 }

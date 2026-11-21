@@ -80,7 +80,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
   const handleSubmit = async () => {
     const amount = evaluateExpression(expression);
     // 内訳の合計が支払総額より少なければ、足りない分を「残り」の1行にする（差を税・値引きとして配分するなら作らない）
-    const items = finalizeItemDrafts(itemDrafts, amount, { spreadDifference });
+    const items = finalizeItemDrafts(itemDrafts, amount, { spreadDifference, expenseCategory: category });
     if (!amount || amount <= 0 || !items.ok) {
       return;
     }
@@ -199,9 +199,11 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
       {/* 閉じると中身は描画しないので、見出しに入力済みの内訳を出す（隠れた内訳に気づかず送信しないように） */}
       <Accordion
         title={
-          itemCount > 0
-            ? `内訳（${itemCount}件・¥${summarizeItemDrafts(itemDrafts, null).itemsTotal.toLocaleString()}）`
-            : '内訳（任意）'
+          !parsedItems.ok
+            ? '内訳（入力を確認してください）'
+            : itemCount > 0
+              ? `内訳（${itemCount}件・¥${summarizeItemDrafts(itemDrafts, null).itemsTotal.toLocaleString()}）`
+              : '内訳（任意）'
         }
         defaultOpen={false}
       >

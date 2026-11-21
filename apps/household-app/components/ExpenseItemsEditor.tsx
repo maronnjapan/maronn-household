@@ -41,7 +41,8 @@ export function ExpenseItemsEditor({
   const parsed = parseItemDrafts(drafts);
   const invalidKeys = new Set(parsed.ok ? [] : parsed.invalidKeys);
   const { itemsTotal, difference } = summarizeItemDrafts(drafts, total);
-  const expenseCategoryLabel = (expenseCategory && labelOf(expenseCategory)) || 'その他';
+  // 一覧にない値（CSV から取り込んだ値など）はそのまま出す
+  const expenseCategoryLabel = (expenseCategory && (labelOf(expenseCategory) ?? expenseCategory)) || 'その他';
   const hasRows = drafts.length > 0;
 
   const update = (key: string, patch: Partial<ItemDraft>) =>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   draftsFromItems,
   finalizeItemDrafts,
+  initialSpreadDifference,
   newItemDraft,
   parseItemDrafts,
   summarizeItemDrafts,
@@ -160,6 +161,37 @@ describe('finalizeItemDrafts', () => {
     });
   });
 
+  it('保存済みの残りの行（品名なし・会計のカテゴリー）にも足りない分を足す（行を増やさない）', () => {
+    const drafts = draftsFromItems([
+      { name: 'シャンプー', amount: 480, category: 'daily-goods' },
+      { name: '', amount: 2800, category: 'food' },
+    ]);
+
+    const result = finalizeItemDrafts(drafts, 3500, { spreadDifference: false, expenseCategory: 'food' });
+
+    expect(result).toEqual({
+      ok: true,
+      items: [
+        { name: 'シャンプー', amount: 480, category: 'daily-goods' },
+        { name: '', amount: 3020, category: 'food' },
+      ],
+    });
+  });
+
+  it('品名なしでも会計と違うカテゴリーの行（カテゴリーごとの金額）には足さず、残りの行を加える', () => {
+    const drafts = [draft({ name: '', amount: '1200', category: 'daily-goods' })];
+
+    const result = finalizeItemDrafts(drafts, 3000, { spreadDifference: false, expenseCategory: 'food' });
+
+    expect(result).toEqual({
+      ok: true,
+      items: [
+        { name: '', amount: 1200, category: 'daily-goods' },
+        { name: '', amount: 1800 },
+      ],
+    });
+  });
+
   it('差額を税・値引きとして配分するなら、内訳はそのまま（カテゴリー別には比率で按分される）', () => {
     const drafts = [draft({ name: '米', amount: '700', category: 'food' }), draft({ name: '紙', amount: '300' })];
 
@@ -184,5 +216,23 @@ describe('finalizeItemDrafts', () => {
     const bad = draft({ name: '卵', amount: 'abc' });
 
     expect(finalizeItemDrafts([bad], 500, { spreadDifference: false })).toMatchObject({ ok: false });
+  });
+});
+
+describe('initialSpreadDifference', () => {
+  it('保存済みの内訳の合計が支払総額より少なければ（差を比率で配分している記録）、編集でも比率での配分を既定にする', () => {
+    const items = [
+      { name: '米', amount: 700, category: 'food' },
+      { name: '紙', amount: 300, category: 'daily-goods' },
+    ];
+
+    expect(initialSpreadDifference(items, 1100)).toBe(true);
+  });
+
+  it('内訳の合計が支払総額と同じ・内訳がない・品名だけの内訳なら比率での配分にしない', () => {
+    expect(initialSpreadDifference([{ name: '米', amount: 1100 }], 1100)).toBe(false);
+    expect(initialSpreadDifference(undefined, 1100)).toBe(false);
+    expect(initialSpreadDifference(null, 1100)).toBe(false);
+    expect(initialSpreadDifference([{ name: '米', amount: 0 }], 1100)).toBe(false);
   });
 });

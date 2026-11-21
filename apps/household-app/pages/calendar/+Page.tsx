@@ -12,7 +12,7 @@ import {
   downloadCSV,
   type ImportableExpense,
 } from '../../lib/csv-parser';
-import { draftsFromItems, finalizeItemDrafts, type ItemDraft } from '../../lib/expense-items';
+import { draftsFromItems, finalizeItemDrafts, initialSpreadDifference, type ItemDraft } from '../../lib/expense-items';
 import { CategoryOptions } from '../../components/CategoryOptions';
 import { ExpenseItemsEditor } from '../../components/ExpenseItemsEditor';
 import { ExpenseItemsList } from '../../components/ExpenseItemsList';
@@ -153,7 +153,8 @@ export function Page() {
       category: expense.category ?? '',
       items: draftsFromItems(expense.items),
       saveItems: expense.items !== undefined,
-      spreadDifference: false,
+      // 差を比率で配分している記録（レシートの消費税など）は、そのまま比率での配分を既定にする
+      spreadDifference: initialSpreadDifference(expense.items, expense.amount),
     });
     setDeletingId(null);
   }
@@ -166,7 +167,10 @@ export function Page() {
     if (!editing) return;
 
     const amount = parseTotal(editing.amount);
-    const items = finalizeItemDrafts(editing.items, amount, { spreadDifference: editing.spreadDifference });
+    const items = finalizeItemDrafts(editing.items, amount, {
+      spreadDifference: editing.spreadDifference,
+      expenseCategory: editing.category,
+    });
     if (amount === null || !items.ok) {
       return;
     }
@@ -217,7 +221,10 @@ export function Page() {
     if (!adding || !selectedDay) return;
 
     const amount = parseTotal(adding.amount);
-    const items = finalizeItemDrafts(adding.items, amount, { spreadDifference: adding.spreadDifference });
+    const items = finalizeItemDrafts(adding.items, amount, {
+      spreadDifference: adding.spreadDifference,
+      expenseCategory: adding.category,
+    });
     if (amount === null || !items.ok) {
       return;
     }

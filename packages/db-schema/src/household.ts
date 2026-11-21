@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer, real, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, real, index, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const expenses = sqliteTable(
   'expenses',
@@ -87,12 +88,19 @@ export const categories = sqliteTable(
     /** 支出・レシート明細の category に保存する値（既定のカテゴリーは 'food' など、追加したカテゴリーは ULID） */
     value: text('value').notNull(),
     label: text('label').notNull(),
+    /** 名前の比較用の形（@maronn/domain の categoryMatchKey）。有効なカテゴリーの中で一意 */
+    labelKey: text('label_key').notNull(),
     /** 削除日時（削除しても過去の支出の表示名に使うため、行は残す） */
     deletedAt: text('deleted_at'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.value] })]
+  (table) => [
+    primaryKey({ columns: [table.userId, table.value] }),
+    uniqueIndex('categories_user_label_key_unique')
+      .on(table.userId, table.labelKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ]
 );
 
 export const apiTokens = sqliteTable('api_tokens', {

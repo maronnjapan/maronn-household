@@ -484,10 +484,11 @@ OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud �
 - `list_categories` / `create_category` / `update_category` / `delete_category`: カテゴリーの一覧・追加・名前変更・削除
   - 既定のカテゴリーも名前変更・削除できる。「その他」（other、カテゴリーのない支出の計上先）は削除不可
   - 支出の行は書き換えない（value は不変、削除は deleted_at を付けるだけ）。サーバーで支出を書き換えると、端末の未送信の編集との同期で消えたり巻き戻ったりするため
+  - 名前は全角半角・大文字小文字・見えない書式文字を区別せずに比べ（`categoryMatchKey`）、有効なカテゴリーの中で一意（`label_key` の部分一意インデックス。同時に作られても重複しない）
   - 同じ名前の作成は既存を返し（existing）、削除済みと同じ名前なら復元する（restored）。有効なカテゴリーは 30 個まで、追加は削除済みを含めて 100 個まで
   - アプリは一覧（tRPC `getCategories`）を記録・カレンダーの選択肢と表示名に使い、オフライン用に直前の一覧を localStorage に保存する。アプリに管理画面はない
 - 接続先: `https://maronn-household-budget.com/mcp`（Claude のカスタムコネクタなど。ログインと同意は認証基盤の画面）
-- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る
+- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る。カテゴリー名は以後の会話のツールの説明に載る（作成は「ユーザーが頼んだときだけ」とツールの説明に書いている）
 
 ### 月次予算設定機能
 

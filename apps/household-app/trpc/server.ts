@@ -15,6 +15,7 @@ import {
   categories,
 } from '@maronn/db-schema/household';
 import { z } from 'zod';
+import { createHouseholdStore } from '@maronn/household-store';
 import { generateSecureToken, hashToken } from '../lib/api-token';
 import {
   encryptWebhookSecret,
@@ -35,7 +36,6 @@ import {
   applyHeaderValues,
   applyBodyTemplateValues,
   listWebhookTemplatePresets as listTemplatePresets,
-  resolveCategories,
   type ScheduleConfig,
   type WebhookServiceType,
 } from '@maronn/domain';
@@ -983,22 +983,14 @@ export const appRouter = router({
     }),
 
   // カテゴリー一覧（認証必須）
-  // 既定のカテゴリーに、このユーザーの追加・名前変更・削除（MCP で操作する）を重ねたもの。
+  // 既定のカテゴリーに、このユーザーの追加・名前変更・削除（MCP で操作する）を重ねたもの（MCP サーバーと同じストアで読む）。
   // 削除済みも含める（過去の支出の表示名に使う。選択肢からはクライアントが外す）
   getCategories: protectedProcedure.query(async (opts) => {
-    const database = opts.ctx.env?.DB ? drizzle(opts.ctx.env.DB) : opts.ctx.db;
-    const records = await database
-      .select({
-        value: categories.value,
-        label: categories.label,
-        deletedAt: categories.deletedAt,
-        createdAt: categories.createdAt,
-      })
-      .from(categories)
-      .where(eq(categories.userId, opts.ctx.user.id))
-      .all();
-
-    return { categories: resolveCategories(records) };
+    const env = opts.ctx.env;
+    if (!env) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Environment not available' });
+    }
+    return { categories: await createHouseholdStore(env.DB, opts.ctx.user.id).listCategories() };
   }),
 
   // サブ予算一覧取得（認証必須）

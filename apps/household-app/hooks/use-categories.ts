@@ -23,6 +23,9 @@ export function useCategories() {
     initialData: () => readCachedCategories(userId),
     // 保存した一覧は古いかもしれないので、ログイン中ならすぐ取り直す
     initialDataUpdatedAt: 0,
+    // カテゴリーは MCP（アプリの外）で変わるので、支出と同じく、表示のたびとタブに戻ったときに取り直す
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
   const categories = query.data ?? DEFAULT_CATEGORIES;
 

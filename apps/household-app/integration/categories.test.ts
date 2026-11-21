@@ -6,6 +6,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDatabase, type TestDatabase } from '@maronn/test-utils';
 import { dbD1 } from '@maronn/db-schema/db';
+import { categoryMatchKey } from '@maronn/domain/categories';
 import { createAuthServer } from 'auth-server/src/app';
 import { generateSigningKey } from 'auth-server/src/signing-keys';
 import { appRouter, type Env } from '../trpc/server';
@@ -54,9 +55,9 @@ function callerFor(user: typeof USER | null) {
 async function insertCategory(userId: string, value: string, label: string, deletedAt: string | null = null) {
   await testDb.db
     .prepare(
-      'INSERT INTO categories (user_id, value, label, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO categories (user_id, value, label, label_key, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .bind(userId, value, label, deletedAt, '2026-11-20T00:00:00.000Z', '2026-11-20T00:00:00.000Z')
+    .bind(userId, value, label, categoryMatchKey(label), deletedAt, '2026-11-20T00:00:00.000Z', '2026-11-20T00:00:00.000Z')
     .run();
 }
 

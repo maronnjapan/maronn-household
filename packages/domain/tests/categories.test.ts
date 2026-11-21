@@ -103,9 +103,13 @@ describe('findCategory', () => {
     expect(() => findCategory(categories, 'ペット用品')).toThrow(/ペット用品.*食費.*Pet.*その他/);
   });
 
-  it('削除済みのカテゴリーは使えない（削除済みであることを伝える）', () => {
-    expect(() => findCategory(categories, '旅行')).toThrow(/削除済み/);
+  it('削除済みのカテゴリーは使えない（削除済みであることと、使えるカテゴリーの名前を伝える）', () => {
+    expect(() => findCategory(categories, '旅行')).toThrow(/旅行.*削除済み.*食費.*Pet.*その他/);
     expect(() => findCategory(categories, '01JDOLD')).toThrow(/削除済み/);
+  });
+
+  it('ゼロ幅スペースなどの見えない書式文字は無視して比べる', () => {
+    expect(findCategory(categories, '食\u200b費').value).toBe('food');
   });
 });
 
@@ -157,8 +161,29 @@ describe('planCategoryCreation', () => {
     expect(planCategoryCreation(categories, '旅行', context).change?.value).toBe('01JDOLDER');
   });
 
+  it('見えない書式文字だけが違う名前は、同じ名前とみなして作らない', () => {
+    expect(planCategoryCreation(resolveCategories([]), '食費\u200b', context)).toMatchObject({
+      status: 'existing',
+      category: { value: 'food' },
+    });
+  });
+
+  it('削除済みのカテゴリーの value が有効なカテゴリーの名前と重なるなら、復元せずに新しく作る', () => {
+    // 既定の「食費」（value: food）を削除してから「Food」を追加した場合、food を戻すと「Food」と区別できなくなる
+    const categories = resolveCategories([
+      record({ value: 'food', label: '食費', deletedAt: NOW }),
+      custom('01JDFOOD', 'Food', '2026-11-02T00:00:00.000Z'),
+    ]);
+
+    expect(planCategoryCreation(categories, '食費', context)).toMatchObject({
+      status: 'created',
+      change: { value: '01JDNEW', label: '食費' },
+    });
+  });
+
   it.each([
     ['空の名前', '   '],
+    ['見えない書式文字だけの名前', '\u200b\u200d'],
     ['長すぎる名前', 'あ'.repeat(31)],
     ['改行を含む名前', 'ペット\n費'],
   ])('%sはエラー', (_label, label) => {
@@ -171,8 +196,8 @@ describe('planCategoryCreation', () => {
     );
     const full = resolveCategories([...records, custom('01JDOLD', '旅行', '2026-11-03T00:00:00.000Z', NOW)]);
 
-    expect(() => planCategoryCreation(full, 'ペット', context)).toThrow(/30/);
-    expect(() => planCategoryCreation(full, '旅行', context)).toThrow(/30/);
+    expect(() => planCategoryCreation(full, 'ペット', context)).toThrow(/30個まで/);
+    expect(() => planCategoryCreation(full, '旅行', context)).toThrow(/30個まで/);
     expect(planCategoryCreation(full, '食費', context).status).toBe('existing');
   });
 
@@ -182,7 +207,7 @@ describe('planCategoryCreation', () => {
     );
     const categories = resolveCategories(deleted);
 
-    expect(() => planCategoryCreation(categories, 'ペット', context)).toThrow(/100/);
+    expect(() => planCategoryCreation(categories, 'ペット', context)).toThrow(/100個まで/);
     expect(planCategoryCreation(categories, '削除0', context).status).toBe('restored');
   });
 });

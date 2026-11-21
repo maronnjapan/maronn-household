@@ -14,6 +14,7 @@ import {
   receipts,
 } from '@maronn/db-schema/household';
 import {
+  categoryMatchKey,
   resolveCategories,
   type Category,
   type CategoryChange,
@@ -45,6 +46,13 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       lt(expenses.date, end)
     );
   };
+
+  const categoryRow = (change: CategoryChange) => ({
+    userId,
+    ...change,
+    labelKey: categoryMatchKey(change.label),
+    createdAt: change.updatedAt,
+  });
 
   return {
     /**
@@ -188,17 +196,32 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       return resolveCategories(records);
     },
 
-    /** カテゴリーの変更を保存する（同じ value の行があれば名前・削除日時を上書きする） */
+    /**
+     * 新しく作るカテゴリーを保存する。
+     * 同じ名前の有効なカテゴリーが（同時に作られて）すでにあれば保存せずに false
+     */
+    async addCategory(change: CategoryChange): Promise<boolean> {
+      const result = await db
+        .insert(categories)
+        .values(categoryRow(change))
+        .onConflictDoNothing()
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    /** 既存のカテゴリー（行のない既定のカテゴリーを含む）の名前変更・削除・復元を保存する */
     async saveCategory(change: CategoryChange) {
+      const row = categoryRow(change);
       await db
         .insert(categories)
-        .values({ userId, ...change, createdAt: change.updatedAt })
+        .values(row)
         .onConflictDoUpdate({
           target: [categories.userId, categories.value],
           set: {
-            label: change.label,
-            deletedAt: change.deletedAt,
-            updatedAt: change.updatedAt,
+            label: row.label,
+            labelKey: row.labelKey,
+            deletedAt: row.deletedAt,
+            updatedAt: row.updatedAt,
           },
         })
         .run();

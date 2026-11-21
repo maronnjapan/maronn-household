@@ -20,6 +20,7 @@
     "@aws-sdk/client-ses": "^3.750.0",
     "@maronn/db-schema": "workspace:*",
     "@maronn/domain": "workspace:*",
+    "@maronn/household-store": "workspace:*",
     "@photonjs/cloudflare": "^0.1.12",
     "@photonjs/hono": "^0.1.11",
     "@tanstack/react-query": "^5.90.14",

@@ -321,7 +321,7 @@ export function Page() {
                                   </span>
                                 )}
                               </span>
-                              {expense.category && (
+                              {expense.category && labelOf(expense.category) && (
                                 <span className="expense-category">{labelOf(expense.category)}</span>
                               )}
                               {expense.memo && <span className="expense-memo">{expense.memo}</span>}

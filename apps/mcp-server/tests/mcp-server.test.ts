@@ -481,6 +481,33 @@ describe('カテゴリー', () => {
     expect(await count('categories')).toBe(1);
   });
 
+  it('全角半角・大文字小文字だけが違う名前も同じカテゴリーとみなし、record_receipt の結果にもカテゴリー名を付ける', async () => {
+    const { data: pet } = await callTool('create_category', { label: 'Pet' });
+
+    const fullWidth = await callTool('create_category', { label: 'ＰＥＴ' });
+    const recorded = await callTool('record_receipt', { ...RECEIPT, items: undefined, category: 'ｐｅｔ' });
+
+    expect(fullWidth.data).toEqual({ status: 'existing', value: pet.value, label: 'Pet' });
+    expect(recorded.data.expenses).toEqual([
+      { amount: 1100, category: pet.value, categoryLabel: 'Pet', memo: 'スーパーA 新宿店' },
+    ]);
+  });
+
+  it('同じ名前の create_category を同時に呼んでも、カテゴリーは 1 つだけ作る（後の呼び出しには既存のものを返す）', async () => {
+    const token = await accessToken();
+
+    const results = await Promise.all([
+      callTool('create_category', { label: 'ペット' }, token),
+      callTool('create_category', { label: 'ペット' }, token),
+    ]);
+
+    const { data } = await callTool('list_categories', {});
+    expect(results.map((result) => result.data.status).sort()).toEqual(['created', 'existing']);
+    expect(new Set(results.map((result) => result.data.value)).size).toBe(1);
+    expect(data.categories.filter((c: { label: string }) => c.label === 'ペット')).toHaveLength(1);
+    expect(await count('categories')).toBe(1);
+  });
+
   it('delete_category で削除したカテゴリーは一覧から消え、記録済みの支出はカテゴリーと名前を保つ', async () => {
     const { data: pet } = await callTool('create_category', { label: 'ペット' });
     await callTool('record_receipt', { ...RECEIPT, items: undefined, category: 'ペット' });

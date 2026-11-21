@@ -41,18 +41,19 @@ const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
   .describe('YYYY-MM');
-/** カテゴリーの指定（value か名前）。追加したカテゴリーの value（ULID、26 文字）と名前が入る長さ */
-const categoryText = () => text(40);
+/** カテゴリーを value か名前で指す入力（追加したカテゴリーの value は ULID の 26 文字）。欄ごとに新しく作る */
+const categoryRef = () => text(40);
 const now = () => new Date().toISOString();
 
 function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCaller, categories: Category[]) {
   const server = new McpServer({ name: 'maronn-household', version: '1.0.0' });
   const readOnly = { readOnlyHint: true };
-  const active = categories.filter((category) => !category.deleted);
-  const catalog = JSON.stringify(Object.fromEntries(active.map(({ value, label }) => [value, label])));
+  const catalog = JSON.stringify(
+    Object.fromEntries(categories.filter((category) => !category.deleted).map(({ value, label }) => [value, label]))
+  );
   // 欄ごとに新しいスキーマを作る（同じスキーマを使い回すと JSON Schema が $ref になり、説明が読まれないことがある）
-  const categoryField = (note = '') =>
-    categoryText()
+  const receiptCategory = (note = '') =>
+    categoryRef()
       .optional()
       .describe(`${note}カテゴリーの value か名前（合うものがなければ other）: ${catalog}`);
   /** カテゴリーの指定を value にそろえる。知らない・削除したカテゴリーは CategoryError（ツールの結果はエラーになる） */
@@ -77,14 +78,14 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
         totalAmount: yen.positive().describe('支払総額（税込・値引き後、円）'),
         taxAmount: yen.optional().describe('消費税額（円）'),
         paymentMethod: text(30).optional().describe('cash/credit_card/e_money/qr_code/other'),
-        category: categoryField('明細にカテゴリーがないときに使う。'),
+        category: receiptCategory('明細にカテゴリーがないときに使う。'),
         items: z
           .array(
             z.object({
               name: text(100),
               amount: yen.describe('数量×単価（円）'),
               quantity: z.number().positive().optional(),
-              category: categoryField(),
+              category: receiptCategory(),
             })
           )
           .max(200)
@@ -105,7 +106,12 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
       if (existing.length > 0) return json({ duplicate: true, existing });
       const plan = planReceiptRecording(receipt, { userId, clientId, now: now(), newId: ulid });
       await store.saveReceipt(plan);
-      const expenses = plan.expenses.map(({ amount, category, memo }) => ({ amount, category, memo }));
+      const expenses = plan.expenses.map(({ amount, category, memo }) => ({
+        amount,
+        category,
+        categoryLabel: labelOf(category),
+        memo,
+      }));
       return json({
         duplicate: false,
         receiptId: plan.receipt.id,
@@ -163,13 +169,24 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
     }
   );
 
+  registerCategoryTools(server, store, categories);
+  return server;
+}
+
+/** カテゴリーの一覧・追加・名前変更・削除（支出の行は書き換えない） */
+function registerCategoryTools(server: McpServer, store: HouseholdStore, categories: Category[]) {
   server.registerTool(
     'list_categories',
     {
       description: '支出カテゴリーの一覧（value と名前。builtIn は既定のカテゴリー）',
-      annotations: readOnly,
+      annotations: { readOnlyHint: true },
     },
-    async () => json({ categories: active.map(({ value, label, builtIn }) => ({ value, label, builtIn })) })
+    async () =>
+      json({
+        categories: categories
+          .filter((category) => !category.deleted)
+          .map(({ value, label, builtIn }) => ({ value, label, builtIn })),
+      })
   );
 
   server.registerTool(
@@ -177,14 +194,19 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
     {
       description:
         'カテゴリーを追加する。ユーザーが追加を頼んだときだけ使う（記録で合うカテゴリーがないだけなら other に計上する）。' +
-        '同じ名前のカテゴリーがあれば作らずにそれを返し（status: existing）、削除したカテゴリーと同じ名前なら復元する（status: restored。そのカテゴリーの過去の支出も戻る）',
+        '同じ名前のカテゴリーがあれば作らずにそれを返し（status: existing）、削除したカテゴリーと同じ名前なら復元する（status: restored。また選べるようになる）',
       inputSchema: { label: text(MAX_CATEGORY_LABEL_LENGTH).describe('カテゴリー名') },
       annotations: { destructiveHint: false },
     },
     async ({ label }) => {
-      const { status, category, change } = planCategoryCreation(categories, label, { now: now(), newId: ulid });
-      if (change) await store.saveCategory(change);
-      return json({ status, value: category.value, label: category.label });
+      const plan = planCategoryCreation(categories, label, { now: now(), newId: ulid });
+      if (plan.status === 'created' && !(await store.addCategory(plan.change))) {
+        // 同じ名前のカテゴリーが同時に作られていた（並列の呼び出しや再送）。作らずにそれを返す
+        const existing = findCategory(await store.listCategories(), plan.category.label);
+        return json({ status: 'existing', value: existing.value, label: existing.label });
+      }
+      if (plan.status === 'restored') await store.saveCategory(plan.change);
+      return json({ status: plan.status, value: plan.category.value, label: plan.category.label });
     }
   );
 
@@ -193,7 +215,7 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
     {
       description: 'カテゴリーの名前を変える（既定のカテゴリーも変えられる）。記録済みの支出も新しい名前で表示される',
       inputSchema: {
-        category: categoryText().describe('名前を変えるカテゴリーの value か今の名前'),
+        category: categoryRef().describe('名前を変えるカテゴリーの value か今の名前'),
         label: text(MAX_CATEGORY_LABEL_LENGTH).describe('新しい名前'),
       },
       annotations: { destructiveHint: false, idempotentHint: true },
@@ -211,7 +233,7 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
       description:
         'カテゴリーを削除する（カテゴリーのない支出の計上先 other は削除できない）。' +
         '記録済みの支出はそのカテゴリーと名前のまま残り（expenseCount 件）、新しい記録には使えなくなる',
-      inputSchema: { category: categoryText().describe('削除するカテゴリーの value か名前') },
+      inputSchema: { category: categoryRef().describe('削除するカテゴリーの value か名前') },
       annotations: { destructiveHint: true },
     },
     async (input) => {
@@ -225,5 +247,4 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
       });
     }
   );
-  return server;
 }

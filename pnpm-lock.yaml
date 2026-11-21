@@ -114,6 +114,9 @@ importers:
       '@maronn/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@maronn/household-store':
+        specifier: workspace:*
+        version: link:../../packages/household-store
       '@photonjs/cloudflare':
         specifier: ^0.1.12
         version: 0.1.13(@cloudflare/workers-types@4.20260702.1)(hono@4.13.19)(srvx@0.9.8)(vite@7.3.1(@types/node@20.19.30))(workerd@1.20260120.0)(wrangler@4.60.0(@cloudflare/workers-types@4.20260702.1))

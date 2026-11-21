@@ -33,7 +33,9 @@ async function insertExpense(id: string, userId: string) {
 
 async function insertCategory(userId: string, value: string) {
 	await testDb.db
-		.prepare("INSERT INTO categories (user_id, value, label, created_at, updated_at) VALUES (?, ?, 'ペット', 'x', 'x')")
+		.prepare(
+			"INSERT INTO categories (user_id, value, label, label_key, created_at, updated_at) VALUES (?, ?, 'ペット', 'ペット', 'x', 'x')"
+		)
 		.bind(userId, value)
 		.run();
 }

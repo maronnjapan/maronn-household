@@ -88,7 +88,7 @@ export function resolveCategories(records: CategoryRecord[]): Category[] {
   const added = records
     .filter((record) => !BUILT_IN_VALUES.has(record.value))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.value.localeCompare(b.value))
-    .map(({ value, label, deletedAt }): Category => ({ value, label, builtIn: false, deleted: deletedAt !== null }));
+    .map(({ value, label, deletedAt }): Category => ({ value, label, builtIn: false, deleted: Boolean(deletedAt) }));
   const isFallback = (category: Category) => category.value === FALLBACK_CATEGORY;
   return [...builtIns.filter((c) => !isFallback(c)), ...added, ...builtIns.filter(isFallback)];
 }
@@ -98,13 +98,16 @@ export function categoryLabel(categories: Category[], value: string): string | u
   return categories.find((category) => category.value === value)?.label;
 }
 
-/** 名前・value の比較用（前後の空白、全角半角、大文字小文字を区別しない） */
-function matchKey(text: string): string {
-  return text.normalize('NFKC').trim().toLowerCase();
+/**
+ * 名前・value の比較用の形（前後の空白、全角半角、大文字小文字、ゼロ幅スペースなどの見えない書式文字を区別しない）
+ * categories テーブルの label_key にも保存し、有効なカテゴリーの中で一意にする
+ */
+export function categoryMatchKey(text: string): string {
+  return text.normalize('NFKC').replace(/\p{Cf}/gu, '').trim().toLowerCase();
 }
 
 function matches(category: Category, key: string): boolean {
-  return matchKey(category.value) === key || matchKey(category.label) === key;
+  return categoryMatchKey(category.value) === key || categoryMatchKey(category.label) === key;
 }
 
 function activeOf(categories: Category[]): Category[] {
@@ -115,23 +118,21 @@ function activeOf(categories: Category[]): Category[] {
  * 有効なカテゴリーを value か名前で探す（value を優先）。見つからなければ CategoryError
  */
 export function findCategory(categories: Category[], input: string): Category {
-  const key = matchKey(input);
+  const key = categoryMatchKey(input);
   const active = activeOf(categories);
   const found =
-    active.find((category) => matchKey(category.value) === key) ??
-    active.find((category) => matchKey(category.label) === key);
+    active.find((category) => categoryMatchKey(category.value) === key) ??
+    active.find((category) => categoryMatchKey(category.label) === key);
   if (found) return found;
   const deleted = categories.find((category) => category.deleted && matches(category, key));
-  if (deleted) {
-    throw new CategoryError(`カテゴリー「${deleted.label}」は削除済みです。`);
-  }
+  const reason = deleted ? `「${deleted.label}」は削除済みです` : `「${input.trim()}」はありません`;
   const available = active.map((category) => category.label).join('、');
-  throw new CategoryError(`カテゴリー「${input.trim()}」はありません（使えるカテゴリー: ${available}）。`);
+  throw new CategoryError(`カテゴリー${reason}（使えるカテゴリー: ${available}）。`);
 }
 
 function validLabel(label: string): string {
   const trimmed = label.trim();
-  if (trimmed.length === 0) {
+  if (categoryMatchKey(trimmed).length === 0) {
     throw new CategoryError('カテゴリー名を入力してください。');
   }
   if (trimmed.length > MAX_CATEGORY_LABEL_LENGTH) {
@@ -150,18 +151,18 @@ export interface CategoryCreationContext {
   newId: () => string;
 }
 
-export interface CategoryCreationPlan {
-  /** created: 新しく作る / restored: 削除済みの同じ名前のカテゴリーを戻す / existing: 同じ名前のカテゴリーがあるので何もしない */
-  status: 'created' | 'restored' | 'existing';
-  category: Category;
-  /** 保存する変更（existing のときは null） */
-  change: CategoryChange | null;
-}
+/**
+ * カテゴリーの追加の計画
+ * created: 新しく作る / restored: 削除済みの同じ名前のカテゴリーを戻す / existing: 同じ名前のカテゴリーがあるので何もしない
+ */
+export type CategoryCreationPlan =
+  | { status: 'created' | 'restored'; category: Category; change: CategoryChange }
+  | { status: 'existing'; category: Category; change: null };
 
 /**
  * カテゴリーの追加
  * 同じ名前（か value）の有効なカテゴリーがあれば作らずにそれを返す（再試行しても重複しない）。
- * 削除済みのカテゴリーに同じ名前があれば、作らずに復元する（過去の支出もそのカテゴリーに戻る）
+ * 削除済みのカテゴリーに同じ名前があれば、作らずに復元する（また選べるようになる。そのカテゴリーの支出は削除中も集計に入っている）
  */
 export function planCategoryCreation(
   categories: Category[],
@@ -169,7 +170,7 @@ export function planCategoryCreation(
   { now, newId }: CategoryCreationContext
 ): CategoryCreationPlan {
   const name = validLabel(label);
-  const key = matchKey(name);
+  const key = categoryMatchKey(name);
   const active = activeOf(categories);
   const existing = active.find((category) => matches(category, key));
   if (existing) {
@@ -180,8 +181,14 @@ export function planCategoryCreation(
       `カテゴリーは${MAX_ACTIVE_CATEGORIES}個までです。使っていないカテゴリーを削除してから追加してください。`
     );
   }
-  // 同じ名前の削除済みが複数あれば、一覧の並びで最初のもの（既定 → 古い追加分）
-  const deleted = categories.find((category) => category.deleted && matchKey(category.label) === key);
+  // 同じ名前の削除済みが複数あれば、一覧の並びで最初のもの（既定 → 古い追加分）。
+  // value が有効なカテゴリーの名前と重なるもの（既定の food を削除して「Food」を追加した場合など）は、戻すと区別できなくなるので戻さない
+  const deleted = categories.find(
+    (category) =>
+      category.deleted &&
+      categoryMatchKey(category.label) === key &&
+      !active.some((other) => matches(other, categoryMatchKey(category.value)))
+  );
   if (deleted) {
     return {
       status: 'restored',
@@ -211,7 +218,7 @@ export function planCategoryUpdate(
 ): { category: Category; change: CategoryChange } {
   const target = findCategory(categories, input);
   const name = validLabel(label);
-  const key = matchKey(name);
+  const key = categoryMatchKey(name);
   const conflict = activeOf(categories).find((category) => category.value !== target.value && matches(category, key));
   if (conflict) {
     throw new CategoryError(`「${name}」は、カテゴリー「${conflict.label}」と同じ名前になるため使えません。`);

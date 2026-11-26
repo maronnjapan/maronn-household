@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { FALLBACK_CATEGORY } from '@maronn/domain/categories';
+import { MAX_EXPENSE_ITEM_MEMO_LENGTH } from '@maronn/domain/expense-items';
 import { useCategories } from '../hooks/use-categories';
 import { categoryChoices } from '../lib/categories';
 import {
@@ -115,6 +116,7 @@ export function ExpenseItemsEditor({
                 {...invalidProps}
                 aria-label={`内訳${index + 1}のメモ`}
                 placeholder="メモ（任意）"
+                maxLength={MAX_EXPENSE_ITEM_MEMO_LENGTH}
                 value={draft.memo ?? ''}
                 onChange={(e) => update(draft.key, { memo: e.target.value })}
               />

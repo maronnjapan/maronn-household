@@ -188,7 +188,7 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
       description:
         '月の支出（1件 = 1回の会計、amount は支払総額。category は会計の主なカテゴリー）。' +
         'storeName は店名、memo は会計のメモ（どちらもアプリで編集できる）。' +
-        'ただし 2026-11-26 までに記録したレシートは storeName が null で、memo に店名が入っている（includeItems の receipts にも店名がある）。' +
+        'storeName が null のレシート由来の支出（receiptId あり。店名の欄ができる前に記録したもの）は、includeItems の receipts に店名があり、memo に店名が入っていることもある。' +
         'ただし 2026-11-21 までに記録したレシートは、同じ receiptId の支出がカテゴリ別に複数に分かれている（合わせて1回の会計）。' +
         'total と byCategory はサブ予算を含む月の全支出で、byCategory は内訳の比率で按分したカテゴリ別の額（カテゴリ別の集計にはこれを使う。予算に対する内訳は get_budget_summary）。' +
         'includeItems で各支出の内訳（expenses[].items。品物ごとのメモは items[].memo）と、' +

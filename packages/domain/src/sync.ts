@@ -163,7 +163,7 @@ export function sameVersionRepair(
   }
   if (
     remote.storeName !== undefined &&
-    (local.storeName === undefined || (synced && (local.storeName ?? null) !== (remote.storeName ?? null)))
+    (local.storeName === undefined || (synced && local.storeName !== remote.storeName))
   ) {
     repair.storeName = remote.storeName;
   }

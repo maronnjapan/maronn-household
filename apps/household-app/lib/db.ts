@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { ExpenseEntity, SyncStatus } from '@maronn/domain';
 import { normalizeExpenseItems, resolveExpenseCategories, type ExpenseItem } from '@maronn/domain/expense-items';
-import { normalizeStoreName } from '@maronn/domain/expense';
+import { normalizeStoreName } from '@maronn/domain/store-name';
 import { sameVersionRepair, withLocalFieldsUnknownToServer } from '@maronn/domain/sync';
 
 /**

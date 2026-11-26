@@ -1,5 +1,6 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { MAX_STORE_NAME_LENGTH, type CreateExpenseParams } from '@maronn/domain/expense';
+import type { CreateExpenseParams } from '@maronn/domain';
+import { MAX_STORE_NAME_LENGTH } from '@maronn/domain/store-name';
 import { evaluateExpression } from '../utils/calculator';
 import { finalizeItemDrafts, parseItemDrafts, summarizeItemDrafts, type ItemDraft } from '../lib/expense-items';
 import { Accordion } from './Accordion';
@@ -241,7 +242,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
           </div>
 
           {/* 店名入力（任意。メモとは別に持つ）。class に memo-input を使わない（pre-hydration-calculator.js が拾うため） */}
-          <div className="memo-section">
+          <div className="memo-section store-name-section">
             <label htmlFor="store-name-input" className="input-label">
               店名
             </label>

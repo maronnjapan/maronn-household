@@ -10,9 +10,9 @@ export const MAX_STORE_NAME_LENGTH = 100;
 /**
  * 保存する店名にそろえる（1行にし、上限を超える分は切る。空なら null = 店名なし）
  * 長すぎる値を拒否すると、端末に保存された支出がサーバーに受け付けられず、同期待ちのまま残り続けるので切る。
- * 文字数は絵文字なども1文字と数える（途中で切って文字化けしないように）
+ * 文字数はコードポイントで数える（サロゲートペアの途中では切らない）。切った後の末尾の空白も除き、何度そろえても同じ値にする
  */
 export function normalizeStoreName(storeName: string | null | undefined): string | null {
   const singleLine = storeName ? toSingleLine(storeName) : '';
-  return Array.from(singleLine).slice(0, MAX_STORE_NAME_LENGTH).join('') || null;
+  return Array.from(singleLine).slice(0, MAX_STORE_NAME_LENGTH).join('').trimEnd() || null;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { MAX_STORE_NAME_LENGTH, type ExpenseEntity } from '@maronn/domain/expense';
+import type { ExpenseEntity } from '@maronn/domain';
+import { MAX_STORE_NAME_LENGTH } from '@maronn/domain/store-name';
 import { allocateExpenseByCategory } from '@maronn/domain/expense-items';
 import { Calendar } from '../../components/Calendar';
 import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-expenses';
@@ -13,6 +14,7 @@ import {
   type ImportableExpense,
 } from '../../lib/csv-parser';
 import { draftsFromItems, finalizeItemDrafts, initialSpreadDifference, type ItemDraft } from '../../lib/expense-items';
+import { editStoreNameField, storeNameFieldFrom, storeNameToSave, type StoreNameField } from '../../lib/store-name-field';
 import { CategoryOptions } from '../../components/CategoryOptions';
 import { ExpenseItemsEditor } from '../../components/ExpenseItemsEditor';
 import { ExpenseItemsList } from '../../components/ExpenseItemsList';
@@ -40,12 +42,8 @@ interface EditingState {
   id: string;
   amount: string;
   memo: string;
-  storeName: string;
-  /**
-   * 店名を保存するか。端末が店名を知っている（サーバーから店名の情報を受け取った）か、店名の欄を編集したときだけ送る。
-   * 店名を知らない古い JS が取り込んだ行で空の店名を送ると、サーバーの店名が消えるため（内訳の saveItems と同じ）
-   */
-  saveStoreName: boolean;
+  /** 店名の欄（店名を知らない行では、欄に触れなければ店名を送らない） */
+  storeName: StoreNameField;
   category: string;
   items: ItemDraft[];
   /**
@@ -157,8 +155,7 @@ export function Page() {
       id: expense.id,
       amount: String(expense.amount),
       memo: expense.memo ?? '',
-      storeName: expense.storeName ?? '',
-      saveStoreName: expense.storeName !== undefined,
+      storeName: storeNameFieldFrom(expense.storeName),
       category: expense.category ?? '',
       items: draftsFromItems(expense.items),
       saveItems: expense.items !== undefined,
@@ -188,7 +185,7 @@ export function Page() {
       amount,
       memo: editing.memo || undefined,
       // 店名を消したときは空文字（null として保存し、サーバーの店名も消す）。店名を知らず編集もしていなければ変えない
-      storeName: editing.saveStoreName ? editing.storeName : undefined,
+      storeName: storeNameToSave(editing.storeName),
       category: editing.category || undefined,
       // 内訳をすべて消したときは null（サーバーの内訳も消す）。内訳を知らず編集もしていなければ送らない
       items: editing.saveItems ? (items.items ?? null) : undefined,
@@ -343,10 +340,8 @@ export function Page() {
                               </select>
                               <input
                                 type="text"
-                                value={editing.storeName}
-                                onChange={(e) =>
-                                  setEditing({ ...editing, storeName: e.target.value, saveStoreName: true })
-                                }
+                                value={editing.storeName.value}
+                                onChange={(e) => setEditing({ ...editing, storeName: editStoreNameField(e.target.value) })}
                                 placeholder="店名"
                                 aria-label="店名"
                                 maxLength={MAX_STORE_NAME_LENGTH}

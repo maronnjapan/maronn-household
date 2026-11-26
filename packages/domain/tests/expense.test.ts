@@ -111,4 +111,11 @@ describe('normalizeStoreName', () => {
     expect(normalizeStoreName('あ'.repeat(120))).toBe('あ'.repeat(100));
     expect(normalizeStoreName(`${'あ'.repeat(99)}🍎🍎`)).toBe(`${'あ'.repeat(99)}🍎`);
   });
+
+  it('切った後の末尾の空白も除く（何度そろえても同じ値になり、端末とサーバーで食い違わない）', () => {
+    const once = normalizeStoreName(`${'あ'.repeat(99)} い`);
+
+    expect(once).toBe('あ'.repeat(99));
+    expect(normalizeStoreName(once)).toBe(once);
+  });
 });

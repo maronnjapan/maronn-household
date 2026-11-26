@@ -38,8 +38,8 @@ export function toLocalExpense(row: ServerExpense): ExpenseEntity {
     subBudgetId: row.subBudgetId ?? undefined,
     // undefined（サーバーが内訳を返さない）は不明のまま、null・空は内訳なし
     items: row.items === undefined ? undefined : (normalizeExpenseItems(row.items) ?? null),
-    // 内訳と同じく、undefined（サーバーが店名を返さない）は不明のまま
-    storeName: row.storeName === undefined ? undefined : row.storeName,
+    // 内訳と同じく、undefined（サーバーが店名を返さない）は不明のまま、null は店名なし
+    storeName: row.storeName,
   };
 }
 

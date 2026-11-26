@@ -177,6 +177,11 @@ describe('mergeExpensesFromServer', () => {
     await mergeExpensesFromServer([{ ...expense, syncStatus: 'synced', storeName: 'スーパーA' }], '2026-11', USER_ID);
 
     expect((await db.expenses.get(expense.id))?.storeName).toBe('スーパーA');
+
+    await db.expenses.update(expense.id, { storeName: '古い店名' });
+    await mergeExpensesFromServer([{ ...expense, syncStatus: 'synced', storeName: 'スーパーA' }], '2026-11', USER_ID);
+
+    expect((await db.expenses.get(expense.id))?.storeName).toBe('スーパーA');
   });
 
   it('同じ版でも、ローカルが同期待ちなら内訳を書き換えない', async () => {

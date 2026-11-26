@@ -471,6 +471,22 @@ describe('ツール', () => {
     ]);
   });
 
+  it('メモは前後の空白を除いて200文字までなら記録する', async () => {
+    const memo = 'あ'.repeat(200);
+
+    const { data, isError } = await callTool('record_receipt', {
+      ...RECEIPT,
+      memo: `  ${memo}  `,
+      items: [{ name: '米', amount: 700, category: 'food', memo: ` ${memo} ` }],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(data.memo).toBe(memo);
+    expect(JSON.parse((await testDb.db.prepare('SELECT items FROM expenses').first<string>('items'))!)).toEqual([
+      { name: '米', amount: 700, category: 'food', memo },
+    ]);
+  });
+
   it('長すぎるメモは記録しない', async () => {
     const itemMemo = await callTool('record_receipt', {
       ...RECEIPT,

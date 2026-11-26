@@ -15,7 +15,7 @@ export const MAX_EXPENSE_ITEM_AMOUNT = 100_000_000;
 export const MAX_EXPENSE_ITEM_QUANTITY = 10_000;
 /** 内訳のカテゴリー（value）の長さの上限（追加したカテゴリーの value は ULID の 26 文字） */
 export const MAX_EXPENSE_ITEM_CATEGORY_LENGTH = 40;
-/** 内訳のメモの長さの上限 */
+/** 内訳のメモの長さの上限（MCP の記録では会計全体のメモにも使う） */
 export const MAX_EXPENSE_ITEM_MEMO_LENGTH = 200;
 
 export interface ExpenseItem {

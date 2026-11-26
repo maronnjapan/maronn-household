@@ -54,7 +54,7 @@ const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
   .describe('YYYY-MM');
-/** メモ（空なら付けない。改行も残す）。欄ごとに新しく作る */
+/** メモ（会計全体と明細で同じ上限。空なら付けない。保存時に1行にそろえる）。欄ごとに新しく作る */
 const memoText = () => z.string().trim().max(MAX_EXPENSE_ITEM_MEMO_LENGTH).optional();
 /** カテゴリーを value か名前で指す入力（追加したカテゴリーの value は ULID の 26 文字）。欄ごとに新しく作る */
 const categoryRef = () => text(40);

@@ -6,6 +6,7 @@ import {
   itemsTotal,
   normalizeExpenseItems,
   resolveExpenseCategories,
+  sameExpenseItems,
 } from '../src/expense-items';
 
 describe('allocateExpenseByCategory', () => {
@@ -185,6 +186,26 @@ describe('normalizeExpenseItems', () => {
     expect(normalizeExpenseItems([])).toBeUndefined();
     expect(normalizeExpenseItems(undefined)).toBeUndefined();
     expect(normalizeExpenseItems(null)).toBeUndefined();
+  });
+});
+
+describe('sameExpenseItems', () => {
+  it('保存する形で比べる（キーの順序や空白の違い、内訳なしの表し方の違いは同じとみなす）', () => {
+    expect(
+      sameExpenseItems(
+        [{ name: '牛乳', amount: 198, memo: '特売', category: 'food' }],
+        [{ name: ' 牛乳', amount: 198, category: 'food', memo: '特売 ' }]
+      )
+    ).toBe(true);
+    expect(sameExpenseItems(null, [])).toBe(true);
+    expect(sameExpenseItems(undefined, null)).toBe(true);
+  });
+
+  it('メモなどの項目が違えば違うとみなす', () => {
+    expect(
+      sameExpenseItems([{ name: '牛乳', amount: 198 }], [{ name: '牛乳', amount: 198, memo: '特売' }])
+    ).toBe(false);
+    expect(sameExpenseItems([{ name: '牛乳', amount: 198 }], null)).toBe(false);
   });
 });
 

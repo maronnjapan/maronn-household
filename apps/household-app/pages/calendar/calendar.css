@@ -360,6 +360,36 @@
   font-size: 0.75rem;
 }
 
+/* 内訳の編集: MCP で記録した明細のメモ（表示と削除だけ。保存済みの内訳を編集するカレンダーでだけ出る） */
+.expense-items-row .expense-items-memo {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 0.85rem;
+}
+
+.expense-items-memo-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.expense-items-memo button {
+  min-height: 2.75rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  background: white;
+  border: 1px solid #ecf0f1;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 .expense-items-section {
   margin-bottom: 0.75rem;
 }

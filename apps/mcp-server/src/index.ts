@@ -22,6 +22,7 @@ import {
   MAX_EXPENSE_ITEM_AMOUNT,
   MAX_EXPENSE_ITEM_QUANTITY,
   MAX_EXPENSE_ITEM_MEMO_LENGTH,
+  MAX_STORE_NAME_LENGTH,
   summarizeSpending,
   type CategoryAmount,
   type ExpenseItem,
@@ -54,8 +55,10 @@ const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
   .describe('YYYY-MM');
-/** メモ（会計全体と明細で同じ上限。空なら付けない。保存時に1行にそろえる）。欄ごとに新しく作る */
-const memoText = () => z.string().trim().max(MAX_EXPENSE_ITEM_MEMO_LENGTH).optional();
+/** 任意の文字列（空なら指定なし。保存時に1行にそろえる）。欄ごとに新しく作る */
+const optionalText = (max: number) => z.string().trim().max(max).optional();
+/** メモ（会計全体と明細で同じ上限） */
+const memoText = () => optionalText(MAX_EXPENSE_ITEM_MEMO_LENGTH);
 /** カテゴリーを value か名前で指す入力（追加したカテゴリーの value は ULID の 26 文字）。欄ごとに新しく作る */
 const categoryRef = () => text(40);
 const now = () => new Date().toISOString();
@@ -93,10 +96,12 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
         '同じ日・同じ支払総額のレシートや、アプリで記録した同じ日・同じ金額の支出があれば duplicate を返す。' +
         'ユーザーに確かめ、別の買い物なら allowDuplicate: true で再実行する（アプリの記録と同じ会計なら、二重にならないよう記録しない）。' +
         'difference（支払総額と明細合計の差）が大きければ読み取りを見直す。' +
-        'ユーザーが会計全体や品物についてメモ（用途・割り勘・立替など）を頼んだら、memo（会計全体）と items[].memo（品物ごと）に入れる。' +
-        '会計の memo はアプリのメモ欄に表示される（省略すると店名）。',
+        '店名（storeName）とメモは別の欄。ユーザーが会計全体や品物についてメモ（用途・割り勘・立替など）を頼んだら、' +
+        'memo（会計全体）と items[].memo（品物ごと）に入れる（店名はメモに入れない）。',
       inputSchema: {
-        storeName: text(100).describe('店名'),
+        storeName: optionalText(MAX_STORE_NAME_LENGTH).describe(
+          '店名（分からなければ省略する。「店名不明」などの代わりの文字は入れない）'
+        ),
         purchasedAt: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/)
@@ -105,7 +110,7 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
         taxAmount: yen.optional().describe('消費税額（円）'),
         paymentMethod: text(30).optional().describe('cash/credit_card/e_money/qr_code/other'),
         category: receiptCategory('会計のカテゴリー。明細にカテゴリーがないときに使う（省略すると明細の金額が最大のカテゴリー）。'),
-        memo: memoText().describe('会計全体（支払総額）のメモ。アプリでは店名の代わりにこのメモが表示される（省略すると店名）'),
+        memo: memoText().describe('会計全体（支払総額）のメモ（アプリのメモ欄）'),
         items: z
           .array(
             z.object({
@@ -137,11 +142,12 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
             storeName,
             purchasedAt,
           })),
-          ...same.expenses.map(({ id, date, amount, memo, category }) => ({
+          ...same.expenses.map(({ id, date, amount, storeName, memo, category }) => ({
             source: 'app',
             expenseId: id,
             date,
             amount,
+            storeName,
             memo,
             categoryLabel: labelOf(category),
           })),
@@ -157,6 +163,7 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
         amount: plan.expense.amount,
         category: plan.expense.category,
         categoryLabel: labelOf(plan.expense.category),
+        storeName: plan.expense.storeName,
         memo: plan.expense.memo,
         itemsTotal: plan.itemsTotal,
         difference: plan.difference,
@@ -179,8 +186,9 @@ function createServer(store: HouseholdStore, { userId, clientId }: AccessTokenCa
     'list_records',
     {
       description:
-        '月の支出（1件 = 1回の会計、amount は支払総額。レシート由来は店名付き、category は会計の主なカテゴリー）。' +
-        'memo は会計のメモ（アプリで編集できる。メモを付けずに記録したレシートは店名）。' +
+        '月の支出（1件 = 1回の会計、amount は支払総額。category は会計の主なカテゴリー）。' +
+        'storeName は店名、memo は会計のメモ（どちらもアプリで編集できる）。' +
+        'ただし 2026-11-26 までに記録したレシートは storeName が null で、memo に店名が入っている（includeItems の receipts にも店名がある）。' +
         'ただし 2026-11-21 までに記録したレシートは、同じ receiptId の支出がカテゴリ別に複数に分かれている（合わせて1回の会計）。' +
         'total と byCategory はサブ予算を含む月の全支出で、byCategory は内訳の比率で按分したカテゴリ別の額（カテゴリ別の集計にはこれを使う。予算に対する内訳は get_budget_summary）。' +
         'includeItems で各支出の内訳（expenses[].items。品物ごとのメモは items[].memo）と、' +

@@ -8,9 +8,11 @@
 import {
   MAX_EXPENSE_ITEMS,
   MAX_EXPENSE_ITEM_AMOUNT,
+  MAX_EXPENSE_ITEM_MEMO_LENGTH,
   MAX_EXPENSE_ITEM_NAME_LENGTH,
   itemsTotal,
   normalizeExpenseItems,
+  toSingleLine,
   type ExpenseItem,
 } from '@maronn/domain/expense-items';
 import { evaluateExpression } from '../utils/calculator';
@@ -25,7 +27,7 @@ export interface ItemDraft {
   category: string;
   /** 保存済みの数量（MCP で記録したレシートの明細など）。フォームでは編集しない */
   quantity?: number;
-  /** 保存済みのメモ（MCP で記録したレシートの明細など）。フォームでは編集せず、保存し直しても残す */
+  /** その品についてのメモ（任意。品名や金額を書き換えても残す） */
   memo?: string;
 }
 
@@ -60,13 +62,14 @@ function parseAmount(input: string): number | null {
   return amount !== null && amount >= 0 && amount <= MAX_EXPENSE_ITEM_AMOUNT ? amount : null;
 }
 
+/** 品名・金額・メモのどれも入力していない行（メモだけの行は、書いたメモが黙って消えないよう内訳にする） */
 function isBlank(draft: ItemDraft): boolean {
-  return !draft.name.trim() && !draft.amount.trim();
+  return !draft.name.trim() && !draft.amount.trim() && !draft.memo?.trim();
 }
 
 /**
  * 入力した行を保存する内訳にする
- * 品名も金額もない行は無視し、品名だけの行は金額0にする。金額が読めない行や、品名が長すぎる行があればエラー
+ * 品名も金額もメモもない行は無視し、品名やメモだけの行は金額0にする。金額が読めない行や、品名・メモが長すぎる行があればエラー
  */
 export function parseItemDrafts(drafts: readonly ItemDraft[]): ParsedItems {
   const filled = drafts.filter((draft) => !isBlank(draft));
@@ -88,6 +91,14 @@ export function parseItemDrafts(drafts: readonly ItemDraft[]): ParsedItems {
       ok: false,
       error: `内訳の品名は${MAX_EXPENSE_ITEM_NAME_LENGTH}文字以内で入力してください`,
       invalidKeys: longName.map((draft) => draft.key),
+    };
+  }
+  const longMemo = filled.filter((draft) => toSingleLine(draft.memo ?? '').length > MAX_EXPENSE_ITEM_MEMO_LENGTH);
+  if (longMemo.length > 0) {
+    return {
+      ok: false,
+      error: `内訳のメモは${MAX_EXPENSE_ITEM_MEMO_LENGTH}文字以内で入力してください`,
+      invalidKeys: longMemo.map((draft) => draft.key),
     };
   }
 
@@ -117,7 +128,7 @@ export function summarizeItemDrafts(
 /**
  * 保存する内訳を作る
  * 支払総額より内訳の合計が少なければ、足りない分を「残り」の1行（品名なし・カテゴリーなし＝会計のカテゴリーに計上）にする。
- * 品名がなくカテゴリーが空か会計のカテゴリーの行がすでにあれば（前に保存した残り。保存時にカテゴリーが入る）その行に足す。
+ * 品名もメモもなくカテゴリーが空か会計のカテゴリーの行がすでにあれば（前に保存した残り。保存時にカテゴリーが入る）その行に足す。
  * spreadDifference なら残りの行は作らず、差は消費税・値引きとしてカテゴリー別の集計で内訳の比率で配る。
  * 内訳の合計が支払総額以上（値引き）や、品名だけの内訳（金額がすべて0）のときも残りの行は作らない
  */
@@ -135,8 +146,12 @@ export function finalizeItemDrafts(
   const difference = total - sum;
   if (sum === 0 || difference <= 0) return parsed;
 
+  // メモのある行は、ユーザーが何かを書き残した行なので残りの行とみなさない
   const remainderIndex = items.findIndex(
-    (item) => !item.name && (!item.category || (expenseCategory !== '' && item.category === expenseCategory))
+    (item) =>
+      !item.name &&
+      !item.memo &&
+      (!item.category || (expenseCategory !== '' && item.category === expenseCategory))
   );
   const remainder = remainderIndex >= 0 ? (items[remainderIndex]?.amount ?? 0) + difference : difference;
   // 行を足せない（上限の行数・金額を超える）ときは、差を比率で配分する

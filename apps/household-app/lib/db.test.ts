@@ -103,6 +103,15 @@ describe('updateExpense', () => {
     expect(stored?.amount).toBe(3000);
   });
 
+  it('店名は渡したときだけ変え（1行にそろえる）、null や空文字なら消す', async () => {
+    const expense = createExpense({ amount: 3280, date: '2026-11-19', deviceId: 'device-1', storeName: 'スーパーA' });
+    await addExpense(expense, USER_ID);
+
+    expect((await updateExpense(expense.id, { memo: '変更' }))?.storeName).toBe('スーパーA');
+    expect((await updateExpense(expense.id, { storeName: ' スーパーB\n 駅前 ' }))?.storeName).toBe('スーパーB 駅前');
+    expect((await updateExpense(expense.id, { storeName: '' }))?.storeName).toBeNull();
+  });
+
   it('内訳を渡さなければ内訳は変えない', async () => {
     const expense = await addWithItems();
 
@@ -158,6 +167,16 @@ describe('mergeExpensesFromServer', () => {
     await mergeExpensesFromServer([{ ...expense, syncStatus: 'synced', items: withMemo }], '2026-11', USER_ID);
 
     expect((await db.expenses.get(expense.id))?.items).toEqual(withMemo);
+  });
+
+  it('同じ版で店名を知らないコードが取り込んだ行・同期済みなのに店名が違う行は、サーバーの店名にする', async () => {
+    const expense = createExpense({ amount: 3280, date: '2026-11-19', deviceId: 'device-1' });
+    const { storeName: _storeName, ...unknownStore } = expense;
+    await addExpense({ ...unknownStore, syncStatus: 'synced' }, USER_ID);
+
+    await mergeExpensesFromServer([{ ...expense, syncStatus: 'synced', storeName: 'スーパーA' }], '2026-11', USER_ID);
+
+    expect((await db.expenses.get(expense.id))?.storeName).toBe('スーパーA');
   });
 
   it('同じ版でも、ローカルが同期待ちなら内訳を書き換えない', async () => {

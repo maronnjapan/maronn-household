@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createExpense } from '../src/expense';
+import { createExpense, normalizeStoreName } from '../src/expense';
 
 describe('createExpense', () => {
   it('金額のみ指定して支出を作成できる', () => {
@@ -24,6 +24,15 @@ describe('createExpense', () => {
     expect(expense.amount).toBe(3000);
     expect(expense.category).toBe('食費');
     expect(expense.memo).toBe('スーパーで買い物');
+  });
+
+  it('店名はメモとは別に持つ（1行にそろえ、なければ null = 店名なし）', () => {
+    expect(createExpense({ amount: 3000, storeName: ' スーパーA\n 新宿店 ', memo: '特売' })).toMatchObject({
+      storeName: 'スーパーA 新宿店',
+      memo: '特売',
+    });
+    expect(createExpense({ amount: 3000 }).storeName).toBeNull();
+    expect(createExpense({ amount: 3000, storeName: '  ' }).storeName).toBeNull();
   });
 
   it('日付を指定して作成できる', () => {
@@ -86,5 +95,20 @@ describe('createExpense', () => {
   it('内訳が空なら内訳を持たない', () => {
     expect(createExpense({ amount: 100, items: [] }).items).toBeUndefined();
     expect(createExpense({ amount: 100 }).items).toBeUndefined();
+  });
+});
+
+describe('normalizeStoreName', () => {
+  it('店名を1行にそろえ、空なら null（店名なし）にする', () => {
+    expect(normalizeStoreName('  スーパーA\t新宿店 ')).toBe('スーパーA 新宿店');
+    expect(normalizeStoreName('')).toBeNull();
+    expect(normalizeStoreName(' ')).toBeNull();
+    expect(normalizeStoreName(null)).toBeNull();
+    expect(normalizeStoreName(undefined)).toBeNull();
+  });
+
+  it('上限（100文字）を超える店名は切る（受け付けない値で同期が止まり続けないように）', () => {
+    expect(normalizeStoreName('あ'.repeat(120))).toBe('あ'.repeat(100));
+    expect(normalizeStoreName(`${'あ'.repeat(99)}🍎🍎`)).toBe(`${'あ'.repeat(99)}🍎`);
   });
 });

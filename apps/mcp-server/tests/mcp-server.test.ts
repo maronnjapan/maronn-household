@@ -237,7 +237,8 @@ describe('ツール', () => {
       amount: 1100,
       category: 'food',
       categoryLabel: '食費',
-      memo: 'スーパーA 新宿店',
+      storeName: 'スーパーA 新宿店',
+      memo: null,
       itemsTotal: 1000,
       difference: 100,
       byCategory: [
@@ -246,7 +247,7 @@ describe('ツール', () => {
       ],
     });
     const expenses = await testDb.db
-      .prepare('SELECT id, user_id, amount, category, memo, date, device_id, receipt_id, items FROM expenses')
+      .prepare('SELECT id, user_id, amount, category, memo, store_name, date, device_id, receipt_id, items FROM expenses')
       .all<Record<string, unknown>>();
     expect(expenses.results).toEqual([
       {
@@ -254,7 +255,8 @@ describe('ツール', () => {
         user_id: USER_ID,
         amount: 1100,
         category: 'food',
-        memo: 'スーパーA 新宿店',
+        memo: null,
+        store_name: 'スーパーA 新宿店',
         date: '2026-11-19',
         device_id: 'mcp:dcr-claude',
         receipt_id: data.receiptId,
@@ -301,7 +303,7 @@ describe('ツール', () => {
   it('アプリで記録した同じ日・同じ金額の支出も duplicate として返す（同じ会計の二重登録を防ぐ）', async () => {
     await testDb.db
       .prepare(
-        "INSERT INTO expenses (id, user_id, amount, category, memo, date, created_at, updated_at, device_id) VALUES ('app-1', ?, 1100, 'food', 'スーパー', '2026-11-19', 'x', 'x', 'd')"
+        "INSERT INTO expenses (id, user_id, amount, category, memo, store_name, date, created_at, updated_at, device_id) VALUES ('app-1', ?, 1100, 'food', '特売', 'スーパー', '2026-11-19', 'x', 'x', 'd')"
       )
       .bind(USER_ID)
       .run();
@@ -316,7 +318,17 @@ describe('ツール', () => {
 
     expect(data).toEqual({
       duplicate: true,
-      existing: [{ source: 'app', expenseId: 'app-1', date: '2026-11-19', amount: 1100, memo: 'スーパー', categoryLabel: '食費' }],
+      existing: [
+        {
+          source: 'app',
+          expenseId: 'app-1',
+          date: '2026-11-19',
+          amount: 1100,
+          storeName: 'スーパー',
+          memo: '特売',
+          categoryLabel: '食費',
+        },
+      ],
     });
     expect(forced.data.duplicate).toBe(false);
     expect(await count('receipts')).toBe(1);
@@ -409,6 +421,26 @@ describe('ツール', () => {
     expect(data.receipts).toBeUndefined();
   });
 
+  it('list_records の storeName は支出の店名だけ（店名の欄がなかった頃のレシートは null で、memo とレシートに店名がある）', async () => {
+    await testDb.db.batch([
+      testDb.db
+        .prepare(
+          "INSERT INTO receipts (id, user_id, store_name, purchased_at, total_amount, source, created_at, updated_at) VALUES ('old', ?, '八百屋', '2026-11-18', 300, 'c', 'x', 'x')"
+        )
+        .bind(USER_ID),
+      testDb.db
+        .prepare(
+          "INSERT INTO expenses (id, user_id, amount, category, memo, date, created_at, updated_at, device_id, receipt_id) VALUES ('e-old', ?, 300, 'food', '八百屋', '2026-11-18', 'x', 'x', 'd', 'old')"
+        )
+        .bind(USER_ID),
+    ]);
+
+    const { data } = await callTool('list_records', { month: '2026-11', includeItems: true });
+
+    expect(data.expenses[0]).toMatchObject({ id: 'e-old', storeName: null, memo: '八百屋', receiptId: 'old' });
+    expect(data.receipts[0]).toMatchObject({ id: 'old', storeName: '八百屋' });
+  });
+
   it('list_records の includeItems で、各支出の内訳（カテゴリー名付き）とレシートの店名・税・支払方法を返す', async () => {
     const { data: recorded } = await callTool('record_receipt', RECEIPT);
 
@@ -430,25 +462,41 @@ describe('ツール', () => {
     ]);
   });
 
-  it('record_receipt の会計のメモは支出のメモ（アプリのメモ欄）にし、list_records の memo で返す（店名は storeName）', async () => {
+  it('record_receipt の会計のメモと店名は支出に別々に持たせ（アプリのメモ欄と店名欄）、list_records の memo・storeName で返す', async () => {
     const { data: recorded } = await callTool('record_receipt', { ...RECEIPT, memo: '友人と割り勘（半額は立替）' });
 
     const { data } = await callTool('list_records', { month: '2026-11' });
 
-    expect(recorded.memo).toBe('友人と割り勘（半額は立替）');
+    expect(recorded).toMatchObject({ memo: '友人と割り勘（半額は立替）', storeName: 'スーパーA 新宿店' });
     expect(data.expenses[0]).toMatchObject({ memo: '友人と割り勘（半額は立替）', storeName: 'スーパーA 新宿店' });
-    expect(await testDb.db.prepare('SELECT memo FROM expenses').first('memo')).toBe('友人と割り勘（半額は立替）');
+    expect(await testDb.db.prepare('SELECT memo, store_name FROM expenses').first()).toEqual({
+      memo: '友人と割り勘（半額は立替）',
+      store_name: 'スーパーA 新宿店',
+    });
   });
 
-  it('空のメモは指定なしとみなす（会計のメモは店名、明細はメモなし）', async () => {
+  it('店名は省略できる（支出の店名もレシートの店名もなし）', async () => {
+    const { storeName: _storeName, ...withoutStore } = RECEIPT;
+
+    const { data, isError } = await callTool('record_receipt', { ...withoutStore, memo: '手書きの領収書' });
+    const { data: listed } = await callTool('list_records', { month: '2026-11', includeItems: true });
+
+    expect(isError).toBeFalsy();
+    expect(data).toMatchObject({ duplicate: false, storeName: null, memo: '手書きの領収書' });
+    expect(listed.expenses[0]).toMatchObject({ storeName: null, memo: '手書きの領収書' });
+    expect(listed.receipts[0].storeName).toBeNull();
+  });
+
+  it('空のメモ・店名は指定なしとみなす', async () => {
     const { data, isError } = await callTool('record_receipt', {
       ...RECEIPT,
+      storeName: ' ',
       memo: '',
       items: [{ name: '米', amount: 700, category: 'food', memo: '  ' }],
     });
 
     expect(isError).toBeFalsy();
-    expect(data.memo).toBe('スーパーA 新宿店');
+    expect(data).toMatchObject({ storeName: null, memo: null });
     expect(await testDb.db.prepare('SELECT items FROM expenses').first('items')).toBe(
       JSON.stringify([{ name: '米', amount: 700, category: 'food' }])
     );
@@ -487,15 +535,17 @@ describe('ツール', () => {
     ]);
   });
 
-  it('長すぎるメモは記録しない', async () => {
+  it('長すぎるメモ・店名は記録しない', async () => {
     const itemMemo = await callTool('record_receipt', {
       ...RECEIPT,
       items: [{ name: '米', amount: 700, memo: 'あ'.repeat(201) }],
     });
     const memo = await callTool('record_receipt', { ...RECEIPT, memo: 'あ'.repeat(201) });
+    const storeName = await callTool('record_receipt', { ...RECEIPT, storeName: 'あ'.repeat(101) });
 
     expect(itemMemo.isError).toBe(true);
     expect(memo.isError).toBe(true);
+    expect(storeName.isError).toBe(true);
     expect(await count('receipts')).toBe(0);
   });
 

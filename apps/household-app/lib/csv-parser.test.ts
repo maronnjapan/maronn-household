@@ -556,9 +556,9 @@ describe('convertExpensesToCSV', () => {
     ]);
 
     expect(csv.split('\n')).toEqual([
-      '日付,金額,カテゴリ,メモ,内訳',
-      '2026-11-19,3280,food,スーパーA,牛乳 ¥198 / 洗剤 ×2 ¥398',
-      '2026-11-19,500,,,',
+      '日付,金額,カテゴリ,メモ,内訳,店名',
+      '2026-11-19,3280,food,スーパーA,牛乳 ¥198 / 洗剤 ×2 ¥398,',
+      '2026-11-19,500,,,,',
     ]);
   });
 
@@ -568,7 +568,13 @@ describe('convertExpensesToCSV', () => {
       (value) => (value === 'food' ? '食費' : undefined)
     );
 
-    expect(csv.split('\n')[1]).toBe('2026-11-19,3280,food,スーパーA,"食費 ¥1,200 / A,B ¥80"');
+    expect(csv.split('\n')[1]).toBe('2026-11-19,3280,food,スーパーA,"食費 ¥1,200 / A,B ¥80",');
+  });
+
+  it('店名は最後の列に出す（先頭の4列は変えない）', () => {
+    const csv = convertExpensesToCSV([{ ...expense, storeName: 'スーパーA 新宿店', memo: '特売' }]);
+
+    expect(csv.split('\n')[1]).toBe('2026-11-19,3280,food,特売,,スーパーA 新宿店');
   });
 
   it('先頭の4列は既存のインポートでそのまま読み戻せる', () => {

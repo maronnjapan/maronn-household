@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import type { CreateExpenseParams } from '@maronn/domain';
+import { MAX_STORE_NAME_LENGTH, type CreateExpenseParams } from '@maronn/domain/expense';
 import { evaluateExpression } from '../utils/calculator';
 import { finalizeItemDrafts, parseItemDrafts, summarizeItemDrafts, type ItemDraft } from '../lib/expense-items';
 import { Accordion } from './Accordion';
@@ -48,6 +48,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
 
   const [expression, setExpression] = useState(initialState.current.expression);
   const [memo, setMemo] = useState(initialState.current.memo);
+  const [storeName, setStoreName] = useState('');
   const [category, setCategory] = useState(initialState.current.category);
   const [subBudgetId, setSubBudgetId] = useState('');
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
@@ -90,6 +91,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
       amount,
       category: category || undefined,
       memo: memo.trim() || undefined,
+      storeName: storeName || undefined,
       subBudgetId: subBudgetId || undefined,
       items: items.items,
     });
@@ -97,6 +99,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
     // フォームをクリア
     setExpression('');
     setMemo('');
+    setStoreName('');
     setCategory('');
     setSubBudgetId('');
     setItemDrafts([]);
@@ -218,7 +221,7 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
         />
       </Accordion>
 
-      {/* メモ・カテゴリー入力（アコーディオン） */}
+      {/* カテゴリー・店名・メモ入力（アコーディオン） */}
       <Accordion title="詳細設定（任意）" defaultOpen={false}>
         <div className="detail-inputs">
           {/* カテゴリー選択 */}
@@ -235,6 +238,22 @@ export function ExpenseInput({ onAdd }: ExpenseInputProps) {
               <option value="">未選択</option>
               <CategoryOptions selected={category} />
             </select>
+          </div>
+
+          {/* 店名入力（任意。メモとは別に持つ）。class に memo-input を使わない（pre-hydration-calculator.js が拾うため） */}
+          <div className="memo-section">
+            <label htmlFor="store-name-input" className="input-label">
+              店名
+            </label>
+            <input
+              id="store-name-input"
+              type="text"
+              placeholder="店名を入力"
+              maxLength={MAX_STORE_NAME_LENGTH}
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              className="store-name-input"
+            />
           </div>
 
           {/* メモ入力 */}

@@ -36,14 +36,14 @@ async function getMonthly(month: string) {
 }
 
 describe('GET /monthly', () => {
-  it('支出（1回の会計）ごとに支払総額・内訳・レシートIDを返す', async () => {
+  it('支出（1回の会計）ごとに支払総額・内訳・店名・レシートIDを返す', async () => {
     const items = [
       { name: '牛乳', amount: 198, category: 'food' },
       { name: '洗剤', amount: 398, category: 'daily-goods' },
     ];
     await testDb.db
       .prepare(
-        "INSERT INTO expenses (id, user_id, amount, category, memo, date, created_at, updated_at, device_id, receipt_id, items) VALUES ('e1', ?, 650, 'daily-goods', 'スーパーA', '2026-11-19', 'x', 'x', 'd', 'r1', ?), ('e2', ?, 500, 'food', NULL, '2026-11-20', 'x', 'x', 'd', NULL, NULL)"
+        "INSERT INTO expenses (id, user_id, amount, category, memo, store_name, date, created_at, updated_at, device_id, receipt_id, items) VALUES ('e1', ?, 650, 'daily-goods', '特売', 'スーパーA', '2026-11-19', 'x', 'x', 'd', 'r1', ?), ('e2', ?, 500, 'food', NULL, NULL, '2026-11-20', 'x', 'x', 'd', NULL, NULL)"
       )
       .bind(USER_ID, JSON.stringify(items), USER_ID)
       .run();
@@ -52,8 +52,8 @@ describe('GET /monthly', () => {
 
     expect(status).toBe(200);
     expect(body.expenses).toEqual([
-      { id: 'e1', amount: 650, category: 'daily-goods', memo: 'スーパーA', date: '2026-11-19', createdAt: 'x', receiptId: 'r1', items },
-      { id: 'e2', amount: 500, category: 'food', memo: null, date: '2026-11-20', createdAt: 'x', receiptId: null, items: null },
+      { id: 'e1', amount: 650, category: 'daily-goods', memo: '特売', storeName: 'スーパーA', date: '2026-11-19', createdAt: 'x', receiptId: 'r1', items },
+      { id: 'e2', amount: 500, category: 'food', memo: null, storeName: null, date: '2026-11-20', createdAt: 'x', receiptId: null, items: null },
     ]);
     expect(body.summary).toMatchObject({ totalExpenses: 1150, expenseCount: 2 });
   });

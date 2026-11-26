@@ -43,9 +43,17 @@ const EXPENSE = {
 
 async function storedRow(id = EXPENSE.id) {
   return testDb.db
-    .prepare('SELECT user_id, amount, category, memo, items, updated_at FROM expenses WHERE id = ?')
+    .prepare('SELECT user_id, amount, category, memo, store_name, items, updated_at FROM expenses WHERE id = ?')
     .bind(id)
-    .first<{ user_id: string; amount: number; category: string | null; memo: string | null; items: string | null; updated_at: string }>();
+    .first<{
+      user_id: string;
+      amount: number;
+      category: string | null;
+      memo: string | null;
+      store_name: string | null;
+      items: string | null;
+      updated_at: string;
+    }>();
 }
 
 describe('createExpense（同期のアップサート）と getExpenses', () => {
@@ -127,6 +135,26 @@ describe('createExpense（同期のアップサート）と getExpenses', () => 
     expect(JSON.parse((await storedRow())!.items!)).toEqual(items);
   });
 
+  it('店名をメモとは別に保存して返し（1行にそろえる）、送らなければ（店名を知らない古いクライアント）変えず、null なら消す', async () => {
+    await callerFor(USER).createExpense({ ...EXPENSE, storeName: ' スーパーA\n 新宿店 ' });
+    expect((await callerFor(USER).getExpenses({ month: '2026-11' })).expenses[0]).toMatchObject({
+      memo: 'スーパーA',
+      storeName: 'スーパーA 新宿店',
+    });
+
+    await callerFor(USER).createExpense({ ...EXPENSE, memo: '変更', updatedAt: '2026-11-19T11:00:00.000Z' });
+    expect(await storedRow()).toMatchObject({ memo: '変更', store_name: 'スーパーA 新宿店' });
+
+    await callerFor(USER).createExpense({ ...EXPENSE, storeName: null, updatedAt: '2026-11-19T12:00:00.000Z' });
+    expect((await storedRow())?.store_name).toBeNull();
+  });
+
+  it('長すぎる店名は100文字に切って保存する（端末の未送信の行が受け付けられずに残り続けないように）', async () => {
+    await callerFor(USER).createExpense({ ...EXPENSE, storeName: 'あ'.repeat(101) });
+
+    expect((await storedRow())?.store_name).toBe('あ'.repeat(100));
+  });
+
   it.each([
     ['負の金額の内訳', [{ name: '値引き', amount: -100 }]],
     ['小数の金額の内訳', [{ name: '牛乳', amount: 1.5 }]],
@@ -166,6 +194,16 @@ describe('updateExpense', () => {
     const row = await storedRow();
     expect(row?.memo).toBe('メモだけ変更');
     expect(JSON.parse(row!.items!)).toEqual([{ name: 'パン', amount: 300 }]);
+  });
+
+  it('店名は送ったときだけ変え、空文字なら消す', async () => {
+    await callerFor(USER).createExpense({ ...EXPENSE, storeName: 'スーパーA' });
+
+    await callerFor(USER).updateExpense({ id: EXPENSE.id, memo: '変更', updatedAt: '2026-11-19T11:00:00.000Z', deviceId: 'd' });
+    expect((await storedRow())?.store_name).toBe('スーパーA');
+
+    await callerFor(USER).updateExpense({ id: EXPENSE.id, storeName: '', updatedAt: '2026-11-19T12:00:00.000Z', deviceId: 'd' });
+    expect((await storedRow())?.store_name).toBeNull();
   });
 
   it('items: null で内訳を消す', async () => {

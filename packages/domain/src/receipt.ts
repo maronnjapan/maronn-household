@@ -5,6 +5,7 @@
  * 明細は支出の内訳（何を買ったか）として持たせる。カテゴリー別の集計は、支払総額を内訳の金額の比率で按分して作る
  * （明細の合計と支払総額の差＝消費税・値引きも比率で配る。expense-items.ts の allocateExpenseByCategory）。
  */
+import { normalizeStoreName } from './store-name';
 import {
   allocateExpenseByCategory,
   itemsTotal,
@@ -26,14 +27,15 @@ export interface ReceiptItemInput {
 }
 
 export interface ReceiptInput {
-  storeName: string;
+  /** 店名（なくてもよい） */
+  storeName?: string;
   /** 購入日時（ISO 8601。'YYYY-MM-DD' または 'YYYY-MM-DDTHH:mm'） */
   purchasedAt: string;
   /** 支払総額（税込・値引き後、円、整数） */
   totalAmount: number;
   /** 会計のカテゴリー（明細にカテゴリーがない場合に使う） */
   category?: string;
-  /** 会計のメモ（支出のメモにする。なければ店名） */
+  /** 会計のメモ（支出のメモ。店名とは別） */
   memo?: string;
   taxAmount?: number;
   paymentMethod?: string;
@@ -128,6 +130,7 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
   const { userId, clientId, now, newId } = context;
   const receiptId = newId();
   const date = receiptDate(input.purchasedAt);
+  const storeName = normalizeStoreName(input.storeName);
   // 会計のカテゴリーがなければ主なカテゴリーにし、カテゴリーのない明細には会計のカテゴリーを入れる
   const { category, items } = resolveExpenseCategories({
     amount: input.totalAmount,
@@ -139,8 +142,9 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
     userId,
     amount: input.totalAmount,
     category: category ?? null,
-    // 支出のメモはアプリで表示・編集でき、同期される会計のメモ。指定がなければ、アプリで分かるよう店名を入れる
-    memo: (input.memo && toSingleLine(input.memo)) || input.storeName,
+    // 会計のメモと店名は別々に持つ（どちらもアプリで表示・編集でき、同期される）
+    memo: (input.memo && toSingleLine(input.memo)) || null,
+    storeName,
     date,
     createdAt: now,
     updatedAt: now,
@@ -153,7 +157,8 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
     receipt: {
       id: receiptId,
       userId,
-      storeName: input.storeName,
+      // receipts.store_name は NOT NULL なので、店名が分からなければ空文字にする
+      storeName: storeName ?? '',
       purchasedAt: input.purchasedAt,
       totalAmount: input.totalAmount,
       taxAmount: input.taxAmount ?? null,

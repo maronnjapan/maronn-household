@@ -26,6 +26,8 @@ export const expenses = sqliteTable(
     amount: integer('amount').notNull(),
     category: text('category'),
     memo: text('memo'),
+    /** 店名（0012_expense_store_name.sql。メモとは別の任意の項目。以前に MCP で記録したレシートは NULL でメモに店名がある） */
+    storeName: text('store_name'),
     date: text('date').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),

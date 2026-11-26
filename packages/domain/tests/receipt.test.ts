@@ -130,7 +130,8 @@ describe('planReceiptRecording', () => {
       userId: 'user-1',
       amount: 1100,
       category: 'food',
-      memo: 'スーパーA',
+      memo: null,
+      storeName: 'スーパーA',
       date: '2026-11-19',
       createdAt: context.now,
       updatedAt: context.now,
@@ -175,19 +176,29 @@ describe('planReceiptRecording', () => {
     ]);
   });
 
-  it('会計のメモがあれば支出のメモにする（なければ店名。改行・連続した空白は1つの空白にする）', () => {
+  it('会計のメモと店名は別々に支出に持たせる（どちらも1行にそろえ、空なら持たない）', () => {
     const plan = planReceiptRecording(
-      { storeName: 'ケーキ店', purchasedAt: '2026-11-19', totalAmount: 1500, memo: ' 誕生日会\n 立替分 ' },
+      { storeName: ' ケーキ店\n駅前 ', purchasedAt: '2026-11-19', totalAmount: 1500, memo: ' 誕生日会\n 立替分 ' },
       { ...context, newId: ids() }
     );
     const blank = planReceiptRecording(
-      { storeName: 'ケーキ店', purchasedAt: '2026-11-19', totalAmount: 1500, memo: '  ' },
+      { storeName: ' ', purchasedAt: '2026-11-19', totalAmount: 1500, memo: '  ' },
       { ...context, newId: ids() }
     );
 
-    expect(plan.expense.memo).toBe('誕生日会 立替分');
-    expect(plan.receipt.storeName).toBe('ケーキ店');
-    expect(blank.expense.memo).toBe('ケーキ店');
+    expect(plan.expense).toMatchObject({ memo: '誕生日会 立替分', storeName: 'ケーキ店 駅前' });
+    expect(plan.receipt.storeName).toBe('ケーキ店 駅前');
+    expect(blank.expense).toMatchObject({ memo: null, storeName: null });
+  });
+
+  it('店名がなくても記録できる（レシートの店名は空文字 = 不明）', () => {
+    const plan = planReceiptRecording(
+      { purchasedAt: '2026-11-19', totalAmount: 500, category: 'food' },
+      { ...context, newId: ids() }
+    );
+
+    expect(plan.expense).toMatchObject({ storeName: null, memo: null });
+    expect(plan.receipt.storeName).toBe('');
   });
 
   it('明細のメモは内訳の各行に持たせる', () => {
@@ -217,7 +228,7 @@ describe('planReceiptRecording', () => {
       { ...context, newId: ids() }
     );
 
-    expect(plan.expense).toMatchObject({ amount: 500, category: 'food', memo: '店', items: null });
+    expect(plan.expense).toMatchObject({ amount: 500, category: 'food', storeName: '店', items: null });
     expect(plan.byCategory).toEqual([{ category: 'food', amount: 500 }]);
     expect(plan.receipt.taxAmount).toBeNull();
     expect(plan.receipt.paymentMethod).toBeNull();

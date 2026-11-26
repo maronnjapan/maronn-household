@@ -25,6 +25,9 @@ import {
   type planReceiptRecording,
 } from '@maronn/domain/receipt';
 
+/** レシートの店名（店名なしで記録したレシートは空文字で保存しているので null にする） */
+const receiptStoreName = sql<string | null>`nullif(${receipts.storeName}, '')`;
+
 /** 予算が一度も設定されていないときの月の予算（household-app と同じ） */
 export const DEFAULT_BUDGET_AMOUNT = 120_000;
 
@@ -64,7 +67,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       const sameReceipts = await db
         .selectDistinct({
           id: receipts.id,
-          storeName: receipts.storeName,
+          storeName: receiptStoreName,
           purchasedAt: receipts.purchasedAt,
         })
         .from(receipts)
@@ -82,6 +85,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
           date: expenses.date,
           amount: expenses.amount,
           category: expenses.category,
+          storeName: expenses.storeName,
           memo: expenses.memo,
         })
         .from(expenses)
@@ -117,7 +121,10 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       return removed.meta.changes > 0;
     },
 
-    /** 月の支出（1回の会計ごと。レシート由来の支出は店名付き、items は内訳） */
+    /**
+     * 月の支出（1回の会計ごと。items は内訳）
+     * storeName は支出の店名（アプリで直した値と同じ）。店名の欄ができる前に記録したレシートは null で、memo に店名がある
+     */
     listExpenses(month: string) {
       return db
         .select({
@@ -125,14 +132,13 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
           date: expenses.date,
           amount: expenses.amount,
           category: expenses.category,
+          storeName: expenses.storeName,
           memo: expenses.memo,
           subBudgetId: expenses.subBudgetId,
           receiptId: expenses.receiptId,
-          storeName: receipts.storeName,
           items: expenses.items,
         })
         .from(expenses)
-        .leftJoin(receipts, eq(receipts.id, expenses.receiptId))
         .where(expensesIn(month))
         .orderBy(asc(expenses.date))
         .all();
@@ -151,7 +157,7 @@ export function createHouseholdStore(d1: D1Database, userId: string) {
       const found = await db
         .select({
           id: receipts.id,
-          storeName: receipts.storeName,
+          storeName: receiptStoreName,
           purchasedAt: receipts.purchasedAt,
           totalAmount: receipts.totalAmount,
           taxAmount: receipts.taxAmount,

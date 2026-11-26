@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ExpenseEntity } from '@maronn/domain';
+import { MAX_STORE_NAME_LENGTH, type ExpenseEntity } from '@maronn/domain/expense';
 import { allocateExpenseByCategory } from '@maronn/domain/expense-items';
 import { Calendar } from '../../components/Calendar';
 import { useCalendarExpenses, type DayExpenses } from '../../hooks/use-calendar-expenses';
@@ -40,6 +40,12 @@ interface EditingState {
   id: string;
   amount: string;
   memo: string;
+  storeName: string;
+  /**
+   * 店名を保存するか。端末が店名を知っている（サーバーから店名の情報を受け取った）か、店名の欄を編集したときだけ送る。
+   * 店名を知らない古い JS が取り込んだ行で空の店名を送ると、サーバーの店名が消えるため（内訳の saveItems と同じ）
+   */
+  saveStoreName: boolean;
   category: string;
   items: ItemDraft[];
   /**
@@ -53,6 +59,7 @@ interface EditingState {
 interface AddingState {
   amount: string;
   memo: string;
+  storeName: string;
   category: string;
   subBudgetId: string;
   items: ItemDraft[];
@@ -150,6 +157,8 @@ export function Page() {
       id: expense.id,
       amount: String(expense.amount),
       memo: expense.memo ?? '',
+      storeName: expense.storeName ?? '',
+      saveStoreName: expense.storeName !== undefined,
       category: expense.category ?? '',
       items: draftsFromItems(expense.items),
       saveItems: expense.items !== undefined,
@@ -178,6 +187,8 @@ export function Page() {
     const success = await handleUpdateExpense(editing.id, {
       amount,
       memo: editing.memo || undefined,
+      // 店名を消したときは空文字（null として保存し、サーバーの店名も消す）。店名を知らず編集もしていなければ変えない
+      storeName: editing.saveStoreName ? editing.storeName : undefined,
       category: editing.category || undefined,
       // 内訳をすべて消したときは null（サーバーの内訳も消す）。内訳を知らず編集もしていなければ送らない
       items: editing.saveItems ? (items.items ?? null) : undefined,
@@ -208,7 +219,15 @@ export function Page() {
   }
 
   const handleStartAdd = () => {
-    setAdding({ amount: '', memo: '', category: '', subBudgetId: '', items: [], spreadDifference: false });
+    setAdding({
+      amount: '',
+      memo: '',
+      storeName: '',
+      category: '',
+      subBudgetId: '',
+      items: [],
+      spreadDifference: false,
+    });
     setEditing(null);
     setDeletingId(null);
   }
@@ -232,6 +251,7 @@ export function Page() {
     await addExpense({
       amount,
       memo: adding.memo || undefined,
+      storeName: adding.storeName || undefined,
       category: adding.category || undefined,
       date: selectedDay.date,
       subBudgetId: adding.subBudgetId || undefined,
@@ -323,9 +343,21 @@ export function Page() {
                               </select>
                               <input
                                 type="text"
+                                value={editing.storeName}
+                                onChange={(e) =>
+                                  setEditing({ ...editing, storeName: e.target.value, saveStoreName: true })
+                                }
+                                placeholder="店名"
+                                aria-label="店名"
+                                maxLength={MAX_STORE_NAME_LENGTH}
+                                className="edit-input store-name"
+                              />
+                              <input
+                                type="text"
                                 value={editing.memo}
                                 onChange={(e) => setEditing({ ...editing, memo: e.target.value })}
                                 placeholder="メモ"
+                                aria-label="メモ"
                                 className="edit-input memo"
                               />
                             </div>
@@ -350,7 +382,10 @@ export function Page() {
                           // 削除確認モード
                           <div className="expense-delete-confirm">
                             <p>この支出を削除しますか？</p>
-                            <p className="delete-target">{formatCurrency(expense.amount)} {expense.memo && `- ${expense.memo}`}</p>
+                            <p className="delete-target">
+                              {formatCurrency(expense.amount)}{' '}
+                              {[expense.storeName, expense.memo].filter(Boolean).map((text) => `- ${text}`).join(' ')}
+                            </p>
                             <div className="delete-actions">
                               <button className="btn-delete-confirm" onClick={handleConfirmDelete}>削除</button>
                               <button className="btn-cancel" onClick={handleCancelDelete}>キャンセル</button>
@@ -384,6 +419,7 @@ export function Page() {
                                   <span className="expense-category">{labelOf(expense.category)}</span>
                                 )
                               )}
+                              {expense.storeName && <span className="expense-store-name">{expense.storeName}</span>}
                               {expense.memo && <span className="expense-memo">{expense.memo}</span>}
                               <ExpenseItemsList expense={expense} labelOf={labelOf} />
                             </div>
@@ -437,9 +473,19 @@ export function Page() {
                     </select>
                     <input
                       type="text"
+                      value={adding.storeName}
+                      onChange={(e) => setAdding({ ...adding, storeName: e.target.value })}
+                      placeholder="店名（任意）"
+                      aria-label="店名"
+                      maxLength={MAX_STORE_NAME_LENGTH}
+                      className="add-input store-name"
+                    />
+                    <input
+                      type="text"
                       value={adding.memo}
                       onChange={(e) => setAdding({ ...adding, memo: e.target.value })}
                       placeholder="メモ（任意）"
+                      aria-label="メモ"
                       className="add-input memo"
                     />
                     {subBudgetsList.length > 0 && (

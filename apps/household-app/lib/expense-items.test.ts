@@ -98,10 +98,35 @@ describe('parseItemDrafts', () => {
     });
   });
 
-  it('保存済みのメモ（MCP で記録した明細のメモ）は保つ', () => {
-    expect(parseItemDrafts([draft({ name: 'ケーキ', amount: '1200', memo: '誕生日用' })])).toEqual({
+  it('内訳ごとのメモ（任意）を1行にして保存する', () => {
+    expect(
+      parseItemDrafts([
+        draft({ name: 'ケーキ', amount: '1200', memo: ' 誕生日用 ' }),
+        draft({ name: '牛乳', amount: '198', memo: '' }),
+      ])
+    ).toEqual({
       ok: true,
-      items: [{ name: 'ケーキ', amount: 1200, memo: '誕生日用' }],
+      items: [
+        { name: 'ケーキ', amount: 1200, memo: '誕生日用' },
+        { name: '牛乳', amount: 198 },
+      ],
+    });
+  });
+
+  it('メモだけの行も無視せず内訳にする（金額0）', () => {
+    expect(parseItemDrafts([draft({ memo: 'おまけ付き' })])).toEqual({
+      ok: true,
+      items: [{ name: '', amount: 0, memo: 'おまけ付き' }],
+    });
+  });
+
+  it('メモが長すぎる行はエラーにする', () => {
+    const long = draft({ name: 'ケーキ', amount: '1200', memo: 'あ'.repeat(201) });
+
+    expect(parseItemDrafts([long])).toEqual({
+      ok: false,
+      error: '内訳のメモは200文字以内で入力してください',
+      invalidKeys: [long.key],
     });
   });
 });
@@ -188,6 +213,18 @@ describe('finalizeItemDrafts', () => {
     });
   });
 
+  it('品名もカテゴリーもなくてもメモのある行には足さず、残りの行を加える', () => {
+    const result = finalizeItemDrafts([draft({ amount: '300', memo: 'お土産' })], 1000, { spreadDifference: false });
+
+    expect(result).toEqual({
+      ok: true,
+      items: [
+        { name: '', amount: 300, memo: 'お土産' },
+        { name: '', amount: 700 },
+      ],
+    });
+  });
+
   it('品名なしでも会計と違うカテゴリーの行（カテゴリーごとの金額）には足さず、残りの行を加える', () => {
     const drafts = [draft({ name: '', amount: '1200', category: 'daily-goods' })];
 
@@ -263,7 +300,7 @@ describe('updateItemDraft', () => {
     expect(updateItemDraft(saved, { amount: '400' }).quantity).toBeUndefined();
   });
 
-  it('品名や金額を書き換えてもメモは保ち（行に表示し、消すボタンで消せる）、memo: undefined で消す', () => {
+  it('品名や金額を書き換えてもメモは保つ（メモは行の欄で直せる）', () => {
     const saved = draft({ name: 'ケーキ', amount: '1200', memo: '誕生日用' });
 
     expect(updateItemDraft(saved, { name: 'ショートケーキ' }).memo).toBe('誕生日用');

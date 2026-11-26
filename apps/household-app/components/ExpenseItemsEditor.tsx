@@ -32,7 +32,7 @@ function formatYen(amount: number): string {
  * 内訳（1回の会計で何を買ったか）の入力欄
  *
  * 行ごとに品名・金額・カテゴリーを入力する（品名だけ、金額とカテゴリーだけでもよい）。支払総額（電卓・金額欄）とは別に持つ。
- * MCP で記録した明細のメモは、その行に表示して消せるようにする（入力はしない）。
+ * 行ごとに任意のメモも書ける（MCP で記録した明細のメモもここで直せる）。
  * 内訳の合計が支払総額より少なければ、保存時に足りない分を「残り」の1行（会計のカテゴリー）にする。
  * 差が消費税・値引きなら、チェックを入れて内訳の比率で配分できる。
  * pre-hydration-calculator.js が拾うクラス名（calc-btn / submit-button / memo-input / category-select）は使わない。
@@ -109,19 +109,15 @@ export function ExpenseItemsEditor({
                   </option>
                 ))}
               </select>
-              {draft.memo !== undefined && (
-                // MCP で記録した明細のメモ。アプリでは書かず、表示と削除だけ（品名を変えたときに古いメモを消せるように）
-                <p className="expense-items-memo">
-                  <span className="expense-items-memo-text">メモ: {draft.memo}</span>
-                  <button
-                    type="button"
-                    aria-label={`内訳${index + 1}のメモを消す`}
-                    onClick={() => update(draft.key, { memo: undefined })}
-                  >
-                    メモを消す
-                  </button>
-                </p>
-              )}
+              <input
+                type="text"
+                className="expense-items-memo"
+                {...invalidProps}
+                aria-label={`内訳${index + 1}のメモ`}
+                placeholder="メモ（任意）"
+                value={draft.memo ?? ''}
+                onChange={(e) => update(draft.key, { memo: e.target.value })}
+              />
             </li>
             );
           })}

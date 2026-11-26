@@ -496,7 +496,8 @@ export function convertToCSV<T extends Record<string, unknown>>(
 /**
  * 支出をエクスポート用の CSV にする
  * 1回の会計 = 1行で、金額は支払総額（カード明細の CSV と突き合わせられるように）。
- * 内訳は1つのセル（「牛乳 ¥198 / 洗剤 ¥398」、改行なし）でメモの後ろに出す。先頭の4列は FIXED_COLUMN_ORDER と同じなので、インポートで読み戻せる
+ * 内訳は1つのセル（「牛乳 ¥198 / 洗剤 ¥398」、改行なし）でメモの後ろに、店名はその後ろに出す。
+ * 先頭の4列は FIXED_COLUMN_ORDER と同じなので、インポートで読み戻せる（内訳・店名は読み戻さない）
  */
 export function convertExpensesToCSV(
   expenses: ExpenseEntity[],
@@ -509,8 +510,9 @@ export function convertExpensesToCSV(
       category: expense.category,
       memo: expense.memo,
       items: formatItemsText(expense.items, labelOf),
+      storeName: expense.storeName,
     })),
-    [...DEFAULT_EXPORT_FIELDS, { key: 'items', header: '内訳' }]
+    [...DEFAULT_EXPORT_FIELDS, { key: 'items', header: '内訳' }, { key: 'storeName', header: '店名' }]
   );
 }
 

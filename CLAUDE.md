@@ -225,6 +225,7 @@ interface Expense {     // 1件 = 1回の会計（カード明細の1行と対�
   amount: number;       // 支払総額。予算・残額の計算はこの額で行う
   category?: string;    // 会計のカテゴリー（内訳があってなければ主なカテゴリー）
   memo?: string;
+  storeName?: string | null; // 店名（メモとは別の任意の項目）。null は店名なし、undefined は店名を知らないコードが書いた行（不明）
   date: string;         // ISO 8601
   createdAt: string;
   updatedAt: string;
@@ -238,7 +239,7 @@ interface ExpenseItem { // 何を買ったか（@maronn/domain の expense-items
   amount: number;       // 0以上の整数
   quantity?: number;
   category?: string;    // 保存時に会計のカテゴリー（なければ other）を入れる
-  memo?: string;        // 品物ごとのメモ（MCP の記録で付ける。1行。アプリは表示と削除だけ）
+  memo?: string;        // 品物ごとのメモ（任意。1行・200文字まで。アプリの内訳の欄と MCP の記録で付ける）
 }
 
 interface Budget {
@@ -260,7 +261,7 @@ interface SyncMeta {
 スキーマは `packages/db-schema/src/` で管理し、`@maronn/db-schema` パッケージとして各アプリから参照する。
 
 主なテーブル（`packages/db-schema/src/household.ts`）:
-- `expenses`: 支出記録。1行 = 1回の会計で `amount` は支払総額（`subBudgetId`、レシート由来なら `receiptId`）。`items` は内訳（JSON 配列、なければ NULL。`0011_expense_items.sql`、JSON の配列だけを許す CHECK 制約あり）
+- `expenses`: 支出記録。1行 = 1回の会計で `amount` は支払総額（`subBudgetId`、レシート由来なら `receiptId`）。`store_name` は店名（メモとは別の任意の項目、`0012_expense_store_name.sql`。tRPC の `storeName` は undefined = 変えない、null・空 = 消す。上限の100文字を超える分は切る）。`items` は内訳（JSON 配列、なければ NULL。`0011_expense_items.sql`、JSON の配列だけを許す CHECK 制約あり）
   - カテゴリー別の集計は `@maronn/domain` の `allocateExpenseByCategory`（支払総額を内訳の金額の比率で最大剰余法により按分。内訳の金額がすべて0なら会計のカテゴリーに全額）
   - 内訳は行と一緒に丸ごと置き換える（内訳の行に ID はない）。tRPC の `items` は undefined = 変えない（内訳を知らない古いクライアント）、null = 消す、配列 = 置き換え
 - `receipts` / `receipt_items`: 生成AIがレシート写真から読み取った購入。レシート1枚を支払総額の `expenses` 1件にし、明細はその `items` に入れる（`receipt_items` は以前の記録の明細だけ。以前の記録はカテゴリ別に複数の `expenses` に分かれている）
@@ -295,8 +296,8 @@ function resolveConflicts(local: Expense[], remote: Expense[]): SyncResult {
   // - 支出（Expense）: ローカルに未送信の編集（pending）があり、別の端末で編集されていれば両方残す（IDを振り直して2件に）
   //   未送信の編集がなければ新しい方を採用（packages/domain/src/sync.ts の mergeExpenses）
   // - 予算（Budget）: updatedAt が新しい方を採用
-  // 内訳: 同じ版でローカルが不明（items が undefined）か、同期済みなのにサーバーと違えば（項目を知らない古いコードが落とした行）サーバーの内訳にする。
-  //       サーバーが内訳を返さなければローカルの内訳を残す
+  // 内訳・店名: 同じ版でローカルが不明（undefined）か、同期済みなのにサーバーと違えば（項目を知らない古いコードが落とした行）サーバーの値にする。
+  //       サーバーが返さなければローカルの値を残す（packages/domain/src/sync.ts の sameVersionRepair・withLocalFieldsUnknownToServer）
 }
 ```
 
@@ -493,9 +494,9 @@ maronn-openid-connect（`@maronn-openid-connect/core` 0.12.0 / `experimental` 0.
 
 OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud に `${ISSUER}/mcp`、scope に `household`、発行済みの記録があること）を検証し、Streamable HTTP（ステートレス）でツールを提供する。
 
-- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細・メモ）を記録。支払総額の支出1件（1回の会計）にし、明細を内訳（`items`）にする。会計のメモ（`memo`）は支出のメモ（アプリのメモ欄。省略すると店名）、明細のメモ（`items[].memo`）は内訳の各行に入れる（どちらも改行・連続した空白は1つの空白にし、200文字まで）。結果にカテゴリ別の按分（`byCategory`）を返す。同日・同額のレシートや、アプリなどで記録した同日・同額の支出（`receipt_id` なし）は duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）。レシートのカテゴリーがなければ主なカテゴリーを支出のカテゴリーにする
+- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細・メモ）を記録。支払総額の支出1件（1回の会計）にし、明細を内訳（`items`）にする。店名（`storeName`、任意）は支出の店名、会計のメモ（`memo`）は支出のメモ、明細のメモ（`items[].memo`）は内訳の各行に入れる（どれも任意で、改行・連続した空白は1つの空白にする。店名は100文字、メモは200文字まで）。店名がなければ `receipts.store_name` は空文字（NOT NULL のため。読むときは null にする）。結果にカテゴリ別の按分（`byCategory`）を返す。同日・同額のレシートや、アプリなどで記録した同日・同額の支出（`receipt_id` なし）は duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）。レシートのカテゴリーがなければ主なカテゴリーを支出のカテゴリーにする
 - `delete_receipt`: 記録したレシートを取り消す（支出ごと内訳も消える）
-- `list_records`: 月の支出（1件 = 1回の会計、店名・カテゴリー名・会計のメモ付き）と、サブ予算を含む月の合計・按分したカテゴリ別の額。`includeItems` で各支出の内訳（明細のメモを含む）と、レシートの店名・税・支払方法（以前のレシートは明細も）
+- `list_records`: 月の支出（1件 = 1回の会計、店名・カテゴリー名・会計のメモ付き。店名は支出の店名だけで、2026-11-26 までに記録したレシートは店名が null・メモに店名）と、サブ予算を含む月の合計・按分したカテゴリ別の額。`includeItems` で各支出の内訳（明細のメモを含む）と、レシートの店名・税・支払方法（以前のレシートは明細も）
 - `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く。内訳のある支出は按分）
 - `list_categories` / `create_category` / `update_category` / `delete_category`: カテゴリーの一覧・追加・名前変更・削除
   - 既定のカテゴリーも名前変更・削除できる。「その他」（other、カテゴリーのない支出の計上先）は削除不可
@@ -504,7 +505,7 @@ OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud �
   - 同じ名前の作成は既存を返し（existing）、削除済みと同じ名前なら復元する（restored）。有効なカテゴリーは 30 個まで、追加は削除済みを含めて 100 個まで
   - アプリは一覧（tRPC `getCategories`）を記録・カレンダーの選択肢と表示名に使い、オフライン用に直前の一覧を localStorage に保存する。アプリに管理画面はない
 - 接続先: `https://maronn-household-budget.com/mcp`（Claude のカスタムコネクタなど。ログインと同意は認証基盤の画面）
-- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。Webhook のペイロードには内訳を含めない。以前（2026-11-21 まで）に記録したレシートはカテゴリ別に複数の支出に分かれたまま（移行していない）。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る。カテゴリー名は以後の会話のツールの説明に載る（作成は「ユーザーが頼んだときだけ」とツールの説明に書いている）
+- 既知の制限: MCP で記録した支出では Webhook（expense.created）は送らない。Webhook のペイロードには内訳と店名を含めない。CSV エクスポートの内訳の列に明細のメモは出ない（店名は最後の列。インポートは店名・内訳を読まない）。以前（2026-11-21 まで）に記録したレシートはカテゴリ別に複数の支出に分かれたまま（移行していない）。追加したカテゴリーの value は ULID なので、CSV エクスポート・エクスポート API・Webhook にはカテゴリー名でなく ULID が出る。カテゴリー名は以後の会話のツールの説明に載る（作成は「ユーザーが頼んだときだけ」とツールの説明に書いている）
 
 ### 月次予算設定機能
 

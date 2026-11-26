@@ -255,6 +255,7 @@ async function handleMonthlyExport(
         amount: exp.amount,
         category: exp.category,
         memo: exp.memo,
+        storeName: exp.storeName,
         date: exp.date,
         createdAt: exp.createdAt,
         receiptId: exp.receiptId,

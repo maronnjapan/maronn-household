@@ -690,7 +690,8 @@ input[type="checkbox"]:focus {
   gap: 0.5rem;
 }
 
-.memo-section .memo-input {
+.memo-section .memo-input,
+.memo-section .store-name-input {
   width: 100%;
   padding: 0.625rem 0.75rem;
   font-size: 1rem;
@@ -701,7 +702,8 @@ input[type="checkbox"]:focus {
   min-height: 2.75rem;
 }
 
-.memo-section .memo-input:focus {
+.memo-section .memo-input:focus,
+.memo-section .store-name-input:focus {
   outline: none;
   border-color: #3498db;
   border-width: 0.125rem;
@@ -745,6 +747,11 @@ input[type="checkbox"]:focus {
 
 .expense-items-row .expense-items-category {
   grid-column: 2 / 4;
+}
+
+/* 内訳のメモ（任意）は、どの幅でも行の下に1行で出す */
+.expense-items-row .expense-items-memo {
+  grid-column: 1 / -1;
 }
 
 .expense-items-row input[type="text"],
@@ -955,14 +962,16 @@ input[type="checkbox"]:focus {
     box-shadow: 0 0 0 0.1875rem rgba(52, 152, 219, 0.1);
   }
 
-  .memo-section .memo-input {
+  .memo-section .memo-input,
+  .memo-section .store-name-input {
     padding: 1rem 1.25rem;
     font-size: 1.1rem;
     min-height: 3.5rem;
     border-radius: 0.75rem;
   }
 
-  .memo-section .memo-input:focus {
+  .memo-section .memo-input:focus,
+  .memo-section .store-name-input:focus {
     border-width: 0.1875rem;
     box-shadow: 0 0 0 0.1875rem rgba(52, 152, 219, 0.1);
   }

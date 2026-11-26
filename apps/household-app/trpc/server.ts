@@ -43,6 +43,8 @@ import {
   MAX_EXPENSE_ITEM_QUANTITY,
   MAX_EXPENSE_ITEM_CATEGORY_LENGTH,
   MAX_EXPENSE_ITEM_MEMO_LENGTH,
+  MAX_STORE_NAME_LENGTH,
+  normalizeStoreName,
   type ScheduleConfig,
   type WebhookServiceType,
 } from '@maronn/domain';
@@ -143,6 +145,17 @@ function itemsToStore(items: z.infer<typeof expenseItemsSchema>) {
   return items === undefined ? undefined : (normalizeExpenseItems(items) ?? null);
 }
 
+/**
+ * 店名: undefined なら変えない（店名を知らない古いクライアントは送らない）、null や空文字なら消す、文字列なら置き換える
+ * 上限を超える分は保存時に切る（拒否すると端末の未送信の支出が送れないまま残るため）。ここでは極端に長い値だけを拒否する
+ */
+const storeNameSchema = z.string().max(MAX_STORE_NAME_LENGTH * 10).nullable().optional();
+
+/** 保存する店名（undefined は変えない） */
+function storeNameToStore(storeName: z.infer<typeof storeNameSchema>) {
+  return storeName === undefined ? undefined : normalizeStoreName(storeName);
+}
+
 const expenseInputSchema = z.object({
   id: z.string(),
   // Infinity は D1 で NULL になり NOT NULL 違反になるので受け付けない（小数は以前の端末の行のため通す）
@@ -155,6 +168,7 @@ const expenseInputSchema = z.object({
   deviceId: z.string(),
   subBudgetId: z.string().optional(),
   items: expenseItemsSchema,
+  storeName: storeNameSchema,
 });
 
 const getExpensesInputSchema = z.object({
@@ -170,6 +184,7 @@ const updateExpenseInputSchema = z.object({
   updatedAt: z.string(),
   deviceId: z.string(),
   items: expenseItemsSchema,
+  storeName: storeNameSchema,
 });
 
 const deleteExpenseInputSchema = z.object({
@@ -404,6 +419,7 @@ export const appRouter = router({
       } = opts.input;
       const userId = opts.ctx.user.id; // 認証済みユーザーのIDを使用
       const items = itemsToStore(opts.input.items);
+      const storeName = storeNameToStore(opts.input.storeName);
 
       // DBを取得（D1を使用）
       const database = opts.ctx.env?.DB
@@ -435,8 +451,9 @@ export const appRouter = router({
               updatedAt,
               deviceId,
               subBudgetId: subBudgetId || null,
-              // undefined なら内訳を変えない（Drizzle は undefined の項目を SET に含めない）
+              // undefined なら内訳・店名を変えない（Drizzle は undefined の項目を SET に含めない）
               items,
+              storeName,
             })
             .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
             .run();
@@ -474,6 +491,7 @@ export const appRouter = router({
           deviceId,
           subBudgetId: subBudgetId || null,
           items: items ?? null,
+          storeName: storeName ?? null,
         })
         .run();
 
@@ -539,6 +557,7 @@ export const appRouter = router({
         opts.input;
       const userId = opts.ctx.user.id;
       const items = itemsToStore(opts.input.items);
+      const storeName = storeNameToStore(opts.input.storeName);
 
       const database = opts.ctx.env?.DB
         ? drizzle(opts.ctx.env.DB)
@@ -573,8 +592,9 @@ export const appRouter = router({
           date: date ?? existing.date,
           updatedAt,
           deviceId,
-          // undefined なら内訳を変えない（Drizzle は undefined の項目を SET に含めない）
+          // undefined なら内訳・店名を変えない（Drizzle は undefined の項目を SET に含めない）
           items,
+          storeName,
         })
         .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
         .run();

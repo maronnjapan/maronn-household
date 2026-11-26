@@ -1,7 +1,8 @@
 import Dexie, { type Table } from 'dexie';
 import type { ExpenseEntity, SyncStatus } from '@maronn/domain';
 import { normalizeExpenseItems, resolveExpenseCategories, type ExpenseItem } from '@maronn/domain/expense-items';
-import { needsRemoteItems } from '@maronn/domain/sync';
+import { normalizeStoreName } from '@maronn/domain/expense';
+import { sameVersionRepair, withLocalFieldsUnknownToServer } from '@maronn/domain/sync';
 
 /**
  * 未認証ユーザー用のID
@@ -205,11 +206,13 @@ export async function updateSyncStatus(
 
 /**
  * 支出の更新内容
- * items は undefined なら変えず、null（または空の配列）なら内訳を消し、配列なら置き換える
+ * items は undefined なら変えず、null（または空の配列）なら内訳を消し、配列なら置き換える。storeName も undefined なら変えない
  * （memo・category は従来どおり、undefined を渡すと消える）
  */
 export type ExpenseUpdates = Partial<Pick<ExpenseEntity, 'amount' | 'memo' | 'category' | 'date'>> & {
   items?: ExpenseItem[] | null;
+  /** 店名。undefined なら変えず、null や空文字なら消す */
+  storeName?: string | null;
 };
 
 /**
@@ -233,12 +236,13 @@ export async function updateExpense(
     return null;
   }
 
-  // items: undefined をそのままスプレッドすると既存の内訳が消えるので、items だけは渡されたときだけ変える
-  const { items, ...fields } = updates;
+  // items・storeName は undefined をそのままスプレッドすると既存の値が消えるので、渡されたときだけ変える
+  const { items, storeName, ...fields } = updates;
   const merged: LocalExpenseEntity = {
     ...existing,
     ...fields,
     ...(items !== undefined ? { items: normalizeExpenseItems(items) ?? null } : {}),
+    ...(storeName !== undefined ? { storeName: normalizeStoreName(storeName) } : {}),
   };
   // 内訳があれば、会計のカテゴリー（なければ主なカテゴリー）と内訳のカテゴリーを確定する
   const resolved = resolveExpenseCategories(merged);
@@ -313,20 +317,18 @@ export async function mergeExpensesFromServer(
         });
       } else if (localExpense.userId === userId && new Date(serverExpense.updatedAt) > new Date(localExpense.updatedAt)) {
         // サーバーのデータが新しい場合は更新（同じユーザーのデータのみ）
-        // サーバーが内訳を返さない（内訳を知らない古いサーバー）ときは、ローカルの内訳を残す
+        // サーバーが内訳・店名を返さない（その項目を知らない古いサーバー）ときは、ローカルの値を残す
         await db.expenses.put({
-          ...serverExpense,
-          items: serverExpense.items !== undefined ? serverExpense.items : localExpense.items,
+          ...withLocalFieldsUnknownToServer(serverExpense, localExpense),
           userId,
           syncStatus: 'synced',
         });
-      } else if (
-        localExpense.userId === userId &&
-        serverExpense.updatedAt === localExpense.updatedAt &&
-        needsRemoteItems(localExpense, serverExpense)
-      ) {
-        // 同じ版でも、内訳を知らない・内訳の項目（メモなど）を知らないコードが取り込んだ行なら、サーバーの内訳で直す
-        await db.expenses.update(localExpense.id, { items: serverExpense.items });
+      } else if (localExpense.userId === userId && serverExpense.updatedAt === localExpense.updatedAt) {
+        // 同じ版でも、内訳・店名（内訳のメモなど）を知らないコードが取り込んだ行なら、サーバーの値で直す
+        const repair = sameVersionRepair(localExpense, serverExpense);
+        if (repair) {
+          await db.expenses.update(localExpense.id, repair);
+        }
       }
       // ローカルが新しい場合はそのまま（pendingのまま）
     }

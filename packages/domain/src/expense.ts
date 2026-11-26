@@ -1,5 +1,8 @@
 import { ulid } from 'ulidx';
 import { normalizeExpenseItems, resolveExpenseCategories, type ExpenseItem } from './expense-items';
+import { normalizeStoreName } from './store-name';
+
+export { MAX_STORE_NAME_LENGTH, normalizeStoreName } from './store-name';
 
 /**
  * 同期ステータス
@@ -14,6 +17,11 @@ export interface ExpenseEntity {
   amount: number; // 支払総額（会計の合計）
   category?: string; // 会計のカテゴリー（カテゴリーのない内訳の計上先）
   memo?: string;
+  /**
+   * 店名（メモとは別に持つ）。null は店名なし、undefined は店名を知らないコードが書いた行（不明）。
+   * サーバーへは undefined なら送らず（サーバーの店名を変えない）、null なら店名を消す
+   */
+  storeName?: string | null;
   date: string; // ISO 8601 (YYYY-MM-DD)
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -34,6 +42,7 @@ export interface CreateExpenseParams {
   amount: number;
   category?: string;
   memo?: string;
+  storeName?: string;
   date?: string;
   deviceId?: string;
   subBudgetId?: string;
@@ -93,6 +102,7 @@ export function createExpense(params: CreateExpenseParams): ExpenseEntity {
     amount: params.amount,
     category,
     memo: params.memo,
+    storeName: normalizeStoreName(params.storeName),
     date: params.date ?? getCurrentDate(),
     createdAt: now,
     updatedAt: now,

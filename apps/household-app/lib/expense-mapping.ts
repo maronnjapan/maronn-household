@@ -20,6 +20,8 @@ export interface ServerExpense {
   subBudgetId: string | null;
   /** 内訳（なければ null）。内訳を知らない古いサーバーは返さない */
   items?: readonly ExpenseItemInput[] | null;
+  /** 店名（なければ null）。店名を知らない古いサーバーは返さない */
+  storeName?: string | null;
 }
 
 export function toLocalExpense(row: ServerExpense): ExpenseEntity {
@@ -36,6 +38,8 @@ export function toLocalExpense(row: ServerExpense): ExpenseEntity {
     subBudgetId: row.subBudgetId ?? undefined,
     // undefined（サーバーが内訳を返さない）は不明のまま、null・空は内訳なし
     items: row.items === undefined ? undefined : (normalizeExpenseItems(row.items) ?? null),
+    // 内訳と同じく、undefined（サーバーが店名を返さない）は不明のまま
+    storeName: row.storeName === undefined ? undefined : row.storeName,
   };
 }
 
@@ -43,7 +47,7 @@ export function toLocalExpense(row: ServerExpense): ExpenseEntity {
  * createExpense（同期のアップサート）で送る内容
  * 内訳なし（null・空）なら null を送り、サーバーの内訳も消す。
  * 内訳が不明（undefined。内訳を知らないコードが書いた行）なら items を送らず、サーバーの内訳を変えない
- * （古い JS が内訳なしで取り込んだ行を編集して、サーバーの内訳を消さないように）
+ * （古い JS が内訳なしで取り込んだ行を編集して、サーバーの内訳を消さないように）。店名も同じ
  */
 export function toUploadPayload(expense: ExpenseEntity): {
   id: string;
@@ -56,6 +60,7 @@ export function toUploadPayload(expense: ExpenseEntity): {
   deviceId: string;
   subBudgetId: string | undefined;
   items?: ExpenseItem[] | null;
+  storeName?: string | null;
 } {
   return {
     id: expense.id,
@@ -68,5 +73,7 @@ export function toUploadPayload(expense: ExpenseEntity): {
     deviceId: expense.deviceId,
     subBudgetId: expense.subBudgetId,
     items: expense.items === undefined ? undefined : expense.items && expense.items.length > 0 ? expense.items : null,
+    // 不明（undefined）なら送らず、サーバーの店名を変えない。null なら消す
+    storeName: expense.storeName,
   };
 }

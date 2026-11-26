@@ -71,6 +71,34 @@ describe('mergeExpenses', () => {
     expect(result).toEqual({ toAdd: [], toUpdate: [], conflicts: [] });
   });
 
+  it('同じ版で、店名を知らないコードが取り込んだ行（storeName が undefined）なら店名を補い、同期済みで違えばサーバーの店名にする', () => {
+    const result = mergeExpenses(
+      [
+        { ...base, id: 'unknown', items: null },
+        { ...base, id: 'differs', items: null, storeName: null },
+        { ...base, id: 'pending', items: null, storeName: '自分の入力', syncStatus: 'pending' },
+      ],
+      [
+        { ...base, id: 'unknown', items: null, storeName: 'スーパーA' },
+        { ...base, id: 'differs', items: null, storeName: 'スーパーA' },
+        { ...base, id: 'pending', items: null, storeName: 'スーパーA' },
+      ]
+    );
+
+    expect(result.toUpdate).toEqual([
+      { ...base, id: 'unknown', items: null, storeName: 'スーパーA', syncStatus: 'synced' },
+      { ...base, id: 'differs', items: null, storeName: 'スーパーA', syncStatus: 'synced' },
+    ]);
+  });
+
+  it('サーバーの新しい版に店名の情報がなければ（店名を知らない古いサーバー）、ローカルの店名を残す', () => {
+    const remote = { ...base, updatedAt: LATER, items: null };
+
+    const result = mergeExpenses([{ ...base, items: null, storeName: 'スーパーA' }], [remote]);
+
+    expect(result.toUpdate).toEqual([{ ...remote, storeName: 'スーパーA', syncStatus: 'synced' }]);
+  });
+
   it('同じ版で、ローカルとサーバーが内訳を同じく知っていれば何もしない', () => {
     const result = mergeExpenses(
       [{ ...base, items: null }, { ...base, id: 'with-items', items: ITEMS }],

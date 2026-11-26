@@ -50,6 +50,12 @@ describe('toLocalExpense', () => {
   it('サーバーが items を返さなければ（内訳を知らない古いサーバー）items は undefined（不明）', () => {
     expect(toLocalExpense(SERVER_ROW).items).toBeUndefined();
   });
+
+  it('店名を写す（null は店名なし、サーバーが返さなければ undefined = 不明）', () => {
+    expect(toLocalExpense({ ...SERVER_ROW, storeName: 'スーパーA' }).storeName).toBe('スーパーA');
+    expect(toLocalExpense({ ...SERVER_ROW, storeName: null }).storeName).toBeNull();
+    expect(toLocalExpense(SERVER_ROW).storeName).toBeUndefined();
+  });
 });
 
 describe('toUploadPayload', () => {
@@ -93,5 +99,11 @@ describe('toUploadPayload', () => {
 
     expect(payload.items).toBeUndefined();
     expect(JSON.parse(JSON.stringify(payload))).not.toHaveProperty('items');
+  });
+
+  it('店名を送る（null なら店名を消す。不明 = undefined なら送らず、サーバーの店名を変えない）', () => {
+    expect(toUploadPayload({ ...local, storeName: 'スーパーA' }).storeName).toBe('スーパーA');
+    expect(toUploadPayload({ ...local, storeName: null }).storeName).toBeNull();
+    expect(JSON.parse(JSON.stringify(toUploadPayload(local)))).not.toHaveProperty('storeName');
   });
 });

@@ -439,10 +439,11 @@
   cursor: pointer;
 }
 
+/* 店名とメモは金額・カテゴリーの下の行に並べる（幅の狭いモーダルで4つを1行に詰めない） */
 .edit-input.memo,
 .edit-input.store-name {
-  flex: 1;
-  width: 100%;
+  flex: 1 1 40%;
+  min-width: 0;
 }
 
 .edit-actions {
@@ -584,10 +585,11 @@
   cursor: pointer;
 }
 
+/* 店名とメモは金額・カテゴリーの下の行に並べる（幅の狭いモーダルで4つを1行に詰めない） */
 .add-input.memo,
 .add-input.store-name {
-  flex: 1;
-  width: 100%;
+  flex: 1 1 40%;
+  min-width: 0;
 }
 
 .add-input:focus {

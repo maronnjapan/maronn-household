@@ -1,5 +1,6 @@
 import { ulid } from 'ulidx';
 import type { ExpenseEntity } from './expense';
+import { sameExpenseItems } from './expense-items';
 
 /**
  * 競合解決の結果
@@ -90,8 +91,7 @@ export function mergeExpenses(
     const remoteUpdated = new Date(remote.updatedAt).getTime();
 
     if (localUpdated === remoteUpdated) {
-      // 同じ版。内訳を知らないコードが取り込んだ行なら、内訳だけ補う
-      if (local.items === undefined && remote.items !== undefined) {
+      if (needsRemoteItems(local, remote)) {
         result.toUpdate.push({ ...local, items: remote.items, syncStatus: 'synced' });
       }
       continue;
@@ -125,4 +125,20 @@ export function mergeExpenses(
   }
 
   return result;
+}
+
+/**
+ * 同じ版のローカルの行の内訳を、サーバーの内訳にすべきか
+ * - 内訳を知らないコードが取り込んだ行（items が undefined）
+ * - 同期済みなのに内訳が違う行（内訳の項目を知らない古いコードが、メモなどを落として取り込んだ行）。
+ *   同期済みで同じ版ならサーバーと同じはずなので、サーバーの内訳で直す（そのまま編集して送ると、サーバーの項目も消える）
+ * サーバーが内訳を返さない（内訳を知らない古いサーバー）ときや、ローカルに未送信の編集があるときは変えない
+ */
+export function needsRemoteItems(
+  local: Pick<ExpenseEntity, 'items' | 'syncStatus'>,
+  remote: Pick<ExpenseEntity, 'items'>
+): boolean {
+  if (remote.items === undefined) return false;
+  if (local.items === undefined) return true;
+  return local.syncStatus === 'synced' && !sameExpenseItems(local.items, remote.items);
 }

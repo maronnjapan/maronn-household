@@ -238,6 +238,7 @@ interface ExpenseItem { // 何を買ったか（@maronn/domain の expense-items
   amount: number;       // 0以上の整数
   quantity?: number;
   category?: string;    // 保存時に会計のカテゴリー（なければ other）を入れる
+  memo?: string;        // 品物ごとのメモ（MCP の記録で付ける。1行。アプリは表示と削除だけ）
 }
 
 interface Budget {
@@ -294,7 +295,8 @@ function resolveConflicts(local: Expense[], remote: Expense[]): SyncResult {
   // - 支出（Expense）: ローカルに未送信の編集（pending）があり、別の端末で編集されていれば両方残す（IDを振り直して2件に）
   //   未送信の編集がなければ新しい方を採用（packages/domain/src/sync.ts の mergeExpenses）
   // - 予算（Budget）: updatedAt が新しい方を採用
-  // 内訳: 同じ版でローカルが不明（items が undefined）ならサーバーの内訳で補い、サーバーが内訳を返さなければローカルの内訳を残す
+  // 内訳: 同じ版でローカルが不明（items が undefined）か、同期済みなのにサーバーと違えば（項目を知らない古いコードが落とした行）サーバーの内訳にする。
+  //       サーバーが内訳を返さなければローカルの内訳を残す
 }
 ```
 
@@ -491,9 +493,9 @@ maronn-openid-connect（`@maronn-openid-connect/core` 0.12.0 / `experimental` 0.
 
 OAuth の保護リソースとして Bearer トークン（RS256 の JWT、aud に `${ISSUER}/mcp`、scope に `household`、発行済みの記録があること）を検証し、Streamable HTTP（ステートレス）でツールを提供する。
 
-- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細）を記録。支払総額の支出1件（1回の会計）にし、明細を内訳（`items`）にする。結果にカテゴリ別の按分（`byCategory`）を返す。同日・同額のレシートや、アプリなどで記録した同日・同額の支出（`receipt_id` なし）は duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）。レシートのカテゴリーがなければ主なカテゴリーを支出のカテゴリーにする
+- `record_receipt`: レシート（店名・購入日時・支払総額・税・支払方法・明細・メモ）を記録。支払総額の支出1件（1回の会計）にし、明細を内訳（`items`）にする。会計のメモ（`memo`）は支出のメモ（アプリのメモ欄。省略すると店名）、明細のメモ（`items[].memo`）は内訳の各行に入れる（どちらも改行・連続した空白は1つの空白にし、200文字まで）。結果にカテゴリ別の按分（`byCategory`）を返す。同日・同額のレシートや、アプリなどで記録した同日・同額の支出（`receipt_id` なし）は duplicate を返す。カテゴリーは value か名前で指定する（ツールの説明に利用者の有効なカテゴリーを載せる）。レシートのカテゴリーがなければ主なカテゴリーを支出のカテゴリーにする
 - `delete_receipt`: 記録したレシートを取り消す（支出ごと内訳も消える）
-- `list_records`: 月の支出（1件 = 1回の会計、店名・カテゴリー名付き）と、サブ予算を含む月の合計・按分したカテゴリ別の額。`includeItems` で各支出の内訳と、レシートの店名・税・支払方法（以前のレシートは明細も）
+- `list_records`: 月の支出（1件 = 1回の会計、店名・カテゴリー名・会計のメモ付き）と、サブ予算を含む月の合計・按分したカテゴリ別の額。`includeItems` で各支出の内訳（明細のメモを含む）と、レシートの店名・税・支払方法（以前のレシートは明細も）
 - `get_budget_summary`: 月の予算・支出・残額・カテゴリ別内訳（アプリの「残り」と同じくサブ予算を除く。内訳のある支出は按分）
 - `list_categories` / `create_category` / `update_category` / `delete_category`: カテゴリーの一覧・追加・名前変更・削除
   - 既定のカテゴリーも名前変更・削除できる。「その他」（other、カテゴリーのない支出の計上先）は削除不可

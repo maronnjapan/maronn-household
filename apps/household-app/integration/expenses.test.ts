@@ -117,6 +117,16 @@ describe('createExpense（同期のアップサート）と getExpenses', () => 
     expect((await callerFor(USER).getExpenses({ month: '2026-11' })).expenses).toEqual([]);
   });
 
+  it('内訳のメモ（MCP で記録した明細のメモ）も保存して返す（アプリで編集して送り直してもメモが消えない）', async () => {
+    const items = [{ name: 'ケーキ', amount: 1200, category: 'food', memo: '誕生日用' }];
+
+    await callerFor(USER).createExpense({ ...EXPENSE, items });
+
+    const { expenses } = await callerFor(USER).getExpenses({ month: '2026-11' });
+    expect(expenses[0]?.items).toEqual(items);
+    expect(JSON.parse((await storedRow())!.items!)).toEqual(items);
+  });
+
   it.each([
     ['負の金額の内訳', [{ name: '値引き', amount: -100 }]],
     ['小数の金額の内訳', [{ name: '牛乳', amount: 1.5 }]],
@@ -124,6 +134,7 @@ describe('createExpense（同期のアップサート）と getExpenses', () => 
     ['上限を超える金額の内訳', [{ name: '家', amount: 100_000_001 }]],
     ['上限を超える数量の内訳', [{ name: 'ねじ', amount: 100, quantity: 10_001 }]],
     ['長すぎるカテゴリー', [{ name: '牛乳', amount: 100, category: 'x'.repeat(41) }]],
+    ['長すぎる内訳のメモ', [{ name: '牛乳', amount: 100, memo: 'あ'.repeat(201) }]],
     ['多すぎる内訳', Array.from({ length: 201 }, (_, i) => ({ name: `品${i}`, amount: 1 }))],
   ])('%sは受け付けない', async (_label, items) => {
     await expect(callerFor(USER).createExpense({ ...EXPENSE, items })).rejects.toThrow();

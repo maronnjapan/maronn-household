@@ -9,6 +9,8 @@ export interface ExpenseItemRecord {
   quantity?: number;
   /** カテゴリーの value。なければ支出（会計）のカテゴリーに計上する */
   category?: string;
+  /** その品についてのメモ */
+  memo?: string;
 }
 
 /**

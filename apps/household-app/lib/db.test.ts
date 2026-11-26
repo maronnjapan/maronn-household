@@ -147,6 +147,31 @@ describe('mergeExpensesFromServer', () => {
     expect((await db.expenses.get(expense.id))?.items).toEqual([{ name: '牛乳', amount: 198 }]);
   });
 
+  it('同じ版で同期済みなのに内訳がサーバーと違えば（内訳のメモを知らない古いコードが取り込んだ行）、サーバーの内訳にする', async () => {
+    const expense = await addWithItems();
+    await db.expenses.update(expense.id, { syncStatus: 'synced' });
+    const withMemo = [
+      { name: '牛乳', amount: 198, category: 'food', memo: '特売' },
+      { name: '洗剤', amount: 398, category: 'daily-goods' },
+    ];
+
+    await mergeExpensesFromServer([{ ...expense, syncStatus: 'synced', items: withMemo }], '2026-11', USER_ID);
+
+    expect((await db.expenses.get(expense.id))?.items).toEqual(withMemo);
+  });
+
+  it('同じ版でも、ローカルが同期待ちなら内訳を書き換えない', async () => {
+    const expense = await addWithItems();
+
+    await mergeExpensesFromServer(
+      [{ ...expense, syncStatus: 'synced', items: [{ name: 'パン', amount: 300, category: 'food' }] }],
+      '2026-11',
+      USER_ID
+    );
+
+    expect((await db.expenses.get(expense.id))?.items).toEqual(expense.items);
+  });
+
   it('サーバーの新しい版に内訳の情報がなければ（内訳を知らない古いサーバー）、ローカルの内訳を残す', async () => {
     const expense = await addWithItems();
     const { items: _items, ...withoutItems } = expense;

@@ -15,7 +15,7 @@ function formatYen(amount: number): string {
 
 /**
  * 1回の会計の内訳（何を買ったか）の表示
- * 品名がなければカテゴリー名（内訳のカテゴリー → 会計のカテゴリー）で表す。金額が0の内訳は品名だけ
+ * 品名がなければカテゴリー名（内訳のカテゴリー → 会計のカテゴリー）で表す。金額が0の内訳は品名だけ。メモは品名の下に出す
  */
 export function ExpenseItemsList({ expense, labelOf }: ExpenseItemsListProps) {
   const items = expense.items ?? [];
@@ -35,6 +35,7 @@ export function ExpenseItemsList({ expense, labelOf }: ExpenseItemsListProps) {
               <span className="expense-breakdown-name">
                 {item.name || categoryLabel || labelFor(expense.category) || '内訳'}
                 {item.quantity !== undefined && ` ×${item.quantity}`}
+                {item.memo && <span className="expense-breakdown-memo">{item.memo}</span>}
               </span>
               {categoryLabel && item.name && <span className="expense-breakdown-category">{categoryLabel}</span>}
               {item.amount !== 0 && <span className="expense-breakdown-amount">{formatYen(item.amount)}</span>}

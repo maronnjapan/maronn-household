@@ -97,6 +97,13 @@ describe('parseItemDrafts', () => {
       items: [{ name: 'ティッシュ', amount: 300, quantity: 2 }],
     });
   });
+
+  it('保存済みのメモ（MCP で記録した明細のメモ）は保つ', () => {
+    expect(parseItemDrafts([draft({ name: 'ケーキ', amount: '1200', memo: '誕生日用' })])).toEqual({
+      ok: true,
+      items: [{ name: 'ケーキ', amount: 1200, memo: '誕生日用' }],
+    });
+  });
 });
 
 describe('draftsFromItems', () => {
@@ -104,13 +111,15 @@ describe('draftsFromItems', () => {
     const drafts = draftsFromItems([
       { name: '牛乳', amount: 198, category: 'food' },
       { name: 'ティッシュ', amount: 300, quantity: 2 },
+      { name: 'ケーキ', amount: 1200, memo: '誕生日用' },
     ]);
 
     expect(drafts.map(({ key: _key, ...rest }) => rest)).toEqual([
       { name: '牛乳', amount: '198', category: 'food' },
       { name: 'ティッシュ', amount: '300', category: '', quantity: 2 },
+      { name: 'ケーキ', amount: '1200', category: '', memo: '誕生日用' },
     ]);
-    expect(new Set(drafts.map((d) => d.key)).size).toBe(2);
+    expect(new Set(drafts.map((d) => d.key)).size).toBe(3);
   });
 
   it('内訳がなければ行はない', () => {
@@ -252,6 +261,16 @@ describe('updateItemDraft', () => {
 
     expect(updateItemDraft(saved, { name: '柔軟剤' }).quantity).toBeUndefined();
     expect(updateItemDraft(saved, { amount: '400' }).quantity).toBeUndefined();
+  });
+
+  it('品名や金額を書き換えてもメモは保ち（行に表示し、消すボタンで消せる）、memo: undefined で消す', () => {
+    const saved = draft({ name: 'ケーキ', amount: '1200', memo: '誕生日用' });
+
+    expect(updateItemDraft(saved, { name: 'ショートケーキ' }).memo).toBe('誕生日用');
+    expect(parseItemDrafts([updateItemDraft(saved, { memo: undefined })])).toEqual({
+      ok: true,
+      items: [{ name: 'ケーキ', amount: 1200 }],
+    });
   });
 
   it('カテゴリーだけを変えた行は数量を保つ', () => {

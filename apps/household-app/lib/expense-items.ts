@@ -25,6 +25,8 @@ export interface ItemDraft {
   category: string;
   /** 保存済みの数量（MCP で記録したレシートの明細など）。フォームでは編集しない */
   quantity?: number;
+  /** 保存済みのメモ（MCP で記録したレシートの明細など）。フォームでは編集せず、保存し直しても残す */
+  memo?: string;
 }
 
 export type ParsedItems =
@@ -46,6 +48,7 @@ export function draftsFromItems(items: readonly ExpenseItem[] | null | undefined
     amount: String(item.amount),
     category: item.category ?? '',
     ...(item.quantity !== undefined ? { quantity: item.quantity } : {}),
+    ...(item.memo !== undefined ? { memo: item.memo } : {}),
   }));
 }
 
@@ -96,6 +99,7 @@ export function parseItemDrafts(drafts: readonly ItemDraft[]): ParsedItems {
         amount: parseAmount(draft.amount) ?? 0,
         quantity: draft.quantity,
         category: draft.category,
+        memo: draft.memo,
       }))
     ),
   };

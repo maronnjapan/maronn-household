@@ -175,6 +175,42 @@ describe('planReceiptRecording', () => {
     ]);
   });
 
+  it('会計のメモがあれば支出のメモにする（なければ店名。改行・連続した空白は1つの空白にする）', () => {
+    const plan = planReceiptRecording(
+      { storeName: 'ケーキ店', purchasedAt: '2026-11-19', totalAmount: 1500, memo: ' 誕生日会\n 立替分 ' },
+      { ...context, newId: ids() }
+    );
+    const blank = planReceiptRecording(
+      { storeName: 'ケーキ店', purchasedAt: '2026-11-19', totalAmount: 1500, memo: '  ' },
+      { ...context, newId: ids() }
+    );
+
+    expect(plan.expense.memo).toBe('誕生日会 立替分');
+    expect(plan.receipt.storeName).toBe('ケーキ店');
+    expect(blank.expense.memo).toBe('ケーキ店');
+  });
+
+  it('明細のメモは内訳の各行に持たせる', () => {
+    const plan = planReceiptRecording(
+      {
+        storeName: 'ケーキ店',
+        purchasedAt: '2026-11-19',
+        totalAmount: 1500,
+        category: 'food',
+        items: [
+          { name: 'ショートケーキ', amount: 1200, memo: '誕生日用' },
+          { name: 'ろうそく', amount: 300, memo: ' ' },
+        ],
+      },
+      { ...context, newId: ids() }
+    );
+
+    expect(plan.expense.items).toEqual([
+      { name: 'ショートケーキ', amount: 1200, category: 'food', memo: '誕生日用' },
+      { name: 'ろうそく', amount: 300, category: 'food' },
+    ]);
+  });
+
   it('明細がなければ内訳のない支出1件にし、差は0とする', () => {
     const plan = planReceiptRecording(
       { storeName: '店', purchasedAt: '2026-11-19', totalAmount: 500, category: 'food' },

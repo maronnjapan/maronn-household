@@ -15,6 +15,8 @@ export const MAX_EXPENSE_ITEM_AMOUNT = 100_000_000;
 export const MAX_EXPENSE_ITEM_QUANTITY = 10_000;
 /** 内訳のカテゴリー（value）の長さの上限（追加したカテゴリーの value は ULID の 26 文字） */
 export const MAX_EXPENSE_ITEM_CATEGORY_LENGTH = 40;
+/** 内訳のメモの長さの上限 */
+export const MAX_EXPENSE_ITEM_MEMO_LENGTH = 200;
 
 export interface ExpenseItem {
   /** 品名（空でもよい。そのときはカテゴリー名で表示する） */
@@ -24,6 +26,8 @@ export interface ExpenseItem {
   quantity?: number;
   /** カテゴリーの value。なければ支出（会計）のカテゴリーに計上する */
   category?: string;
+  /** その品についてのメモ（MCP で記録するときに付ける。1行） */
+  memo?: string;
 }
 
 export interface CategoryAmount {
@@ -101,18 +105,39 @@ export function itemsTotal(items: readonly { amount: number }[] | null | undefin
 }
 
 /**
- * 保存する形にそろえる（品名の前後の空白を除き、指定のない任意の項目は持たない）。内訳がなければ undefined
+ * 文字列を1行にそろえる（改行・連続した空白を1つの空白にし、前後の空白を除く）
+ * 品名やメモはアプリの1行の入力欄と CSV の1セルに収めるため
+ */
+export function toSingleLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 保存する形にそろえる（品名・メモを1行にし、指定のない任意の項目は持たない）。内訳がなければ undefined
+ * 項目はここで選び直すので、内訳に項目を足すときはここにも足す（足さないと、同期や編集の保存で黙って消える）
  */
 export function normalizeExpenseItems(
   items: readonly ExpenseItemInput[] | null | undefined
 ): ExpenseItem[] | undefined {
   if (!items || items.length === 0) return undefined;
-  return items.map(({ name, amount, quantity, category }) => ({
-    name: name.replace(/\s+/g, ' ').trim(),
-    amount,
-    ...(quantity !== undefined && quantity !== null ? { quantity } : {}),
-    ...(category ? { category } : {}),
-  }));
+  return items.map(({ name, amount, quantity, category, memo }) => {
+    const singleLineMemo = memo ? toSingleLine(memo) : '';
+    return {
+      name: toSingleLine(name),
+      amount,
+      ...(quantity !== undefined && quantity !== null ? { quantity } : {}),
+      ...(category ? { category } : {}),
+      ...(singleLineMemo ? { memo: singleLineMemo } : {}),
+    };
+  });
+}
+
+/** 2つの内訳が保存する形で同じか（null・undefined・空の配列は内訳なしとして同じ） */
+export function sameExpenseItems(
+  a: readonly ExpenseItemInput[] | null | undefined,
+  b: readonly ExpenseItemInput[] | null | undefined
+): boolean {
+  return JSON.stringify(normalizeExpenseItems(a) ?? null) === JSON.stringify(normalizeExpenseItems(b) ?? null);
 }
 
 /** 入力（サーバーの行やフォーム）での内訳の形。任意の項目は null も受け付ける */
@@ -121,6 +146,7 @@ export interface ExpenseItemInput {
   amount: number;
   quantity?: number | null;
   category?: string | null;
+  memo?: string | null;
 }
 
 /**

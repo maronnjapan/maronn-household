@@ -167,6 +167,20 @@ describe('normalizeExpenseItems', () => {
     ]);
   });
 
+  it('内訳のメモは改行・連続した空白を1つの空白にして持ち（アプリの1行の欄で崩れないように）、空のメモは指定なしとみなす', () => {
+    expect(
+      normalizeExpenseItems([
+        { name: 'ケーキ', amount: 1200, memo: '  誕生日用\n母の分も ' },
+        { name: '牛乳', amount: 198, memo: '   ' },
+        { name: 'パン', amount: 300, memo: null },
+      ])
+    ).toEqual([
+      { name: 'ケーキ', amount: 1200, memo: '誕生日用 母の分も' },
+      { name: '牛乳', amount: 198 },
+      { name: 'パン', amount: 300 },
+    ]);
+  });
+
   it('内訳がなければ undefined', () => {
     expect(normalizeExpenseItems([])).toBeUndefined();
     expect(normalizeExpenseItems(undefined)).toBeUndefined();

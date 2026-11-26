@@ -53,8 +53,29 @@ describe('mergeExpenses', () => {
     expect(result.toUpdate).toEqual([{ ...base, items: ITEMS, syncStatus: 'synced' }]);
   });
 
+  it('同じ版で同期済みなのに内訳がサーバーと違えば（内訳のメモを知らない古いコードが取り込んだ行）、サーバーの内訳にする', () => {
+    const withMemo = [{ name: '牛乳', amount: 198, category: 'food', memo: '特売' }];
+    const result = mergeExpenses(
+      [{ ...base, items: [{ name: '牛乳', amount: 198, category: 'food' }] }],
+      [{ ...base, items: withMemo }]
+    );
+
+    expect(result.toUpdate).toEqual([{ ...base, items: withMemo, syncStatus: 'synced' }]);
+  });
+
+  it('同じ版でも、ローカルが同期待ちなら内訳を書き換えない', () => {
+    const local = { ...base, syncStatus: 'pending' as const, items: [{ name: '牛乳', amount: 198 }] };
+
+    const result = mergeExpenses([local], [{ ...base, items: ITEMS }]);
+
+    expect(result).toEqual({ toAdd: [], toUpdate: [], conflicts: [] });
+  });
+
   it('同じ版で、ローカルとサーバーが内訳を同じく知っていれば何もしない', () => {
-    const result = mergeExpenses([{ ...base, items: null }], [{ ...base, items: null }]);
+    const result = mergeExpenses(
+      [{ ...base, items: null }, { ...base, id: 'with-items', items: ITEMS }],
+      [{ ...base, items: [] }, { ...base, id: 'with-items', items: ITEMS.map((item) => ({ ...item })) }]
+    );
 
     expect(result).toEqual({ toAdd: [], toUpdate: [], conflicts: [] });
   });

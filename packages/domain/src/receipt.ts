@@ -10,6 +10,7 @@ import {
   itemsTotal,
   normalizeExpenseItems,
   resolveExpenseCategories,
+  toSingleLine,
   type AllocatableExpense,
   type CategoryAmount,
 } from './expense-items';
@@ -20,6 +21,8 @@ export interface ReceiptItemInput {
   amount: number;
   quantity?: number;
   category?: string;
+  /** その品についてのメモ */
+  memo?: string;
 }
 
 export interface ReceiptInput {
@@ -30,6 +33,8 @@ export interface ReceiptInput {
   totalAmount: number;
   /** 会計のカテゴリー（明細にカテゴリーがない場合に使う） */
   category?: string;
+  /** 会計のメモ（支出のメモにする。なければ店名） */
+  memo?: string;
   taxAmount?: number;
   paymentMethod?: string;
   items?: ReceiptItemInput[];
@@ -134,7 +139,8 @@ export function planReceiptRecording(input: ReceiptInput, context: ReceiptRecord
     userId,
     amount: input.totalAmount,
     category: category ?? null,
-    memo: input.storeName,
+    // 支出のメモはアプリで表示・編集でき、同期される会計のメモ。指定がなければ、アプリで分かるよう店名を入れる
+    memo: (input.memo && toSingleLine(input.memo)) || input.storeName,
     date,
     createdAt: now,
     updatedAt: now,

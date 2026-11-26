@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { ExpenseEntity, SyncStatus } from '@maronn/domain';
 import { normalizeExpenseItems, resolveExpenseCategories, type ExpenseItem } from '@maronn/domain/expense-items';
+import { needsRemoteItems } from '@maronn/domain/sync';
 
 /**
  * 未認証ユーザー用のID
@@ -322,10 +323,9 @@ export async function mergeExpensesFromServer(
       } else if (
         localExpense.userId === userId &&
         serverExpense.updatedAt === localExpense.updatedAt &&
-        localExpense.items === undefined &&
-        serverExpense.items !== undefined
+        needsRemoteItems(localExpense, serverExpense)
       ) {
-        // 同じ版でも、内訳を知らないコードが取り込んだ行なら、サーバーの内訳で補う
+        // 同じ版でも、内訳を知らない・内訳の項目（メモなど）を知らないコードが取り込んだ行なら、サーバーの内訳で直す
         await db.expenses.update(localExpense.id, { items: serverExpense.items });
       }
       // ローカルが新しい場合はそのまま（pendingのまま）

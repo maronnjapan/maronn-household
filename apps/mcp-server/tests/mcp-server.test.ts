@@ -237,6 +237,7 @@ describe('ツール', () => {
       amount: 1100,
       category: 'food',
       categoryLabel: '食費',
+      memo: 'スーパーA 新宿店',
       itemsTotal: 1000,
       difference: 100,
       byCategory: [
@@ -427,6 +428,59 @@ describe('ツール', () => {
         paymentMethod: 'credit_card',
       },
     ]);
+  });
+
+  it('record_receipt の会計のメモは支出のメモ（アプリのメモ欄）にし、list_records の memo で返す（店名は storeName）', async () => {
+    const { data: recorded } = await callTool('record_receipt', { ...RECEIPT, memo: '友人と割り勘（半額は立替）' });
+
+    const { data } = await callTool('list_records', { month: '2026-11' });
+
+    expect(recorded.memo).toBe('友人と割り勘（半額は立替）');
+    expect(data.expenses[0]).toMatchObject({ memo: '友人と割り勘（半額は立替）', storeName: 'スーパーA 新宿店' });
+    expect(await testDb.db.prepare('SELECT memo FROM expenses').first('memo')).toBe('友人と割り勘（半額は立替）');
+  });
+
+  it('空のメモは指定なしとみなす（会計のメモは店名、明細はメモなし）', async () => {
+    const { data, isError } = await callTool('record_receipt', {
+      ...RECEIPT,
+      memo: '',
+      items: [{ name: '米', amount: 700, category: 'food', memo: '  ' }],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(data.memo).toBe('スーパーA 新宿店');
+    expect(await testDb.db.prepare('SELECT items FROM expenses').first('items')).toBe(
+      JSON.stringify([{ name: '米', amount: 700, category: 'food' }])
+    );
+  });
+
+  it('record_receipt の明細のメモは内訳に残り、list_records の includeItems で各内訳の memo として返す', async () => {
+    await callTool('record_receipt', {
+      ...RECEIPT,
+      items: [
+        { name: '米', amount: 700, category: 'food', memo: '実家に送る分' },
+        { name: 'ティッシュ', amount: 300, category: 'daily-goods' },
+      ],
+    });
+
+    const { data } = await callTool('list_records', { month: '2026-11', includeItems: true });
+
+    expect(data.expenses[0].items).toEqual([
+      { name: '米', amount: 700, category: 'food', memo: '実家に送る分', categoryLabel: '食費' },
+      { name: 'ティッシュ', amount: 300, category: 'daily-goods', categoryLabel: '日用品' },
+    ]);
+  });
+
+  it('長すぎるメモは記録しない', async () => {
+    const itemMemo = await callTool('record_receipt', {
+      ...RECEIPT,
+      items: [{ name: '米', amount: 700, memo: 'あ'.repeat(201) }],
+    });
+    const memo = await callTool('record_receipt', { ...RECEIPT, memo: 'あ'.repeat(201) });
+
+    expect(itemMemo.isError).toBe(true);
+    expect(memo.isError).toBe(true);
+    expect(await count('receipts')).toBe(0);
   });
 
   it('list_records の includeItems は、アプリで支出をすべて消して取り消したレシートを含めない', async () => {

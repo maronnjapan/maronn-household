@@ -42,6 +42,7 @@ import {
   MAX_EXPENSE_ITEM_AMOUNT,
   MAX_EXPENSE_ITEM_QUANTITY,
   MAX_EXPENSE_ITEM_CATEGORY_LENGTH,
+  MAX_EXPENSE_ITEM_MEMO_LENGTH,
   type ScheduleConfig,
   type WebhookServiceType,
 } from '@maronn/domain';
@@ -128,6 +129,8 @@ const expenseItemSchema = z.object({
   amount: z.number().int().nonnegative().max(MAX_EXPENSE_ITEM_AMOUNT),
   quantity: z.number().positive().max(MAX_EXPENSE_ITEM_QUANTITY).optional(),
   category: z.string().max(MAX_EXPENSE_ITEM_CATEGORY_LENGTH).optional(),
+  // MCP で記録した明細のメモ。受け付けないと、アプリで編集して送り直したときに消える
+  memo: z.string().max(MAX_EXPENSE_ITEM_MEMO_LENGTH).optional(),
 });
 
 /**
